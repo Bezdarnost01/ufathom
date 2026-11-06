@@ -188,7 +188,7 @@ fn version_block_is_read_from_version_1() {
 #[test]
 fn version_0_has_no_version_block() {
     // The same bytes read as version 0 must not consume a flag: this is the
-    // shape of a real 8.1.0 header, `c430 00 00 <sizes>`.
+    // shape of a real version 0 header, `c430 00 00 <sizes>`.
     let bytes = uncompressed(0, false);
     assert_eq!(&bytes[..4], &[0xC4, 0x30, 0x00, 0x00]);
     assert_eq!(

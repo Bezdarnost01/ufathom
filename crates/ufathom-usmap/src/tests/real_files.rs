@@ -131,9 +131,9 @@ fn check_engine_types(usmap: &Usmap) {
 }
 
 #[test]
-#[ignore = "needs a real usmap; set usmap.dbd_3_7_2 in ufathom.local.toml"]
-fn real_dbd_3_7_2() {
-    let Some(usmap) = load("dbd_3_7_2") else {
+#[ignore = "needs a real usmap; set usmap.ue4_22 in ufathom.local.toml"]
+fn real_ue4_22() {
+    let Some(usmap) = load("ue4_22") else {
         return;
     };
     // Written by Dumper-7: version 4, zstd.
@@ -152,9 +152,9 @@ fn real_dbd_3_7_2() {
 }
 
 #[test]
-#[ignore = "needs a real usmap; set usmap.dbd_8_1_0 in ufathom.local.toml"]
-fn real_dbd_8_1_0() {
-    let Some(usmap) = load("dbd_8_1_0") else {
+#[ignore = "needs a real usmap; set usmap.ue5 in ufathom.local.toml"]
+fn real_ue5() {
+    let Some(usmap) = load("ue5") else {
         return;
     };
     // Version 0, stored uncompressed: no version block and 8-bit name lengths.
