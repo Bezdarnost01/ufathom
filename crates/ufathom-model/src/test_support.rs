@@ -48,7 +48,7 @@ fn typed_legacy(base: u32) -> TypedPayloadLayout {
     }
 }
 
-/// DBD 2.6.4 shape: 8-byte `FName`, outer at 0x20, legacy properties, array
+/// UE 4.21 build shape: 8-byte `FName`, outer at 0x20, legacy properties, array
 /// name table.
 pub fn layout_array_names_legacy() -> EngineLayout {
     EngineLayout {
@@ -129,7 +129,7 @@ pub fn layout_array_names_legacy() -> EngineLayout {
     }
 }
 
-/// DBD 3.7.2 shape: 12-byte `FName` with outer at 0x28, legacy properties.
+/// UE 4.22 build shape: 12-byte `FName` with outer at 0x28, legacy properties.
 pub fn layout_array_names_wide_fname() -> EngineLayout {
     let mut layout = layout_array_names_legacy();
     layout.fname = FNameLayout {
@@ -181,9 +181,9 @@ pub fn layout_array_names_wide_fname() -> EngineLayout {
     layout
 }
 
-/// DBD 4.4.2 shape: pool names with header +4, string +6, shift 1, stride 4,
+/// UE 4.25 build shape: pool names with header +4, string +6, shift 1, stride 4,
 /// and `FField` properties.
-pub fn layout_pool_modern_dbd() -> EngineLayout {
+pub fn layout_pool_modern() -> EngineLayout {
     let mut layout = layout_array_names_wide_fname();
     layout.names = NameTableLayout::Pool(NamePoolLayout {
         location: rva(0x3000),
@@ -229,7 +229,7 @@ pub fn layout_pool_modern_dbd() -> EngineLayout {
 /// outline numbers (no `FName::Number`), 16-bit `MinAlignment`, split enum
 /// arrays, a scrambled object array and the array inner moved.
 pub fn layout_pool_stock_ue5() -> EngineLayout {
-    let mut layout = layout_pool_modern_dbd();
+    let mut layout = layout_pool_modern();
     layout.names = NameTableLayout::Pool(NamePoolLayout {
         location: Location::Absolute(0x1_4000_0000),
         blocks: 0x10,
@@ -282,7 +282,7 @@ pub fn empty_dump() -> Dump {
         },
         EngineInfo {
             claimed: Some("4.25.1".to_owned()),
-            build: Some("++UE4+Release-4.25-CL-377698".to_owned()),
+            build: Some("++UE4+Release-4.25-CL-1000000".to_owned()),
             min_version: Some(EngineVersion {
                 major: 4,
                 minor: 25,
@@ -291,7 +291,7 @@ pub fn empty_dump() -> Dump {
             max_version: None,
             evidence: vec!["FField present".to_owned(), "FNamePool present".to_owned()],
         },
-        layout_pool_modern_dbd(),
+        layout_pool_modern(),
     )
 }
 

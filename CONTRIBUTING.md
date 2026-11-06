@@ -22,6 +22,7 @@ cargo test --workspace
 - Game executables, pak files, memory dumps, usmap files or generated SDKs from real games.
 - Absolute addresses or RVAs of globals in specific game builds. Struct layout offsets are fine.
 - Personal paths or machine details. Local paths go in `ufathom.local.toml`, which is ignored.
+- Names or versions of specific games we test on. The repository refers to engine versions only.
 - Third-party code without a compatible license. **Dumper-7 has no license: do not copy its code**, only independently reimplement ideas. Code derived from MIT projects keeps attribution in `THIRD_PARTY.md`.
 
 ## Code style
@@ -56,7 +57,7 @@ cargo test --workspace
 - Offsets are `u32` named fields, not tuples. Magic numbers become named constants with a comment on their source.
 - Prefer small modules with one responsibility. Split a file past about 600 lines at a natural boundary.
 - Public items have doc comments stating behaviour and failure modes. Comments explain why, not what. No commented-out code.
-- No game-specific branches in solver code. `if game == "DBD"` is a design bug. A build quirk must be expressed as a general inference.
+- No game-specific branches in solver code. `if game == "X"` is a design bug. A build quirk must be expressed as a general inference.
 
 **Determinism.** Generators and dumps sort by path. No timestamps, random seeds or hash-map iteration order in output.
 
