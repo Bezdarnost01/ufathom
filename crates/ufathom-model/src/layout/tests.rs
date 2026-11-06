@@ -5,7 +5,7 @@ use super::{
     UEnumLayout,
 };
 use crate::test_support::{
-    layout_array_names_legacy, layout_array_names_wide_fname, layout_pool_modern_dbd,
+    layout_array_names_legacy, layout_array_names_wide_fname, layout_pool_modern,
     layout_pool_stock_ue5,
 };
 
@@ -13,7 +13,7 @@ fn all_layouts() -> Vec<EngineLayout> {
     vec![
         layout_array_names_legacy(),
         layout_array_names_wide_fname(),
-        layout_pool_modern_dbd(),
+        layout_pool_modern(),
         layout_pool_stock_ue5(),
     ]
 }
@@ -55,8 +55,8 @@ fn eight_and_twelve_byte_fname_place_outer_differently() {
 }
 
 #[test]
-fn dbd_442_pool_entry_matches_calibration() {
-    let NameTableLayout::Pool(pool) = layout_pool_modern_dbd().names else {
+fn ue4_25_pool_entry_matches_calibration() {
+    let NameTableLayout::Pool(pool) = layout_pool_modern().names else {
         panic!("expected a pool");
     };
     assert_eq!(pool.entry.header_offset, 4);
@@ -85,7 +85,7 @@ fn array_names_and_pool_names_are_both_representable() {
         NameTableLayout::Array(_)
     ));
     assert!(matches!(
-        layout_pool_modern_dbd().names,
+        layout_pool_modern().names,
         NameTableLayout::Pool(_)
     ));
 }
@@ -97,7 +97,7 @@ fn legacy_and_modern_properties_are_both_representable() {
         PropertySystem::Legacy
     ));
     assert!(matches!(
-        layout_pool_modern_dbd().properties.system,
+        layout_pool_modern().properties.system,
         PropertySystem::Modern { .. }
     ));
 }
@@ -239,7 +239,7 @@ fn a_chain_can_be_inverted_step_by_step() {
 
 #[test]
 fn a_layout_with_no_typed_payload_offsets_round_trips() {
-    let mut layout = layout_pool_modern_dbd();
+    let mut layout = layout_pool_modern();
     layout.properties.typed = super::TypedPayloadLayout {
         bool_property: None,
         object_class: None,
