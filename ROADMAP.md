@@ -65,7 +65,7 @@ Requires the user to start each game and to load the DLL or allow attaching.
 ## M6: Polish and wider support (stage 12)
 
 - [ ] `diff` command, documentation, performance numbers measured on real dumps
-- [ ] C++ SDK output, if needed to replace Dumper-7 for existing C++ mods
+- [ ] Rust mod toolkit, so new mods need no C++: ProcessEvent and native function hooks, proxy DLL exports, game thread dispatch, engine allocator
 - [ ] Opt-in asset loading in DLL mode
 - [ ] Generic UE fixtures from public type descriptions
 - [ ] Other engine versions, added as each is verified on a real game
