@@ -102,7 +102,7 @@ Ranked by value for the first goal, a DLL that dumps DBD 2.6.4, 3.7.2, 4.4.2 and
 
 | Idea | Decision |
 |---|---|
-| C++ SDK output | Deferred, open question. Existing C++ mods use Dumper-7's SDK, so replacing it fully would need this |
+| C++ SDK output | Rejected. The project is Rust-only. Existing C++ mods keep the SDKs already generated for their fixed game builds |
 | Dynamic plugin loader | Rejected. No stable Rust ABI. JSON and traits cover the need |
 | Bundled decryption keys | Rejected. Transforms are user-supplied, as in Dumper-7 |
 | Bundled injector | Rejected. Loading is the user's choice |

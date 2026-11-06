@@ -40,4 +40,4 @@ Defined in `ARCHITECTURE.md`. None has a result yet.
 - x86-64 Windows for the DLL. External reader also targets Linux, not tested on real games.
 - A dump contains only objects loaded when it ran.
 - Obfuscated object arrays need a user-supplied transform.
-- Rust SDK only. No C++ output yet.
+- Rust SDK only. C++ output is not planned.
