@@ -18,16 +18,30 @@
 
 mod cache;
 mod error;
+mod live;
+#[cfg_attr(
+    not(target_os = "linux"),
+    allow(
+        dead_code,
+        reason = "the maps parser is only used by the Linux backend, but tested everywhere"
+    )
+)]
+mod maps;
 mod pod;
+mod protect;
 mod reader;
 mod snapshot;
+mod sys;
 mod types;
 
 pub use cache::{CacheStats, DEFAULT_MAX_PAGES, PAGE_SIZE, PageCache};
 pub use error::MemError;
+pub use live::{ProcessMemory, SelfMemory, list_processes};
 pub use pod::Pod;
 pub use reader::{
     Addr, MAX_CSTR_LEN, MAX_READ_VEC_BYTES, MAX_READ_VEC_COUNT, MemoryReader, MemoryReaderExt,
 };
 pub use snapshot::{Snapshot, SnapshotBuilder};
+#[cfg(windows)]
+pub use sys::PROCESS_OPEN_ACCESS;
 pub use types::{MemoryRegion, ModuleInfo, Perms, ProcessInfo, RegionKind};
