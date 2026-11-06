@@ -9,6 +9,13 @@ repository.workspace = true
 
 [dependencies]
 ufathom-model.workspace = true
+ruzstd.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+toml.workspace = true
 
 [lints]
 workspace = true
