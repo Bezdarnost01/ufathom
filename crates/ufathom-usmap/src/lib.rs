@@ -50,19 +50,46 @@
 
 #![forbid(unsafe_code)]
 
+mod build;
 mod cursor;
 mod decompress;
+mod encode;
 mod error;
 mod format;
+mod mapping;
 mod model;
 mod reader;
 
 #[cfg(test)]
 mod tests;
 
+pub use build::WriteReport;
 pub use error::UsmapError;
+pub use mapping::short_name;
 pub use model::{
     Compression, CustomVersion, Usmap, UsmapEnum, UsmapEnumValue, UsmapProperty, UsmapStruct,
     UsmapType, UsmapVersion, VersionInfo,
 };
 pub use reader::{MAX_DECOMPRESSED_SIZE, MAX_TYPE_DEPTH};
+
+use ufathom_model::Dump;
+
+/// Writes a dump as a usmap file.
+///
+/// The format is version 4, uncompressed; see the crate documentation for
+/// what is lost and how. The result is deterministic for a given dump and
+/// does not depend on the order of its lists. Use
+/// [`write_usmap_with_report`] to learn what was changed or left out.
+#[must_use]
+pub fn write_usmap(dump: &Dump) -> Vec<u8> {
+    write_usmap_with_report(dump).0
+}
+
+/// Writes a dump as a usmap file and reports what usmap could not hold.
+///
+/// Same output as [`write_usmap`].
+#[must_use]
+pub fn write_usmap_with_report(dump: &Dump) -> (Vec<u8>, WriteReport) {
+    let (usmap, report) = build::build_usmap(dump);
+    (encode::encode(&usmap), report)
+}
