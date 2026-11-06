@@ -1,0 +1,14 @@
+[package]
+name = "ufathom-usmap"
+description = "Reads and writes usmap files and compares them against a dump."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ufathom-model.workspace = true
+
+[lints]
+workspace = true

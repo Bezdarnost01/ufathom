@@ -1,0 +1,19 @@
+[package]
+name = "ufathom-dll"
+description = "The ufathom.dll shell: DllMain, thread lifecycle, hotkeys and panic containment."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "ufathom"
+crate-type = ["cdylib"]
+
+[dependencies]
+ufathom-agent.workspace = true
+
+[lints]
+workspace = true

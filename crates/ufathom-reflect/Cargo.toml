@@ -1,0 +1,16 @@
+[package]
+name = "ufathom-reflect"
+description = "Walks objects and builds a dump, reporting diagnostics instead of failing."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ufathom-mem.workspace = true
+ufathom-model.workspace = true
+ufathom-engine.workspace = true
+
+[lints]
+workspace = true

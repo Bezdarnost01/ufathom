@@ -1,0 +1,64 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Bezdarnost01/ufathom"
+
+[workspace.dependencies]
+ufathom-mem = { path = "crates/ufathom-mem" }
+ufathom-model = { path = "crates/ufathom-model" }
+ufathom-engine = { path = "crates/ufathom-engine" }
+ufathom-scan = { path = "crates/ufathom-scan" }
+ufathom-reflect = { path = "crates/ufathom-reflect" }
+ufathom-usmap = { path = "crates/ufathom-usmap" }
+ufathom-codegen = { path = "crates/ufathom-codegen" }
+ufathom-runtime = { path = "crates/ufathom-runtime" }
+ufathom-testkit = { path = "crates/ufathom-testkit" }
+ufathom-agent = { path = "crates/ufathom-agent" }
+
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+heck = "0.5.0"
+libc = "0.2.191"
+memchr = "2.8.3"
+memmap2 = "0.9.12"
+rayon = "1.12.0"
+ruzstd = "0.9.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+toml = "1.2.1"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+windows-sys = "0.61.2"
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_op_in_unsafe_fn = "deny"
+
+# These enforce CONTRIBUTING.md: target data must never cause a panic in a live game.
+# A justified exception uses #[allow(lint, reason = "...")].
+[workspace.lints.clippy]
+allow_attributes_without_reason = "warn"
+dbg_macro = "warn"
+expect_used = "warn"
+indexing_slicing = "warn"
+panic = "warn"
+print_stderr = "warn"
+print_stdout = "warn"
+todo = "warn"
+unimplemented = "warn"
+unwrap_used = "warn"
+
+[profile.release]
+debug = "line-tables-only"
+lto = "thin"
+# Must stay "unwind". An abort inside the DLL would kill the game.
+panic = "unwind"
