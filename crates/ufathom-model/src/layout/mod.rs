@@ -10,6 +10,8 @@ mod names;
 mod object_array;
 mod property;
 
+#[cfg(test)]
+mod tests;
 
 pub use classes::{
     UClassLayout, UEnumLayout, UFieldLayout, UFunctionLayout, UObjectLayout, UStructLayout,
