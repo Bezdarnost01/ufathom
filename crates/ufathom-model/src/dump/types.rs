@@ -81,7 +81,10 @@ pub struct FunctionDef {
     pub name: String,
     /// Raw `EFunctionFlags`.
     pub flags: u32,
-    /// Size in bytes of the parameter block, return value included.
+    /// Size in bytes of the parameter block, return value included. It is the
+    /// `UStruct::PropertiesSize` of the `UFunction` itself, not a sum over
+    /// [`params`](Self::params): padding and trailing locals are counted by
+    /// the engine, not derived from the listed parameters.
     pub params_size: u32,
     /// Parameters in declared order, the return value (flagged
     /// `CPF_RETURN_PARM`) included. The order is part of the calling

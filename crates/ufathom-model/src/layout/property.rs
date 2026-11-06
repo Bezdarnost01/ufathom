@@ -64,35 +64,43 @@ pub struct PropertyLayout {
 /// Offsets of the typed payloads, each kept separately because they do not
 /// all sit at [`PropertyLayout::size`] in every version. The array inner
 /// property moved in UE 5.3, for example.
+///
+/// Every offset is optional, by design. "Refuse rather than guess" applies to
+/// essential offsets: a missing property size or member offset would corrupt
+/// the layout of every type. A missing payload offset corrupts nothing,
+/// because sizes and offsets come from the property base. The reader decodes
+/// such a field as [`PropertyType::Unknown`](crate::PropertyType::Unknown)
+/// with its correct size and records a diagnostic, so one anchor missing from
+/// a game does not fail the whole dump. `None` means the build has no such
+/// property class or the solver found no evidence for the offset.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TypedPayloadLayout {
     /// `BoolProperty` fields.
-    pub bool_property: BoolPayloadLayout,
+    pub bool_property: Option<BoolPayloadLayout>,
     /// Offset of `PropertyClass` in object-like properties.
-    pub object_class: u32,
+    pub object_class: Option<u32>,
     /// Offset of `MetaClass` in class properties.
-    pub class_meta: u32,
+    pub class_meta: Option<u32>,
     /// Offset of `Struct` in struct properties.
-    pub script_struct: u32,
+    pub script_struct: Option<u32>,
     /// Offset of `Inner` in array properties.
-    pub array_inner: u32,
-    /// Offset of `ElementProp` in set properties. `None` when the build has
-    /// no set properties or the offset is not found.
+    pub array_inner: Option<u32>,
+    /// Offset of `ElementProp` in set properties.
     pub set_element: Option<u32>,
     /// Offset of `KeyProp` in map properties.
-    pub map_key: u32,
+    pub map_key: Option<u32>,
     /// Offset of `ValueProp` in map properties.
-    pub map_value: u32,
-    /// Offset of `UnderlyingProp` in enum properties. `None` when absent.
+    pub map_value: Option<u32>,
+    /// Offset of `UnderlyingProp` in enum properties.
     pub enum_underlying: Option<u32>,
-    /// Offset of `Enum` in enum properties. `None` when absent.
+    /// Offset of `Enum` in enum properties.
     pub enum_type: Option<u32>,
     /// Offset of `Enum` in byte properties.
-    pub byte_enum: u32,
+    pub byte_enum: Option<u32>,
     /// Offset of `SignatureFunction` in delegate properties.
-    pub delegate_signature: u32,
+    pub delegate_signature: Option<u32>,
     /// Offset of `InterfaceClass` in interface properties.
-    pub interface_class: u32,
+    pub interface_class: Option<u32>,
     /// Offset of the value property in optional properties (UE 5.x only).
     pub optional_value: Option<u32>,
 }

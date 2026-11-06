@@ -105,7 +105,10 @@ fn legacy_and_modern_properties_are_both_representable() {
 #[test]
 fn array_inner_can_sit_away_from_the_property_size() {
     let layout = layout_pool_stock_ue5();
-    assert_ne!(layout.properties.typed.array_inner, layout.properties.size);
+    assert_ne!(
+        layout.properties.typed.array_inner,
+        Some(layout.properties.size)
+    );
 }
 
 #[test]
@@ -232,4 +235,27 @@ fn a_chain_can_be_inverted_step_by_step() {
     // Encode with the inverse steps, then decode with the chain.
     let stored = (!real).wrapping_sub(0x1000).rotate_right(7) ^ 0xA5A5_A5A5_A5A5_A5A5;
     assert_eq!(objects.apply_pointer_transform(stored), real);
+}
+
+#[test]
+fn a_layout_with_no_typed_payload_offsets_round_trips() {
+    let mut layout = layout_pool_modern_dbd();
+    layout.properties.typed = super::TypedPayloadLayout {
+        bool_property: None,
+        object_class: None,
+        class_meta: None,
+        script_struct: None,
+        array_inner: None,
+        set_element: None,
+        map_key: None,
+        map_value: None,
+        enum_underlying: None,
+        enum_type: None,
+        byte_enum: None,
+        delegate_signature: None,
+        interface_class: None,
+        optional_value: None,
+    };
+    let json = serde_json::to_string(&layout).unwrap();
+    assert_eq!(serde_json::from_str::<EngineLayout>(&json).unwrap(), layout);
 }

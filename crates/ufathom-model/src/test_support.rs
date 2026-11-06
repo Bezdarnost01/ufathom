@@ -26,24 +26,24 @@ fn rva(rva: u64) -> Location {
 
 fn typed_legacy(base: u32) -> TypedPayloadLayout {
     TypedPayloadLayout {
-        bool_property: BoolPayloadLayout {
+        bool_property: Some(BoolPayloadLayout {
             field_size: base,
             byte_offset: base + 1,
             byte_mask: base + 2,
             field_mask: base + 3,
-        },
-        object_class: base,
-        class_meta: base + 8,
-        script_struct: base,
-        array_inner: base,
+        }),
+        object_class: Some(base),
+        class_meta: Some(base + 8),
+        script_struct: Some(base),
+        array_inner: Some(base),
         set_element: Some(base),
-        map_key: base,
-        map_value: base + 8,
+        map_key: Some(base),
+        map_value: Some(base + 8),
         enum_underlying: Some(base),
         enum_type: Some(base + 8),
-        byte_enum: base,
-        delegate_signature: base,
-        interface_class: base,
+        byte_enum: Some(base),
+        delegate_signature: Some(base),
+        interface_class: Some(base),
         optional_value: None,
     }
 }
@@ -264,7 +264,7 @@ pub fn layout_pool_stock_ue5() -> EngineLayout {
     if let PropertySystem::Modern { field_class, .. } = &mut layout.properties.system {
         field_class.name = 0x18;
     }
-    layout.properties.typed.array_inner = 0x80;
+    layout.properties.typed.array_inner = Some(0x80);
     layout.properties.typed.optional_value = Some(0x78);
     layout
 }
@@ -320,7 +320,8 @@ pub fn return_value(offset: u32, ty: PropertyType) -> FieldDef {
     param("ReturnValue", offset, ty, CPF_OUT_PARM | CPF_RETURN_PARM)
 }
 
-/// A function whose parameter block is `params_size` bytes.
+/// A function whose `params_size` is the end of its last parameter. Real
+/// dumps read it from the function's `PropertiesSize` instead.
 pub fn function(owner_path: &str, name: &str, flags: u32, params: Vec<FieldDef>) -> FunctionDef {
     let params_size = params
         .iter()
