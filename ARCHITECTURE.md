@@ -28,9 +28,9 @@ These are testable, and each needs a real result before it is claimed.
 | # | Criterion | Why it matters |
 |---|---|---|
 | 1 | A wrong layout or corrupted object leaves the game running and produces a named error | Crashes are the most common Dumper-7 report |
-| 2 | The game keeps running normally during a dump, measured on the fake host and on real games | The patched fork used for DBD blocked the game thread for seconds |
-| 3 | All four target builds dump with no manual offsets | Layout tables and manual overrides are the main maintenance cost |
-| 4 | `GWorld` and the name table address are found on 3.7.2 | Dumper-7's output there records both as 0 |
+| 2 | The game keeps running normally during a dump, measured on the fake host and on real games | A patched fork in real use blocked the game thread for seconds |
+| 3 | Every real build available for testing dumps with no manual offsets | Layout tables and manual overrides are the main maintenance cost |
+| 4 | `GWorld` and the name table address are found on the measured UE 4.22 build | Dumper-7's output there records both as 0 |
 | 5 | Dump again without reloading, then unload cleanly with no threads left | Reloading risked a broken state |
 | 6 | Each dump gets its own folder and `identity.json` | Results must be traceable to a build |
 | 7 | Works from long install paths | A real failure on a long Steam path |
@@ -69,14 +69,13 @@ flowchart LR
     sdk --> runtime["ufathom-runtime"]
 ```
 
-## Calibration data from the target builds
+## Calibration data from real builds
 
-Facts from the executables and from Dumper-7 output for the same builds. Fixtures must reproduce them. The solver must discover them, never read them from a table. Empty cells are unknown and must be found by the solver.
+Facts measured from real shipping builds: their executables and Dumper-7 output for them. These builds enable engine options, so they differ from stock. Fixtures must reproduce them. The solver must discover them, never read them from a table. Empty cells are unknown and must be found by the solver.
 
-| | DBD 2.6.4 | DBD 3.7.2 | DBD 4.4.2 | DBD 8.1.0 |
+| | UE 4.21 build | UE 4.22 build | UE 4.25 build | UE5 build |
 |---|---|---|---|---|
 | Engine | 4.21.1 | 4.22.3 | 4.25.1 | UE5, minor unverified |
-| Changelist | 94430 | 299508 | 377698 | |
 | `FName` | 8: cmp, number | **12**: cmp, display, number | **12**: cmp, display, number | |
 | `UObject` index, class, name, outer | 0xC, 0x10, 0x18, 0x20 | 0xC, 0x10, 0x18, 0x28 | 0xC, 0x10, 0x18, 0x28 | |
 | `sizeof(UObject)` | 0x28 | 0x30 | 0x30 | |
@@ -98,7 +97,28 @@ Facts from the executables and from Dumper-7 output for the same builds. Fixture
 | `FUObjectItem` size | | 0x18 | | |
 | ProcessEvent vtable index | 0x40 | 0x40 | | |
 
-Typed property payloads in 3.7.2 start at `sizeof(UProperty)` = 0x80: bool `{field_size, byte_offset, byte_mask, field_mask}`, struct, array inner, object class, map key then value at +8, enum underlying then enum at +8. `UClassProperty::MetaClass` sits 8 past the object class.
+Typed property payloads in the UE 4.22 build start at `sizeof(UProperty)` = 0x80: bool `{field_size, byte_offset, byte_mask, field_mask}`, struct, array inner, object class, map key then value at +8, enum underlying then enum at +8. `UClassProperty::MetaClass` sits 8 past the object class.
+
+## Layout changes by engine era
+
+The range to support is UE 4.11 to 5.8. The solver must infer all of this, so the table exists to design fixtures and to know what must be inferable. Source: public type descriptions in `jmap` and comments in Dumper-7. Nothing here is verified on a real game unless `COMPATIBILITY.md` says so.
+
+| Since | Change |
+|---|---|
+| 4.11 | Lowest supported. Object array is `FFixedUObjectArray`, names are `TNameEntryArray` |
+| 4.21 | `FChunkedFixedUObjectArray` (chunks of 0x10000) |
+| 4.22 | `UStruct` gains `FStructBaseChain` in non-editor builds, moving `SuperStruct` by 0x10 |
+| 4.23 | `FNamePool` replaces `TNameEntryArray` |
+| 4.25 | `FField` / `FProperty` replace `UProperty`. `UStruct::ChildProperties` appears |
+| 5.0 | Large World Coordinates: `Vector`, `Rotator` and `Quat` become double-based |
+| 5.1 to 5.3 | `FFieldVariant` loses its bool. Sources disagree on the exact version, so it must be detected |
+| 5.3 | `FArrayProperty` stores flags before `Inner` |
+| 5.5 to 5.7 | `FUObjectItem` changes: a reference count, then flags and reference count first |
+| 5.6 | `UStruct::MinAlignment` becomes 16-bit |
+| 5.7 | `UEnum` stores split, tagged name and value arrays. `FFieldClass` reorders |
+| 5.8 | `FChunkedFixedUObjectArray` stores counts before the preallocated pointer. `FFieldClass` starts with a vtable |
+
+Build options cut across these eras: case-preserving names give a 12-byte `FName`, outline numbers give a 4-byte one, and pool entries can differ, as in the measured UE 4.25 build.
 
 ## `ufathom-mem`
 
@@ -229,9 +249,9 @@ Steps, all using `.data` and heap reads only. No signature is needed for the mai
    - Pool: in writable sections, find a run of block pointers preceded by two `u32` where `current_block + 1 == run length` and the first block starts with `None` then `ByteProperty`.
    - Array: a pointer chain to chunks whose entries 0 and 1 are `None` and `ByteProperty`.
    - Fallback: scan private regions for the `ByteProperty` bytes, then look for a pointer to that block.
-   - Entry format is inferred. String offset comes from the position of `None`, stride from the distance to `ByteProperty`, length shift by requiring `None` = 4 and `ByteProperty` = 12. The 4.4.2 values (+4, +6, `>> 1`, stride 4) must come out of this without special cases.
+   - Entry format is inferred. String offset comes from the position of `None`, stride from the distance to `ByteProperty`, length shift by requiring `None` = 4 and `ByteProperty` = 12. The UE 4.25 build's values (+4, +6, `>> 1`, stride 4) must come out of this without special cases.
    - `block_offset_bits` is confirmed by requiring object names to land on recorded entry starts.
-4. **`FName` shape.** Decide between 4, 8, 12 and 16 bytes by decoding names at the solved offset and looking at how much of the next field is a plausible number or a duplicate index. 3.7.2 and 4.4.2 use 12 bytes.
+4. **`FName` shape.** Decide between 4, 8, 12 and 16 bytes by decoding names at the solved offset and looking at how much of the next field is a plausible number or a duplicate index. The measured UE 4.22 and 4.25 builds use 12 bytes.
 5. **`UObject`.** Class is the offset whose chain reaches a fixed point named `Class`. Name decodes for at least 99% of samples. Outer chains terminate at null within a bounded depth with a `Package` at the top. Flags: `Default__*` objects have the 0x10 bit, others do not.
 6. **`UStruct`, `UField`, `UClass`, `UFunction`, `UEnum`.** Anchored on CoreUObject, compared case-insensitively because some builds spell names differently.
    - `Struct.super == Field`, `Class.super == Struct`, `Field.super == Object`.

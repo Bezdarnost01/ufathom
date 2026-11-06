@@ -2,7 +2,7 @@
 
 An Unreal Engine dumper DLL and Rust SDK generator, built to survive what breaks Dumper-7's DLL. Load it in a game and it writes a reflection dump, a usmap and a Rust SDK. If your offsets are wrong, you get an error message, not a crashed game.
 
-**Status: early development.** Nothing is released and no game is verified yet. See [COMPATIBILITY.md](COMPATIBILITY.md) for what has actually been tested. First targets are specific Dead by Daylight builds on UE 4.21, 4.22, 4.25 and UE5.
+**Status: early development.** Nothing is released and no game is verified yet. See [COMPATIBILITY.md](COMPATIBILITY.md) for what has actually been tested. The target range is UE 4.11 to 5.8, and support is claimed version by version as real builds are verified.
 
 ## Goals
 
