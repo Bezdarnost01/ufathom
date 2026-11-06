@@ -16,12 +16,14 @@
 //! The crate has no write path: there is no way to modify a target.
 #![deny(unsafe_op_in_unsafe_fn)]
 
+mod cache;
 mod error;
 mod pod;
 mod reader;
 mod snapshot;
 mod types;
 
+pub use cache::{CacheStats, DEFAULT_MAX_PAGES, PAGE_SIZE, PageCache};
 pub use error::MemError;
 pub use pod::Pod;
 pub use reader::{
