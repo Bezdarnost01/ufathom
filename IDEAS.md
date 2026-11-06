@@ -1,6 +1,6 @@
 # Ideas
 
-Ranked by value for the first goal, a DLL that dumps DBD 2.6.4, 3.7.2, 4.4.2 and 8.1.0 better than Dumper-7's, and by how much they set ufathom apart. Complexity is relative to this project.
+Ranked by value for the first goal, a DLL that dumps UE 4.11 to 5.8 games better than Dumper-7's, and by how much they set ufathom apart. Complexity is relative to this project.
 
 ## 1. A DLL that cannot crash the game through a bad read
 
@@ -53,7 +53,7 @@ Ranked by value for the first goal, a DLL that dumps DBD 2.6.4, 3.7.2, 4.4.2 and
 ## 7. ABI-aware diff between game versions
 
 - **Gives:** a report of moved fields, resized types, changed enums and function ABI changes.
-- **Solves:** manual porting work between DBD versions, which the target use case does constantly.
+- **Solves:** manual porting work between versions of a game.
 - **Complexity:** low to medium.
 - **Architecture:** `ufathom_model::diff` on the JSON IR.
 - **Better because:** it compares stable data rather than generated source text, and ignores renames that do not affect ABI.
@@ -76,7 +76,7 @@ Ranked by value for the first goal, a DLL that dumps DBD 2.6.4, 3.7.2, 4.4.2 and
 
 ## 10. Version as a range with evidence
 
-- **Gives:** useful results when version strings are missing. 8.1.0 shows no plain version string.
+- **Gives:** useful results when version strings are missing, as on one real UE5 build we inspected.
 - **Solves:** jmap's hard stop when version detection fails.
 - **Complexity:** low.
 - **Architecture:** `EngineInfo { claimed, range, evidence }`.

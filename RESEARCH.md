@@ -66,7 +66,7 @@ Closest to the external auto-discovery idea. It scores a fixed list of array lay
 
 ## Requirements from real use
 
-A patched Dumper-7 used for DBD modding had to add these. They are direct requirements for the DLL:
+A patched Dumper-7 in real modding use had to add these. They are direct requirements for the DLL:
 
 - Repeat dumps in one process, with state reset between runs.
 - A separate folder per session and per dump, with nothing overwritten.
@@ -79,18 +79,18 @@ A patched Dumper-7 used for DBD modding had to add these. They are direct requir
 - No heavy work on load unless asked.
 - ABI-aware comparison between versions, where a renamed parameter is not a change and ambiguous duplicate names are flagged.
 
-That fork also generated on the game thread, blocking it for seconds, and one of its SDKs carried a duplicate `CoreUObject.Struct` declaration. Its 3.7.2 output records `GWorld` and `GNames` as 0.
+That fork also generated on the game thread, blocking it for seconds, and one of its SDKs carried a duplicate `CoreUObject.Struct` declaration. Its output for a UE 4.22 build records `GWorld` and `GNames` as 0.
 
-## Findings from the target builds
+## Findings from real builds
 
-Static inspection of the four target executables and Dumper-7 output for two of them showed real builds are not stock, which supports the solver approach:
+Static inspection of real shipping executables and Dumper-7 output for two of them showed real builds are not stock, which supports the solver approach:
 
-- DBD 3.7.2 and 4.4.2 use a **12-byte `FName`** (comparison, display, number) in shipping builds, shifting every later offset by 8.
-- DBD 4.4.2 uses `FNamePool` with stride 4, entry header at +4, chars at +6, and length as `header >> 1`, unlike the common stride 2 and `>> 6`.
+- The UE 4.22 and 4.25 builds use a **12-byte `FName`** (comparison, display, number) in shipping builds, shifting every later offset by 8.
+- The UE 4.25 build uses `FNamePool` with stride 4, entry header at +4, chars at +6, and length as `header >> 1`, unlike the common stride 2 and `>> 6`.
 
-Full table: `ARCHITECTURE.md`, "Calibration data".
+Full table: `ARCHITECTURE.md`, "Calibration data from real builds".
 
-Dumper-7 output for 2.6.4 and 3.7.2 and a usmap for 8.1.0 exist locally, which makes real differential testing possible without trusting ufathom's own logic. A local-only test harness uses them; they are never committed.
+Dumper-7 output for UE 4.21 and 4.22 builds and a usmap for a UE5 build exist locally, which makes real differential testing possible without trusting ufathom's own logic. A local-only test harness uses them; they are never committed.
 
 ## Name
 
