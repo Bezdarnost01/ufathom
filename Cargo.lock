@@ -388,8 +388,10 @@ dependencies = [
 name = "ufathom-testkit"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "ufathom-mem",
  "ufathom-model",
+ "windows-sys",
 ]
 
 [[package]]
