@@ -51,6 +51,7 @@
 #![forbid(unsafe_code)]
 
 mod build;
+mod compare;
 mod cursor;
 mod decompress;
 mod encode;
@@ -64,6 +65,11 @@ mod reader;
 mod tests;
 
 pub use build::WriteReport;
+pub use compare::{
+    AmbiguousName, ArrayDimMismatch, CaseOnlyDifference, CaseOnlyKind, EnumDifference,
+    EnumNumberMismatch, MissingEnumValue, OracleCounts, OracleReport, ParentDifference, Side,
+    StructDifference, TypeKind, TypeMismatch, compare,
+};
 pub use error::UsmapError;
 pub use mapping::short_name;
 pub use model::{
