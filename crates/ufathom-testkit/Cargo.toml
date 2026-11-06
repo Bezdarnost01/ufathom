@@ -8,9 +8,22 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
+[[bin]]
+name = "fake-host"
+path = "src/bin/fake-host.rs"
+
 [dependencies]
+serde_json.workspace = true
 ufathom-mem.workspace = true
 ufathom-model.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+# VirtualAlloc for the fake host's heap and GetModuleHandleW for its own module base.
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+] }
 
 [lints]
 workspace = true
