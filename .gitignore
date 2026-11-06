@@ -1,0 +1,22 @@
+/target/
+**/target/
+
+# Local paths and machine details
+ufathom.local.toml
+
+# Game-derived data must never be committed
+*.dmp
+*.mdmp
+*.usmap
+*.pak
+*.ucas
+*.utoc
+/reports/
+/dumps/
+/sdk-out/
+*.dump.json
+
+# Tool artifacts
+.vscode/
+.idea/
+*.log
