@@ -27,6 +27,7 @@ mod live;
     )
 )]
 mod maps;
+mod minidump;
 mod pod;
 mod protect;
 mod reader;
@@ -37,6 +38,7 @@ mod types;
 pub use cache::{CacheStats, DEFAULT_MAX_PAGES, PAGE_SIZE, PageCache};
 pub use error::MemError;
 pub use live::{ProcessMemory, SelfMemory, list_processes};
+pub use minidump::MinidumpMemory;
 pub use pod::Pod;
 pub use reader::{
     Addr, MAX_CSTR_LEN, MAX_READ_VEC_BYTES, MAX_READ_VEC_COUNT, MemoryReader, MemoryReaderExt,
