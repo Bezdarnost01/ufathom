@@ -1,0 +1,16 @@
+[package]
+name = "ufathom-testkit"
+description = "Synthetic Unreal Engine images, corruption injection and a fake host process, for tests only."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ufathom-mem.workspace = true
+ufathom-model.workspace = true
+
+[lints]
+workspace = true

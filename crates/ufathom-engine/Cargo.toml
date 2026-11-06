@@ -1,0 +1,15 @@
+[package]
+name = "ufathom-engine"
+description = "Typed views over target memory: names, objects and properties, per engine generation."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ufathom-mem.workspace = true
+ufathom-model.workspace = true
+
+[lints]
+workspace = true

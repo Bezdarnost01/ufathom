@@ -1,0 +1,25 @@
+[package]
+name = "ufathom-cli"
+description = "The ufathom command line tool."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "ufathom"
+path = "src/main.rs"
+
+[dependencies]
+ufathom-mem.workspace = true
+ufathom-model.workspace = true
+ufathom-engine.workspace = true
+ufathom-scan.workspace = true
+ufathom-reflect.workspace = true
+ufathom-usmap.workspace = true
+ufathom-codegen.workspace = true
+ufathom-agent.workspace = true
+
+[lints]
+workspace = true

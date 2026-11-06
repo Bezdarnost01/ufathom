@@ -1,0 +1,16 @@
+[package]
+name = "ufathom-runtime"
+description = "Library used by generated SDKs: containers, sessions, object access and function calls."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ufathom-mem.workspace = true
+ufathom-model.workspace = true
+ufathom-engine.workspace = true
+
+[lints]
+workspace = true

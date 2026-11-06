@@ -1,0 +1,19 @@
+[package]
+name = "ufathom-agent"
+description = "Dump session logic behind the DLL: config, commands, output folders and identity."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+ufathom-mem.workspace = true
+ufathom-model.workspace = true
+ufathom-scan.workspace = true
+ufathom-reflect.workspace = true
+ufathom-usmap.workspace = true
+ufathom-codegen.workspace = true
+
+[lints]
+workspace = true

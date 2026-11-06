@@ -1,0 +1,3 @@
+# The DLL must not depend on the C runtime installed with the game.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
