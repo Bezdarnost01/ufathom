@@ -724,6 +724,10 @@ fn collect_notes(
     }
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the shared tables of one pass; a context struct would only rename them"
+)]
 fn plan_struct(
     def: &StructDef,
     module: String,

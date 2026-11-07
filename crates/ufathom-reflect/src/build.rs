@@ -228,82 +228,6 @@ fn values_width(values: &[ufathom_model::EnumValue]) -> u32 {
     }
 }
 
-#[cfg(test)]
-mod width_tests {
-    use super::*;
-    use ufathom_model::{EnumDef, EnumValue};
-
-    fn values(list: &[(&str, i64)]) -> Vec<EnumValue> {
-        list.iter()
-            .map(|&(name, value)| EnumValue {
-                name: name.to_owned(),
-                value,
-            })
-            .collect()
-    }
-
-    #[test]
-    fn width_holds_every_value() {
-        assert_eq!(values_width(&values(&[("A", 0), ("B", 255)])), 1);
-        assert_eq!(values_width(&values(&[("A", 0), ("B", 256)])), 2);
-        assert_eq!(values_width(&values(&[("A", 0), ("B", 65_536)])), 4);
-        assert_eq!(values_width(&values(&[("A", 1_934_772_034)])), 4);
-        assert_eq!(values_width(&values(&[("A", 0), ("B", 1 << 40)])), 8);
-        assert_eq!(values_width(&[]), 1);
-    }
-
-    #[test]
-    fn negative_values_make_it_signed() {
-        assert_eq!(values_width(&values(&[("A", -1), ("B", 127)])), 1);
-        assert_eq!(values_width(&values(&[("A", -1), ("B", 128)])), 2);
-        assert_eq!(values_width(&values(&[("A", -129), ("B", 1)])), 2);
-        assert_eq!(values_width(&values(&[("A", -1), ("B", 40_000)])), 4);
-    }
-
-    #[test]
-    fn a_trailing_max_one_past_the_range_does_not_widen() {
-        assert_eq!(
-            values_width(&values(&[("A", 0), ("B", 255), ("E_MAX", 256)])),
-            1
-        );
-        assert_eq!(
-            values_width(&values(&[("A", 0), ("B", 65_535), ("E_MAX", 65_536)])),
-            2
-        );
-        // A `_MAX` that is a real, larger value still counts.
-        assert_eq!(
-            values_width(&values(&[("A", 0), ("B", 3), ("E_MAX", 300)])),
-            2
-        );
-        // Only a trailing `_MAX` is special.
-        assert_eq!(values_width(&values(&[("A", 0), ("Big", 256)])), 2);
-    }
-
-    #[test]
-    fn unreferenced_enum_takes_its_width_from_its_values() {
-        let mut enums = vec![
-            EnumDef {
-                path: "/P.Wide".to_owned(),
-                name: "Wide".to_owned(),
-                package: "/P".to_owned(),
-                underlying_size: 1,
-                values: values(&[("A", 1_934_772_034)]),
-            },
-            EnumDef {
-                path: "/P.Used".to_owned(),
-                name: "Used".to_owned(),
-                package: "/P".to_owned(),
-                underlying_size: 1,
-                values: values(&[("A", 1)]),
-            },
-        ];
-        finish_enum_sizes(&mut enums, &[("/P.Used".to_owned(), 4)]);
-        assert_eq!(enums[0].underlying_size, 4);
-        // The property's width wins when it is wider than the values need.
-        assert_eq!(enums[1].underlying_size, 4);
-    }
-}
-
 /// The module and build string a dump says it was taken from.
 fn target_info(discovery: &Discovery) -> TargetInfo {
     let module = if discovery.globals.module.is_empty() {
@@ -383,5 +307,81 @@ fn note_name_problems(names: &NameTable, tally: &mut Tally) {
                 stats.unresolved_numbered, stats.unreadable_entries
             ),
         ));
+    }
+}
+
+#[cfg(test)]
+mod width_tests {
+    use super::*;
+    use ufathom_model::{EnumDef, EnumValue};
+
+    fn values(list: &[(&str, i64)]) -> Vec<EnumValue> {
+        list.iter()
+            .map(|&(name, value)| EnumValue {
+                name: name.to_owned(),
+                value,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn width_holds_every_value() {
+        assert_eq!(values_width(&values(&[("A", 0), ("B", 255)])), 1);
+        assert_eq!(values_width(&values(&[("A", 0), ("B", 256)])), 2);
+        assert_eq!(values_width(&values(&[("A", 0), ("B", 65_536)])), 4);
+        assert_eq!(values_width(&values(&[("A", 1_934_772_034)])), 4);
+        assert_eq!(values_width(&values(&[("A", 0), ("B", 1 << 40)])), 8);
+        assert_eq!(values_width(&[]), 1);
+    }
+
+    #[test]
+    fn negative_values_make_it_signed() {
+        assert_eq!(values_width(&values(&[("A", -1), ("B", 127)])), 1);
+        assert_eq!(values_width(&values(&[("A", -1), ("B", 128)])), 2);
+        assert_eq!(values_width(&values(&[("A", -129), ("B", 1)])), 2);
+        assert_eq!(values_width(&values(&[("A", -1), ("B", 40_000)])), 4);
+    }
+
+    #[test]
+    fn a_trailing_max_one_past_the_range_does_not_widen() {
+        assert_eq!(
+            values_width(&values(&[("A", 0), ("B", 255), ("E_MAX", 256)])),
+            1
+        );
+        assert_eq!(
+            values_width(&values(&[("A", 0), ("B", 65_535), ("E_MAX", 65_536)])),
+            2
+        );
+        // A `_MAX` that is a real, larger value still counts.
+        assert_eq!(
+            values_width(&values(&[("A", 0), ("B", 3), ("E_MAX", 300)])),
+            2
+        );
+        // Only a trailing `_MAX` is special.
+        assert_eq!(values_width(&values(&[("A", 0), ("Big", 256)])), 2);
+    }
+
+    #[test]
+    fn unreferenced_enum_takes_its_width_from_its_values() {
+        let mut enums = vec![
+            EnumDef {
+                path: "/P.Wide".to_owned(),
+                name: "Wide".to_owned(),
+                package: "/P".to_owned(),
+                underlying_size: 1,
+                values: values(&[("A", 1_934_772_034)]),
+            },
+            EnumDef {
+                path: "/P.Used".to_owned(),
+                name: "Used".to_owned(),
+                package: "/P".to_owned(),
+                underlying_size: 1,
+                values: values(&[("A", 1)]),
+            },
+        ];
+        finish_enum_sizes(&mut enums, &[("/P.Used".to_owned(), 4)]);
+        assert_eq!(enums[0].underlying_size, 4);
+        // The property's width wins when it is wider than the values need.
+        assert_eq!(enums[1].underlying_size, 4);
     }
 }
