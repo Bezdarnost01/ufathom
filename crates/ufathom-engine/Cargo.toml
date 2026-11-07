@@ -8,8 +8,14 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+rayon.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
 ufathom-mem.workspace = true
 ufathom-model.workspace = true
+
+[dev-dependencies]
+ufathom-testkit.workspace = true
 
 [lints]
 workspace = true

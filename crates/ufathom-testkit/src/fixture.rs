@@ -172,6 +172,7 @@ pub struct FixtureBuilder {
     seed: u64,
     filler_objects: usize,
     name_blocks: usize,
+    mangled_display_names: usize,
     corruptions: Vec<Corruption>,
     chain_order: ChainOrder,
     placement: Placement,
@@ -186,6 +187,7 @@ impl FixtureBuilder {
             seed: 0,
             filler_objects: 6000,
             name_blocks: 1,
+            mangled_display_names: 0,
             corruptions: Vec::new(),
             chain_order: ChainOrder::default(),
             placement: Placement::Snapshot,
@@ -211,6 +213,18 @@ impl FixtureBuilder {
     #[must_use]
     pub fn name_blocks(mut self, blocks: usize) -> Self {
         self.name_blocks = blocks;
+        self
+    }
+
+    /// Makes `count` objects carry a comparison name whose text differs from
+    /// the display name only in case (`struct` against `Struct`), as
+    /// case-preserving builds do. The truth keeps the display text.
+    ///
+    /// Has an effect only on profiles with a display index, and only on
+    /// objects whose name has an uppercase ASCII letter and no instance number.
+    #[must_use]
+    pub fn mangled_display_names(mut self, count: usize) -> Self {
+        self.mangled_display_names = count;
         self
     }
 
@@ -308,6 +322,7 @@ impl FixtureBuilder {
             Config {
                 filler_objects: self.filler_objects,
                 chain_order: self.chain_order,
+                mangled_display_names: self.mangled_display_names,
             },
         );
         code.noise(&mut mem, 60);

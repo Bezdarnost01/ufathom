@@ -79,6 +79,9 @@ pub struct Config {
     pub filler_objects: usize,
     /// Member chain order.
     pub chain_order: ChainOrder,
+    /// Number of objects whose comparison name is a case-mangled twin of
+    /// the display name.
+    pub mangled_display_names: usize,
 }
 
 /// One object that is in the global object array, as ground truth.
@@ -196,6 +199,8 @@ pub(crate) struct Writer<'a> {
     pub native_rvas: BTreeMap<String, u64>,
     pub fillers: Vec<u32>,
     pub special: Option<SpecialNames>,
+    /// Objects still to receive a mangled comparison name.
+    pub mangled_left: usize,
 }
 
 /// Path of the package part of a class path, for CDO naming.
@@ -226,6 +231,7 @@ pub fn write(
         .iter()
         .filter_map(|def| def.super_path.clone().map(|s| (def.path.clone(), s)))
         .collect();
+    let mangled_left = cfg.mangled_display_names;
     let mut writer = Writer {
         p: profile,
         mem,
@@ -248,6 +254,7 @@ pub fn write(
         native_rvas: BTreeMap::new(),
         fillers: Vec::new(),
         special: None,
+        mangled_left,
     };
     writer.plan_types();
     writer.plan_instances();

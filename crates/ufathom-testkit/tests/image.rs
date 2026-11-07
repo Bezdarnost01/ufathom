@@ -1053,3 +1053,57 @@ fn the_named_measured_profiles_equal_the_derivation() {
     );
     assert!(Profile::by_name("nonsense").is_none());
 }
+
+#[test]
+fn mangled_display_names_differ_from_the_comparison_name_only_in_case() {
+    for profile in [
+        Profile::ue4_22_case_preserving_measured(),
+        Profile::ue4_25_case_preserving_measured(),
+        Profile::ue5_case_preserving_assumed(),
+    ] {
+        let name = profile.name.clone();
+        let fx = FixtureBuilder::new(profile)
+            .seed(5)
+            .filler_objects(200)
+            .mangled_display_names(7)
+            .build();
+        let lr = Lr::new(&fx);
+        let display_offset = fx.layout.fname.display_index.unwrap();
+        let mut mangled = 0;
+        for record in &fx.objects {
+            let at = record.address + u64::from(fx.layout.uobject.name);
+            let comparison = lr
+                .u32(at + u64::from(fx.layout.fname.comparison_index))
+                .unwrap();
+            let display = lr.u32(at + u64::from(display_offset)).unwrap();
+            if comparison == display {
+                continue;
+            }
+            mangled += 1;
+            let comparison_text = lr.name_at(comparison).unwrap();
+            let display_text = lr.name_at(display).unwrap();
+            assert_ne!(comparison_text, display_text, "{name}");
+            assert_eq!(comparison_text, display_text.to_ascii_lowercase(), "{name}");
+            // The truth keeps the display text.
+            assert!(record.path.ends_with(&display_text), "{name}");
+        }
+        assert_eq!(mangled, 7, "{name}");
+        assert_eq!(
+            fx.truth,
+            FixtureBuilder::new(fx.profile.clone())
+                .seed(5)
+                .filler_objects(200)
+                .build()
+                .truth
+        );
+    }
+    // Without a display index there is nothing to mangle.
+    let fx = FixtureBuilder::new(Profile::ue4_21_measured())
+        .filler_objects(50)
+        .mangled_display_names(7)
+        .build();
+    let plain = FixtureBuilder::new(Profile::ue4_21_measured())
+        .filler_objects(50)
+        .build();
+    assert!(parts_equal(&fx, &plain));
+}

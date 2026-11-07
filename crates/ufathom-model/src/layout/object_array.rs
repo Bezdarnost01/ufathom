@@ -76,6 +76,12 @@ pub struct ObjectArrayLayout {
     pub item_serial: Option<u32>,
     /// Steps that turn a stored pointer into the real pointer, applied in
     /// order. Empty for builds that store plain pointers.
+    ///
+    /// They apply to exactly one pointer: the `Objects` field read at
+    /// [`objects`](Self::objects), for both kinds of array. For a chunked
+    /// array the decoded value is the address of the chunk table; for a fixed
+    /// array it is the item storage. Entries of the chunk table and the object
+    /// pointers inside items are used as stored.
     #[serde(default)]
     pub pointer_transform: Vec<TransformOp>,
 }
