@@ -7,6 +7,7 @@ mod ctx;
 mod error;
 mod inspect;
 pub mod limits;
+mod names;
 mod objects;
 mod options;
 pub mod pe;
