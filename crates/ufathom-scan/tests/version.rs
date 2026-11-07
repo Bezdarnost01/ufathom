@@ -55,7 +55,7 @@ fn product_version_forms_give_the_engine_version() {
         Some("4.13.2")
     );
     assert_eq!(
-        claimed(&[("ProductVersion", "++UE5+Release-5.4-CL-35576357")]).as_deref(),
+        claimed(&[("ProductVersion", "++UE5+Release-5.4-CL-1234567")]).as_deref(),
         Some("5.4")
     );
     assert_eq!(

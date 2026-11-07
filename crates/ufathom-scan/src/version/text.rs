@@ -59,8 +59,8 @@ impl fmt::Display for PartialVersion {
 /// Two forms are understood:
 ///
 /// - a leading dotted number whose major is 4 or 5: `4.21.1`, `4.13.2-0+UE4`,
-///   `5.4.4-35576357+++UE5+Release-5.4`. A fourth component is ignored.
-/// - a release branch anywhere in the text: `++UE5+Release-5.4-CL-35576357`.
+///   `5.4.4-1234567+++UE5+Release-5.4`. A fourth component is ignored.
+/// - a release branch anywhere in the text: `++UE5+Release-5.4-CL-1234567`.
 ///
 /// A leading number with another major, such as `1.0.0.0`, is not an engine
 /// version, and the search then continues with the branch form.
@@ -229,7 +229,7 @@ mod tests {
         assert_eq!(version("4.21.1").as_deref(), Some("4.21.1"));
         assert_eq!(version("4.13.2-0+UE4").as_deref(), Some("4.13.2"));
         assert_eq!(
-            version("++UE5+Release-5.4-CL-35576357").as_deref(),
+            version("++UE5+Release-5.4-CL-1234567").as_deref(),
             Some("5.4")
         );
         assert_eq!(
@@ -275,7 +275,7 @@ mod tests {
         );
         assert_eq!(b.engine_release, None);
 
-        let b = parse_build_string("++UE5+Release-5.4-CL-35576357", StringEncoding::Ascii).unwrap();
+        let b = parse_build_string("++UE5+Release-5.4-CL-1234567", StringEncoding::Ascii).unwrap();
         assert_eq!(
             b.engine_release.map(|v| v.to_string()).as_deref(),
             Some("5.4")
