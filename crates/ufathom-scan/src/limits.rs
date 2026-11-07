@@ -64,3 +64,163 @@ pub const MAX_SCAN_BYTES_PER_SECTION: u64 = 1 << 29;
 
 /// Most bytes scanned in one image.
 pub const MAX_SCAN_BYTES_TOTAL: u64 = 1 << 30;
+
+// ----- layout solver -----
+//
+// Bounds of the solving steps. Every loop over target data and every buffer
+// sized from target data is bounded by one of these.
+
+/// Most bytes of writable module data copied into local buffers.
+pub const MAX_LOCAL_DATA_BYTES: u64 = 256 << 20;
+
+/// Bytes read per request when copying module data.
+pub const LOCAL_READ_CHUNK: usize = 1 << 20;
+
+/// Most pointer slots examined per search that walks module data.
+pub const MAX_CANDIDATE_SLOTS: usize = 4_000_000;
+
+/// Window around an object array `Objects` pointer searched for counts, in
+/// bytes on each side.
+pub const OBJECT_ARRAY_WINDOW: i64 = 0x30;
+
+/// Fewest objects an object array must hold to be accepted.
+pub const MIN_OBJECTS: u32 = 64;
+
+/// Largest object array accepted, in objects.
+pub const MAX_OBJECT_COUNT: u32 = 1 << 26;
+
+/// Smallest number of items per chunk accepted.
+pub const MIN_ITEMS_PER_CHUNK: u32 = 0x100;
+
+/// Largest number of items per chunk accepted.
+pub const MAX_ITEMS_PER_CHUNK: u32 = 1 << 20;
+
+/// Largest chunk capacity accepted.
+pub const MAX_ARRAY_CHUNKS: u32 = 1 << 14;
+
+/// Most shape tuples kept per `Objects` pointer slot.
+pub const MAX_TUPLES_PER_SLOT: usize = 64;
+
+/// Item sizes tried, in bytes. `FUObjectItem` is 0x10 to 0x30 in every era.
+pub const ITEM_SIZE_RANGE: (u32, u32) = (0x10, 0x40);
+
+/// Unreadable sampled items after which an item size is abandoned.
+pub const ITEM_FAILURES_TO_GIVE_UP: usize = 8;
+
+/// Matches among the first slots that let an item layout go on to the full
+/// sample.
+pub const QUICK_FIT_MATCHES: usize = 4;
+
+/// Items sampled when confirming an object array.
+pub const ARRAY_SAMPLE_COUNT: usize = 256;
+
+/// Items sampled from each end of the array.
+pub const ARRAY_SAMPLE_EDGE: usize = 24;
+
+/// Fewest occupied sampled items for a confirmation.
+pub const MIN_CONFIRMING_ITEMS: usize = 16;
+
+/// Share of occupied sampled items that must store their own index.
+pub const MIN_INDEX_AGREEMENT: f64 = 0.9;
+
+/// Bytes of an object read when looking for the index field.
+pub const OBJECT_PROBE_BYTES: usize = 0x80;
+
+/// Largest offset searched for `UObject` fields.
+pub const MAX_UOBJECT_OFFSET: u32 = 0x60;
+
+/// How far back from the end of the array to look for the last live object.
+pub const LAST_LIVE_PROBE: usize = 1 << 17;
+
+/// Bytes of the first name pool block examined when recognising a pool.
+pub const POOL_PROBE_BYTES: usize = 0x80;
+
+/// Largest string offset in a name entry.
+pub const MAX_ENTRY_STRING_OFFSET: u32 = 0x20;
+
+/// Window before the first block pointer searched for the block counters.
+pub const POOL_COUNTER_WINDOW: i64 = 0x40;
+
+/// Block offset bit counts tried, in order of preference among equals.
+pub const BLOCK_BITS_ORDER: [u32; 17] = [
+    16, 15, 17, 14, 18, 13, 19, 12, 20, 11, 21, 10, 22, 9, 8, 23, 24,
+];
+
+/// Names compared per block when testing the comparison id evidence.
+pub const COMPARISON_ID_SAMPLES: usize = 512;
+
+/// Most chunks of a `TNameEntryArray` followed.
+pub const MAX_NAME_ARRAY_CHUNKS: u32 = 8192;
+
+/// Entries read from the first chunk when recognising a name array.
+pub const NAME_ARRAY_PROBE_ENTRIES: usize = 8;
+
+/// Window after the chunk pointers searched for the name array counters.
+pub const NAME_ARRAY_COUNTER_WINDOW: u64 = 0x2000;
+
+/// Bytes of memory scanned for `ByteProperty` by the name table fallback.
+pub const MAX_FALLBACK_SCAN_BYTES: u64 = 512 << 20;
+
+/// Objects sampled when solving `UObject` fields.
+pub const OBJECT_SAMPLE_COUNT: usize = 1024;
+
+/// Share of samples a name field must decode for.
+pub const MIN_NAME_AGREEMENT: f64 = 0.99;
+
+/// Most objects read by the universe scan.
+pub const MAX_UNIVERSE_OBJECTS: usize = 500_000;
+
+/// Largest object class chain followed when searching for a fixed point.
+pub const MAX_CLASS_HOPS: usize = 8;
+
+/// Deepest outer chain followed.
+pub const MAX_OUTER_DEPTH: usize = 32;
+
+/// Largest offset searched inside reflection classes.
+pub const MAX_REFLECTION_OFFSET: u32 = 0x180;
+
+/// Most members read from one member chain.
+pub const MAX_CHAIN_STEPS: usize = 512;
+
+/// Most properties sampled for the property core.
+pub const MAX_PROPERTY_SAMPLES: usize = 4000;
+
+/// Most instances of one property kind sampled for its typed payload.
+pub const MAX_PAYLOAD_SAMPLES: usize = 400;
+
+/// Largest offset searched inside a property.
+pub const MAX_PROPERTY_OFFSET: u32 = 0xC0;
+
+/// Largest `FField` or `FFieldClass` offset searched.
+pub const MAX_FFIELD_OFFSET: u32 = 0x80;
+
+/// Largest enum entry count accepted while solving enums.
+pub const MAX_ENUM_PROBE: u32 = 4096;
+
+/// Largest stride of an enum pair.
+pub const MAX_ENUM_STRIDE: u32 = 0x30;
+
+/// Vtable slots read when looking for `ProcessEvent`.
+pub const MAX_VTABLE_SLOTS: usize = 0x140;
+
+/// Bytes of a function scanned for the `ProcessEvent` tests.
+pub const PROCESS_EVENT_WINDOW: usize = 0x1800;
+
+/// Objects whose vtables are read to learn function boundaries.
+pub const VTABLE_SAMPLE_OBJECTS: usize = 96;
+
+/// Most objects examined by the validation pass.
+pub const MAX_VALIDATION_STRUCTS: usize = 6000;
+
+/// Share of validated items that may violate an invariant before discovery
+/// fails.
+pub const MAX_VIOLATION_SHARE: f64 = 0.02;
+
+/// Fewest violations that fail discovery. A wrong layout breaks hundreds of
+/// items; a handful of damaged objects is damage to the target and is
+/// reported as a warning.
+pub const MIN_VIOLATIONS_TO_FAIL: usize = 8;
+
+/// Failures tolerated when most of a sample must agree, for samples large
+/// enough that a few damaged objects do not mean a wrong offset.
+pub const TOLERATED_FAILURES: usize = 8;

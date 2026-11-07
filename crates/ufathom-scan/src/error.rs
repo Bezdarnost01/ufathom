@@ -5,10 +5,10 @@ use std::io;
 use thiserror::Error;
 use ufathom_mem::MemError;
 
-/// Why a scan step failed.
+/// Why discovery could not produce a layout.
 ///
-/// Every variant says what was being parsed and why it was rejected. The
-/// enum is `#[non_exhaustive]`: later steps add their own causes.
+/// Every variant names what was being solved. Discovery never guesses: a
+/// field with no evidence is an error, not a default.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ScanError {
@@ -74,6 +74,110 @@ pub enum ScanError {
         /// Actual length of the file.
         file_len: u64,
     },
+
+    /// The module list or region list of the target could not be read.
+    #[error("cannot read the {what} of the target: {source}")]
+    Target {
+        /// What was being listed.
+        what: &'static str,
+        /// The reader's error.
+        #[source]
+        source: MemError,
+    },
+
+    /// No module matches the request.
+    #[error("module not found: {}", requested.as_deref().unwrap_or("no .exe module is loaded"))]
+    ModuleNotFound {
+        /// The module that was asked for, or `None` for the default.
+        requested: Option<String>,
+    },
+
+    /// The module has no readable and writable memory to search.
+    #[error("module {module} has no writable data to search")]
+    NoWritableData {
+        /// The module searched.
+        module: String,
+    },
+
+    /// No object array was confirmed.
+    #[error(
+        "object array not found: {shape_candidates} shape candidates over {slots} pointer slots, \
+         {confirmed} confirmed by item inspection{hint}"
+    )]
+    ObjectArrayNotFound {
+        /// Pointer slots that passed the pointer test.
+        slots: usize,
+        /// Slots whose neighbouring counts fit an object array shape.
+        shape_candidates: usize,
+        /// Candidates whose items stored their own index.
+        confirmed: usize,
+        /// Advice appended to the message.
+        hint: &'static str,
+    },
+
+    /// No name table was confirmed.
+    #[error("name table not found: {reason}")]
+    NameTableNotFound {
+        /// What was tried and why it failed.
+        reason: String,
+    },
+
+    /// A field has no evidence.
+    #[error("no evidence for {field}: {detail}")]
+    MissingEvidence {
+        /// The field being solved.
+        field: &'static str,
+        /// What was missing.
+        detail: String,
+    },
+
+    /// Several values fit the evidence equally well.
+    #[error("{field} is ambiguous: {candidates}")]
+    Ambiguous {
+        /// The field being solved.
+        field: &'static str,
+        /// The candidates, formatted.
+        candidates: String,
+    },
+
+    /// A value given by the caller contradicts the evidence.
+    #[error("override for {field} is {given:#x} but the target shows {found:#x}")]
+    OverrideContradiction {
+        /// The overridden field.
+        field: &'static str,
+        /// The value given.
+        given: u64,
+        /// The value the evidence supports.
+        found: u64,
+    },
+
+    /// A value given by the caller breaks an invariant of the engine.
+    #[error("override for {field} is {given:#x}, which breaks an invariant: {reason}")]
+    InvalidOverride {
+        /// The overridden field.
+        field: &'static str,
+        /// The value given.
+        given: u64,
+        /// What it breaks.
+        reason: String,
+    },
+
+    /// The solved layout breaks a global invariant of the engine.
+    #[error("invariant violated: {invariant}: {violations} of {checked} checked ({example})")]
+    ValidationFailed {
+        /// The invariant.
+        invariant: &'static str,
+        /// Items examined.
+        checked: usize,
+        /// Items that broke it.
+        violations: usize,
+        /// One example.
+        example: String,
+    },
+
+    /// A typed view rejected the layout that was just solved.
+    #[error("the solved layout cannot be used: {0}")]
+    Engine(#[from] ufathom_engine::EngineError),
 }
 
 impl ScanError {
@@ -82,6 +186,13 @@ impl ScanError {
         Self::Malformed {
             what,
             reason: reason.into(),
+        }
+    }
+
+    pub(crate) fn missing(field: &'static str, detail: impl Into<String>) -> Self {
+        Self::MissingEvidence {
+            field,
+            detail: detail.into(),
         }
     }
 }

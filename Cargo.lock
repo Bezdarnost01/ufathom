@@ -483,6 +483,8 @@ name = "ufathom-scan"
 version = "0.1.0"
 dependencies = [
  "memchr",
+ "rayon",
+ "serde_json",
  "thiserror",
  "toml",
  "tracing",
