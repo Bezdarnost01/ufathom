@@ -473,9 +473,8 @@ dependencies = [
 name = "ufathom-runtime"
 version = "0.1.0"
 dependencies = [
- "ufathom-engine",
+ "thiserror",
  "ufathom-mem",
- "ufathom-model",
 ]
 
 [[package]]
