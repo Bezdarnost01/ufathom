@@ -146,7 +146,34 @@ impl Writer<'_> {
             .put_u32(a + u64::from(layout.index), obj.stored_index);
         self.mem.put_u64(a + u64::from(layout.class), class);
         self.mem.put_u64(a + u64::from(layout.outer), outer);
-        self.write_fname(a + u64::from(layout.name), &obj.base_name, obj.number);
+        let name_at = a + u64::from(layout.name);
+        if !self.write_mangled_fname(name_at, &obj.base_name, obj.number) {
+            self.write_fname(name_at, &obj.base_name, obj.number);
+        }
+    }
+
+    /// Writes an `FName` whose comparison entry is the lowercase twin of the
+    /// display entry, while budget remains. Returns `false`, writing nothing,
+    /// when the name does not qualify.
+    fn write_mangled_fname(&mut self, addr: u64, base: &str, number: u32) -> bool {
+        let fname = self.p.layout.fname.clone();
+        let Some(display_offset) = fname.display_index else {
+            return false;
+        };
+        let twin = base.to_ascii_lowercase();
+        if self.mangled_left == 0 || number != 0 || twin == base || !base.is_ascii() {
+            return false;
+        }
+        self.mangled_left -= 1;
+        let display = self.names.intern(base);
+        let comparison = self.names.intern(&twin);
+        self.mem
+            .put_u32(addr + u64::from(fname.comparison_index), comparison);
+        self.mem.put_u32(addr + u64::from(display_offset), display);
+        if let Some(number_offset) = fname.number {
+            self.mem.put_u32(addr + u64::from(number_offset), 0);
+        }
+        true
     }
 
     /// Orders and links every member chain, recording the head of each list.
