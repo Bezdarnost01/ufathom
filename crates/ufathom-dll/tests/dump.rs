@@ -119,16 +119,9 @@ fn stop_unloads_the_dll_and_leaves_no_thread_behind() {
     control.send("halt", "stop", "");
     assert_eq!(control.wait_result("halt", COMMAND_TIMEOUT)["status"], "ok");
     control.wait_state("stopped", UNLOAD_TIMEOUT);
-    let after = host.wait_unloaded(&sandbox.dll, UNLOAD_TIMEOUT);
-    assert!(!after.is_loaded(&sandbox.dll), "{after:?}");
-    assert!(
-        after.dll_threads(&sandbox.dll).is_empty(),
-        "a thread of the DLL is left: {after:?}"
-    );
-    assert!(after.ticks > before.ticks, "the host must keep running");
-    assert!(host.is_running());
 
-    // The DLL's own log says how it ended.
+    // `stopped` is published after the log is closed, so the log is already
+    // complete the moment a client sees it.
     let logs = sandbox.output.join("logs");
     let log = fs::read_dir(extended_path(&logs))
         .unwrap()
@@ -137,8 +130,17 @@ fn stop_unloads_the_dll_and_leaves_no_thread_behind() {
         .expect("a session log exists");
     let text = fs::read_to_string(log.path()).unwrap();
     assert!(text.contains("loaded in process"), "{text}");
-    assert!(text.contains("stopped"), "{text}");
+    assert!(text.contains("pool threads joined; stopped"), "{text}");
     assert!(!text.contains("PANIC"), "{text}");
+
+    let after = host.wait_unloaded(&sandbox.dll, UNLOAD_TIMEOUT);
+    assert!(!after.is_loaded(&sandbox.dll), "{after:?}");
+    assert!(
+        after.dll_threads(&sandbox.dll).is_empty(),
+        "a thread of the DLL is left: {after:?}"
+    );
+    assert!(after.ticks > before.ticks, "the host must keep running");
+    assert!(host.is_running());
     assert!(host.close_and_wait(), "the host did not exit cleanly");
 }
 

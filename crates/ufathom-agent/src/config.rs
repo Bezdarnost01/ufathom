@@ -4,6 +4,23 @@
 //! first one found is the one in effect. A missing file means defaults. A file
 //! that cannot be read, parsed or validated is a logged problem and also means
 //! defaults: the DLL never fails to start because of its config.
+//!
+//! # Keys
+//!
+//! Every key is optional. An unknown key is an error, so a typo is not silent.
+//!
+//! | Key | Default | Meaning |
+//! |---|---|---|
+//! | `output` | `ufathom` beside the game executable | Where dumps and the control folder go. A relative path is relative to the config file. |
+//! | `formats` | `["json", "usmap"]` | What a dump writes. |
+//! | `auto_dump` | `false` | Dump once by itself, `trigger_delay_seconds` after the DLL started. |
+//! | `trigger_delay_seconds` | `30` | The delay of `auto_dump`, 0 to 86400. |
+//! | `hotkey_dump` | `"F8"` | Starts a dump while a window of the process is in the foreground. `"none"` switches it off. |
+//! | `hotkey_unload` | `"F6"` | Unloads the DLL, under the same condition. |
+//! | `auto_unload` | `false` | Unload after the automatic dump has ended, whatever its result. |
+//! | `threads` | `2` | Threads of the dump pool, 1 to 4. |
+//! | `module` | the first `.exe` module | File name of the module that holds the engine globals. |
+//! | `pointer_transform` | none | Steps that decode the object array pointer, such as `[{ Xor = 255 }, "Not"]`. |
 
 use std::path::{Path, PathBuf};
 

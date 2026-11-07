@@ -33,6 +33,9 @@ pub(crate) enum Exit {
 /// [`Exit::Stay`].
 pub(crate) fn run() -> Exit {
     os::lower_current_thread_priority();
+    // Before anything that could panic: a panic must reach the log, never the
+    // host's stderr.
+    let hook = PanicHook::install();
     let pid = os::process_id();
     let mutex = match NamedMutex::acquire(&format!("Local\\ufathom-{pid}")) {
         Ok(mutex) => mutex,
@@ -47,9 +50,10 @@ pub(crate) fn run() -> Exit {
             return Exit::Unload;
         }
     };
-    let exit = catch_unwind(|| serve(pid)).unwrap_or(Exit::Stay);
+    let exit = catch_unwind(AssertUnwindSafe(|| serve(pid, &hook))).unwrap_or(Exit::Stay);
     // Released after the service and the log are closed, just before the
-    // module is.
+    // module is. The panic hook goes first: its code is in this module.
+    drop(hook);
     drop(mutex);
     exit
 }
@@ -74,7 +78,7 @@ fn refuse(pid: u32) {
 }
 
 /// Loads the config, opens the log and serves until told to stop.
-fn serve(pid: u32) -> Exit {
+fn serve(pid: u32, hook: &PanicHook) -> Exit {
     let Some(game_exe) = os::module_path(false) else {
         os::debug_log("cannot find the path of the game executable; not starting");
         return Exit::Unload;
@@ -89,7 +93,7 @@ fn serve(pid: u32) -> Exit {
         session_name(SystemTime::now(), pid)
     ));
     let sink = LogSink::open(&log_file);
-    let _hook = PanicHook::install(sink.clone());
+    hook.set_sink(sink.clone());
 
     let exit = match sink.as_ref().map(LogSink::dispatch) {
         Some(dispatch) => tracing::dispatcher::with_default(&dispatch, || {
@@ -100,6 +104,7 @@ fn serve(pid: u32) -> Exit {
                 game_exe,
                 dll_path,
                 pid,
+                sink.as_ref(),
             )
         }),
         None => drive(
@@ -109,8 +114,10 @@ fn serve(pid: u32) -> Exit {
             game_exe,
             dll_path,
             pid,
+            None,
         ),
     };
+    hook.set_sink(None);
     if let Some(sink) = &sink {
         sink.close();
     }
@@ -125,6 +132,7 @@ fn drive(
     game_exe: PathBuf,
     dll_path: PathBuf,
     pid: u32,
+    sink: Option<&LogSink>,
 ) -> Exit {
     tracing::info!(
         "ufathom {} loaded in process {pid}; executable {}",
@@ -150,6 +158,8 @@ fn drive(
         Ok(service) => service,
         Err(error) => {
             tracing::error!("cannot start: {error}");
+            // The log may be the very thing that could not be created.
+            os::debug_log(&format!("cannot start: {error}"));
             return Exit::Unload;
         }
     };
@@ -158,12 +168,16 @@ fn drive(
     if !ended_normally {
         tracing::error!("the worker loop panicked; shutting down");
     }
-    let report = service.shutdown();
+    // The log is closed after the threads are joined and before `stopped` is
+    // published, so a client that sees `stopped` finds the log complete.
+    let report = service.shutdown_with(|| {
+        if let Some(sink) = sink {
+            sink.close();
+        }
+    });
     if report.is_clean() {
-        tracing::info!("every thread has ended; unloading");
         Exit::Unload
     } else {
-        tracing::error!("threads are still running ({report:?}); the DLL stays loaded");
         Exit::Stay
     }
 }

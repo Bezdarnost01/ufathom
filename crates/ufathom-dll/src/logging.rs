@@ -100,23 +100,39 @@ impl<'a> MakeWriter<'a> for LogSink {
     }
 }
 
-/// Replaces the panic hook with one that writes to `sink`, and puts the
+/// Replaces the panic hook with one that writes to the log, and puts the
 /// default hook back when dropped.
+///
+/// The hook is installed first thing, silent: until [`set_sink`](Self::set_sink)
+/// gives it a log there is nowhere to write, and it stays silent rather than
+/// falling back to stderr, which belongs to the host.
 ///
 /// The hook's code lives in this DLL, so it must not outlive it: the worker
 /// drops this guard before it unloads.
-pub(crate) struct PanicHook;
+pub(crate) struct PanicHook {
+    sink: Arc<Mutex<Option<LogSink>>>,
+}
 
 impl PanicHook {
-    /// Installs the hook. With no log there is nowhere to write, and the hook
-    /// stays silent rather than falling back to stderr.
-    pub(crate) fn install(sink: Option<LogSink>) -> Self {
+    /// Installs the hook, with no log yet.
+    pub(crate) fn install() -> Self {
+        let sink: Arc<Mutex<Option<LogSink>>> = Arc::new(Mutex::new(None));
+        let hook_sink = Arc::clone(&sink);
         std::panic::set_hook(Box::new(move |info| {
-            if let Some(sink) = &sink {
+            // Without waiting: the panic may have happened while this lock was held.
+            let Ok(guard) = hook_sink.try_lock() else {
+                return;
+            };
+            if let Some(sink) = guard.as_ref() {
                 sink.write_line_without_waiting(&describe(info));
             }
         }));
-        Self
+        Self { sink }
+    }
+
+    /// Sets the log the hook writes to, or `None` to stop writing.
+    pub(crate) fn set_sink(&self, sink: Option<LogSink>) {
+        *self.sink.lock().unwrap_or_else(PoisonError::into_inner) = sink;
     }
 }
 
@@ -168,6 +184,24 @@ mod tests {
     }
 
     #[test]
+    fn a_panic_reaches_the_log_and_the_default_hook_is_restored() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("panic.log");
+        let sink = LogSink::open(&path).unwrap();
+        let hook = PanicHook::install();
+        hook.set_sink(Some(sink.clone()));
+        let caught = std::panic::catch_unwind(|| panic!("simulated failure"));
+        assert!(caught.is_err());
+        hook.set_sink(None);
+        drop(hook);
+        sink.close();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("PANIC"), "{text}");
+        assert!(text.contains("simulated failure"), "{text}");
+        assert!(text.contains("logging.rs"), "the place is named: {text}");
+    }
+
+    #[test]
     fn a_log_that_cannot_be_opened_is_none() {
         let dir = tempfile::tempdir().unwrap();
         // A folder where the file should be.
@@ -175,7 +209,7 @@ mod tests {
     }
 
     #[test]
-    fn the_panic_line_names_the_thread_and_place_without_waiting_for_a_lock() {
+    fn a_held_lock_does_not_block_a_panic_line_and_later_lines_are_kept() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("p.log");
         let sink = LogSink::open(&path).unwrap();

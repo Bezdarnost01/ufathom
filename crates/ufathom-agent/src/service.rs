@@ -217,7 +217,15 @@ impl Service {
     /// The returned report says whether every thread ended. When it does not,
     /// the shell must leave the DLL loaded: unmapping code that a thread still
     /// runs would crash the host.
-    pub fn shutdown(mut self) -> ShutdownReport {
+    pub fn shutdown(self) -> ShutdownReport {
+        self.shutdown_with(|| {})
+    }
+
+    /// Like [`shutdown`](Self::shutdown), and runs `close_files` after every
+    /// thread has been joined and before `stopped` is published. The shell uses
+    /// it to flush and close its log, so that a client that sees `stopped` finds
+    /// the log complete.
+    pub fn shutdown_with(mut self, close_files: impl FnOnce()) -> ShutdownReport {
         self.request_stop("shutdown");
         let deadline = Instant::now() + SHUTDOWN_TIMEOUT;
         if let Some(running) = &self.running {
@@ -242,15 +250,20 @@ impl Service {
             },
         };
         self.state = State::Stopped;
-        if !report.is_clean() {
+        if report.is_clean() {
+            tracing::info!(
+                "{} pool threads joined; stopped",
+                report.pool_threads_joined
+            );
+        } else {
             self.detail = Some(format!(
                 "{} pool threads and {} dump threads did not end: the DLL stays loaded",
                 report.pool_threads_left, report.dump_threads_left
             ));
             tracing::error!("{}", self.detail.as_deref().unwrap_or_default());
         }
+        close_files();
         self.publish_status();
-        tracing::info!("stopped");
         report
     }
 

@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use ufathom_agent::protocol::State;
-use ufathom_agent::{Config, ConfigSource, Environment, Format, Service, fsio};
+use ufathom_agent::{Config, ConfigSource, DumpError, Environment, Format, Service, Session, fsio};
 use ufathom_mem::{MemError, MemoryReader, MemoryRegion, ModuleInfo, Snapshot};
 use ufathom_model::Dump;
 use ufathom_testkit::{Fixture, FixtureBuilder, Profile};
@@ -506,6 +506,36 @@ fn shutdown_cancels_a_dump_that_is_still_running() -> TestResult {
     assert!(report.is_clean(), "{report:?}");
     let run = read_json(&rig.output.join("control/outbox/run.json"));
     assert_eq!(run["status"], "cancelled", "{run}");
+    Ok(())
+}
+
+#[test]
+fn shutdown_reports_a_dump_thread_that_does_not_end_so_the_dll_can_stay_loaded() -> TestResult {
+    let rig = Rig::new();
+    let gate = GatedReader::new(rig.image(), false);
+    let session = Session::new(rig.config(), rig.environment(gate.clone()))?;
+    let running = session.spawn_dump(Some("stuck"), None)?;
+    gate.wait_for_a_read();
+
+    // The dump is stuck inside a read, so the session cannot be stopped.
+    let started = Instant::now();
+    let report = session.shutdown(Duration::from_millis(300));
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "shutdown must not hang"
+    );
+    assert!(!report.is_clean(), "{report:?}");
+    assert_eq!(report.dump_threads_left, 1, "{report:?}");
+
+    // Once it is released, the dump ends and nothing is damaged.
+    running.cancel();
+    gate.set_open(true);
+    let waited = Instant::now();
+    while !running.is_finished() {
+        assert!(waited.elapsed() < WAIT, "the dump never ended");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(matches!(running.join(), Err(DumpError::Cancelled)));
     Ok(())
 }
 
