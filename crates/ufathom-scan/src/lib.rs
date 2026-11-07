@@ -4,6 +4,7 @@
 
 mod bytes;
 mod ctx;
+mod discover;
 mod error;
 mod globals;
 mod inspect;
@@ -18,8 +19,10 @@ mod result;
 mod structs;
 mod universe;
 mod uobject;
+mod validate;
 pub mod version;
 
+pub use discover::discover;
 pub use error::ScanError;
 pub use inspect::{ExeFacts, PackingHints, inspect_exe};
 pub use options::{DiscoverOptions, LayoutOverrides};
