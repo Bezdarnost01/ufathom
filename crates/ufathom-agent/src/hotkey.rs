@@ -61,12 +61,12 @@ impl Hotkey {
             return Ok(Some(Self { virtual_key: *code }));
         }
         let mut chars = trimmed.chars();
-        if let (Some(only), None) = (chars.next(), chars.next())
-            && only.is_ascii_alphanumeric()
-        {
-            // Virtual-key codes of letters and digits equal their upper-case ASCII value.
-            let code = u8::try_from(only.to_ascii_uppercase()).unwrap_or(0);
-            return Ok(Some(Self { virtual_key: code }));
+        if let (Some(only), None) = (chars.next(), chars.next()) {
+            if only.is_ascii_alphanumeric() {
+                // Virtual-key codes of letters and digits equal their upper-case ASCII value.
+                let code = u8::try_from(only.to_ascii_uppercase()).unwrap_or(0);
+                return Ok(Some(Self { virtual_key: code }));
+            }
         }
         Err(HotkeyError {
             name: trimmed.to_owned(),

@@ -29,11 +29,18 @@
 //! last report line when stdin is closed; the `report` command prints one at
 //! any time. A report is
 //! `{"report": {"worst_gap_ms", "ticks", "threads", "threads_before_load",
-//! "new_thread_ids", "dlls": [{"path", "loaded"}]}}`: the worst gap since the
-//! previous report (or the start), the thread count of the whole process now
-//! and before the first load, the ids of threads that did not exist before
-//! the first load, and whether each DLL is still mapped (`GetModuleHandleW` by
-//! file name).
+//! "new_threads": [{"id", "module"}], "dlls": [{"path", "loaded"}]}}`: the
+//! worst gap since the previous report (or the start), the thread count of the
+//! whole process now and before the first load, the threads that did not exist
+//! before the first load, and whether each DLL is still mapped
+//! (`GetModuleHandleW` by file name).
+//!
+//! `module` is the file name of the module that holds the thread's start
+//! address, or `null` when that address is in no mapped module, which for a
+//! thread that outlives its DLL means it runs unmapped code. The system's own
+//! loader starts worker threads of its own on a `LoadLibrary` (they start in
+//! `ntdll.dll`), so the raw thread count can exceed the count before the load
+//! without any thread of the loaded DLL being left; `module` tells them apart.
 //!
 //! Only Windows is supported. On other systems the program says so and exits
 //! with status 2, because hosting needs address space reservation with gaps
@@ -71,14 +78,21 @@ mod host {
         Corruption, DATA_CAP, FixtureBuilder, HostedPlacement, PartKind, Placement, Profile,
         RDATA_CAP, TEXT_CAP,
     };
-    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, INVALID_HANDLE_VALUE};
+    use windows_sys::Wdk::System::Threading::NtQueryInformationThread;
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, GetLastError, HMODULE, INVALID_HANDLE_VALUE,
+    };
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next,
     };
-    use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, LoadLibraryW};
+    use windows_sys::Win32::System::LibraryLoader::{
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        GetModuleFileNameW, GetModuleHandleExW, GetModuleHandleW, LoadLibraryW,
+    };
     use windows_sys::Win32::System::Memory::{
         MEM_COMMIT, MEM_RESERVE, PAGE_NOACCESS, PAGE_READWRITE, VirtualAlloc,
     };
+    use windows_sys::Win32::System::Threading::{OpenThread, THREAD_QUERY_INFORMATION};
 
     /// A page-aligned block of mutable static memory. It is initialised with a
     /// non-zero pattern so the linker keeps it in the file-backed `.data`.
@@ -324,7 +338,7 @@ mod host {
         let mut watch = Watch {
             ticks,
             worst_gap_micros,
-            baseline: thread_ids(),
+            baseline: thread_infos().iter().map(|thread| thread.id).collect(),
             dlls: Vec::new(),
         };
         for path in &args.loads {
@@ -368,11 +382,11 @@ mod host {
         /// A report line. Starts a new stall window.
         fn report(&self) -> serde_json::Value {
             let worst = self.worst_gap_micros.swap(0, Ordering::Relaxed);
-            let now = thread_ids();
-            let new_ids: Vec<u32> = now
+            let now = thread_infos();
+            let new_threads: Vec<_> = now
                 .iter()
-                .copied()
-                .filter(|id| !self.baseline.contains(id))
+                .filter(|thread| !self.baseline.contains(&thread.id))
+                .map(|thread| serde_json::json!({ "id": thread.id, "module": thread.module }))
                 .collect();
             let dlls: Vec<_> = self
                 .dlls
@@ -390,7 +404,7 @@ mod host {
                     "ticks": self.ticks.load(Ordering::Relaxed),
                     "threads": now.len(),
                     "threads_before_load": self.baseline.len(),
-                    "new_thread_ids": new_ids,
+                    "new_threads": new_threads,
                     "dlls": dlls,
                 }
             })
@@ -432,6 +446,86 @@ mod host {
         // the call; `GetModuleHandleW` does not change the module's reference
         // count.
         !unsafe { GetModuleHandleW(wide_name.as_ptr()) }.is_null()
+    }
+
+    /// `ThreadQuerySetWin32StartAddress` of `THREADINFOCLASS`.
+    const THREAD_QUERY_SET_WIN32_START_ADDRESS: i32 = 9;
+
+    /// A thread of this process and where it started.
+    struct ThreadInfo {
+        id: u32,
+        /// File name of the module holding the start address; `None` if the
+        /// address is in no mapped module or could not be read.
+        module: Option<String>,
+    }
+
+    /// The module file name that contains `address`, if one does.
+    fn module_name_at(address: usize) -> Option<String> {
+        let mut module: HMODULE = std::ptr::null_mut();
+        // SAFETY: with FROM_ADDRESS the "name" is an address; any value is
+        // accepted and a failure is reported. UNCHANGED_REFCOUNT means no
+        // reference is taken, so nothing needs releasing. `module` is a valid
+        // out pointer.
+        let found = unsafe {
+            GetModuleHandleExW(
+                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+                    | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                address as *const u16,
+                &mut module,
+            )
+        };
+        if found == 0 {
+            return None;
+        }
+        let mut buffer = vec![0_u16; 1024];
+        // SAFETY: `buffer` is writable for its whole length, which is passed.
+        let length = unsafe { GetModuleFileNameW(module, buffer.as_mut_ptr(), 1024) } as usize;
+        let path = String::from_utf16_lossy(buffer.get(..length.min(buffer.len()))?);
+        Path::new(&path)
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+    }
+
+    /// The module that holds the start address of thread `id`. `Err(())` when
+    /// the thread cannot be opened, which means it has just exited.
+    fn thread_start_module(id: u32) -> Result<Option<String>, ()> {
+        // SAFETY: opening a thread of this process by id has no preconditions;
+        // a null handle means the thread is gone.
+        let thread = unsafe { OpenThread(THREAD_QUERY_INFORMATION, 0, id) };
+        if thread.is_null() {
+            return Err(());
+        }
+        let mut start: usize = 0;
+        // SAFETY: `thread` is a valid handle with query access, and `start` is
+        // a writable `usize`, the size the class expects.
+        let status = unsafe {
+            NtQueryInformationThread(
+                thread,
+                THREAD_QUERY_SET_WIN32_START_ADDRESS,
+                (&raw mut start).cast(),
+                size_of::<usize>() as u32,
+                std::ptr::null_mut(),
+            )
+        };
+        // SAFETY: `thread` is a handle we own and have not closed.
+        unsafe { CloseHandle(thread) };
+        if status != 0 || start == 0 {
+            return Ok(None);
+        }
+        Ok(module_name_at(start))
+    }
+
+    /// Every thread of this process with its start module, from a toolhelp
+    /// snapshot. Empty if the snapshot cannot be taken.
+    fn thread_infos() -> Vec<ThreadInfo> {
+        thread_ids()
+            .into_iter()
+            .filter_map(|id| {
+                thread_start_module(id)
+                    .ok()
+                    .map(|module| ThreadInfo { id, module })
+            })
+            .collect()
     }
 
     /// Ids of every thread of this process, from a toolhelp snapshot. Empty if
