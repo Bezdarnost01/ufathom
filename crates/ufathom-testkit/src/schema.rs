@@ -186,7 +186,10 @@ pub fn property_class_name(ty: &PropertyType, profile: &Profile) -> String {
 #[must_use]
 pub fn payload_size(ty: &PropertyType) -> u32 {
     match ty {
-        PropertyType::Bool { .. }
+        // A `ByteProperty` always has room for its `Enum` pointer, null for a
+        // plain byte.
+        PropertyType::UInt8
+        | PropertyType::Bool { .. }
         | PropertyType::Object { .. }
         | PropertyType::WeakObject { .. }
         | PropertyType::LazyObject { .. }

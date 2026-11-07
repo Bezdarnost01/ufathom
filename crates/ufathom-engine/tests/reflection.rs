@@ -249,8 +249,10 @@ fn decoded_types_cover_the_kinds_the_schema_uses() {
         let (kinds, total, unknown) = common::type_tally(&walk(&fx, None));
         println!("{label}: {total} members, {unknown} unknown, kinds {kinds:?}");
         assert!(total > 80, "{label}: {total}");
-        // Only members with a plain byte may fall back (see assert_fields).
-        assert!(unknown * 4 < total, "{label}: {unknown} of {total}");
+        assert_eq!(
+            unknown, 0,
+            "{label}: {unknown} of {total} fell back to Unknown"
+        );
         for expected in [
             "Bool",
             "Struct",
@@ -271,6 +273,7 @@ fn decoded_types_cover_the_kinds_the_schema_uses() {
             "Delegate",
             "MulticastInlineDelegate",
             "Byte",
+            "UInt8",
         ] {
             assert!(
                 kinds.contains(expected),

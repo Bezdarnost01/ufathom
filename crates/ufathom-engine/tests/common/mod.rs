@@ -262,42 +262,12 @@ pub fn field_of(raw: &RawProperty, ty: &PropertyType) -> FieldDef {
     }
 }
 
-/// Whether `ty` contains a plain byte somewhere.
-fn has_plain_byte(ty: &PropertyType) -> bool {
-    match ty {
-        PropertyType::UInt8 => true,
-        PropertyType::Array { inner } | PropertyType::Optional { inner } => has_plain_byte(inner),
-        PropertyType::Set { element } => has_plain_byte(element),
-        PropertyType::Map { key, value } => has_plain_byte(key) || has_plain_byte(value),
-        PropertyType::Enum { underlying, .. } => has_plain_byte(underlying),
-        _ => false,
-    }
-}
-
-/// Compares decoded members with the truth.
-///
-/// Known gap in the testkit: a `ByteProperty` without an enum is allocated
-/// with no room for its `Enum` pointer, so the pointer slot holds the first
-/// bytes of the next allocation. The reader cannot tell, and gives
-/// `Unknown`. That outcome is accepted only where the truth contains a plain
-/// byte, and every other member must match exactly.
+/// Compares decoded members with the truth, exactly. A plain byte must
+/// decode as `UInt8`, like every other type.
 pub fn assert_fields(mine: &[FieldDef], truth: &[FieldDef], label: &str) {
     assert_eq!(mine.len(), truth.len(), "{label}: member count");
     for (got, want) in mine.iter().zip(truth) {
-        let location = format!("{label}: {}", want.name);
-        assert_eq!(got.name, want.name, "{location}");
-        assert_eq!(got.offset, want.offset, "{location}: offset");
-        assert_eq!(got.element_size, want.element_size, "{location}: size");
-        assert_eq!(got.array_dim, want.array_dim, "{location}: dim");
-        assert_eq!(got.flags, want.flags, "{location}: flags");
-        let plain_byte_gap =
-            matches!(got.ty, PropertyType::Unknown { .. }) && has_plain_byte(&want.ty);
-        assert!(
-            got.ty == want.ty || plain_byte_gap,
-            "{location}: {:?} != {:?}",
-            got.ty,
-            want.ty
-        );
+        assert_eq!(got, want, "{label}: {}", want.name);
     }
 }
 
