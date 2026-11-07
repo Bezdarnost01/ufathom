@@ -8,9 +8,18 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+rayon.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+ufathom-engine.workspace = true
 ufathom-mem.workspace = true
 ufathom-model.workspace = true
-ufathom-engine.workspace = true
+ufathom-scan.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+ufathom-testkit.workspace = true
+ufathom-usmap.workspace = true
 
 [lints]
 workspace = true
