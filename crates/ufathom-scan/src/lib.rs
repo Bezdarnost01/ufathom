@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+mod agree;
 mod bytes;
 mod ctx;
 mod discover;

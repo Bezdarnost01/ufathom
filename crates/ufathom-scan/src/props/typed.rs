@@ -10,17 +10,16 @@
 use ufathom_engine::PropertyKind;
 use ufathom_model::layout::{BoolPayloadLayout, TypedPayloadLayout};
 
+use crate::agree::agrees;
 use crate::error::ScanError;
-use crate::limits::{MAX_PAYLOAD_SAMPLES, MAX_PROPERTY_OFFSET};
+use crate::limits::{MAX_PAYLOAD_SAMPLES, MAX_PROPERTY_OFFSET, PAYLOAD_AGREEMENT_PERCENT};
+use crate::structs::derives_from;
 
 use super::core::Core;
 use super::{Env, Prop, System};
 
 /// Offsets searched past the core members, in bytes.
 const PAYLOAD_SPAN: u32 = 0x60;
-
-/// Share of instances that must agree.
-const AGREEMENT_PERCENT: usize = 95;
 
 /// What the typed solve found.
 pub(crate) struct Typed {
@@ -65,8 +64,10 @@ fn first_offset_where(
     let end = start + PAYLOAD_SPAN.max(MAX_PROPERTY_OFFSET);
     (start..end).step_by(8).find_map(|offset| {
         let matched = instances.iter().filter(|p| check(p, offset)).count();
-        (matched * 100 >= instances.len() * AGREEMENT_PERCENT && matched > 0 && accept(offset))
-            .then_some((offset, matched))
+        (agrees(matched, instances.len(), PAYLOAD_AGREEMENT_PERCENT)
+            && matched > 0
+            && accept(offset))
+        .then_some((offset, matched))
     })
 }
 
@@ -84,7 +85,7 @@ fn solve_owner_offset(env: &Env<'_, '_>, system: &System, props: &[Prop]) -> Opt
                 .iter()
                 .filter(|p| env.ctx.u64(p.addr + u64::from(o)) == Some(p.owner))
                 .count();
-            members.len() >= 8 && hits * 100 >= members.len() * AGREEMENT_PERCENT
+            members.len() >= 8 && agrees(hits, members.len(), PAYLOAD_AGREEMENT_PERCENT)
         })
         .collect();
     match found.as_slice() {
@@ -116,14 +117,17 @@ fn solve_bool(
             [1u8, 2, 4, 8].contains(&size)
                 && byte_offset < size
                 && single(byte_mask)
-                && (byte_offset != 0 || field_mask == byte_mask)
+                // A bit-field bool has the same single-bit mask in both; a
+                // native `bool` has `ByteMask` 1 and `FieldMask` 0xFF; a bit
+                // in a higher byte leaves the low byte of `FieldMask` empty.
+                && (byte_offset != 0 || field_mask == byte_mask || field_mask == 0xFF)
         };
         let ok = quads.iter().filter(|q| valid(q)).count();
         let mut masks: Vec<u8> = quads.iter().map(|q| q[2]).collect();
         masks.sort_unstable();
         masks.dedup();
         let varied = masks.len() >= 2 || instances.len() < 4;
-        if ok * 100 >= instances.len() * AGREEMENT_PERCENT && ok > 0 && varied {
+        if agrees(ok, instances.len(), PAYLOAD_AGREEMENT_PERCENT) && ok > 0 && varied {
             let at = |extra: u32| base + extra;
             return Some((
                 BoolPayloadLayout {
@@ -162,11 +166,19 @@ pub(crate) fn solve_typed(
     .next_multiple_of(8);
     let owner_offset = solve_owner_offset(env, system, props);
 
+    // The target is an object of `class` or of a class derived from it:
+    // delegate signatures are `DelegateFunction`s, and Blueprint classes are
+    // `BlueprintGeneratedClass`es, which derive from `Function` and `Class`.
+    let super_offset = env.fields.ustruct.super_struct;
+    let is_kind = move |target: u64, class: u64| {
+        universe
+            .get(target)
+            .is_some_and(|o| o.class == class || derives_from(ctx, super_offset, o.class, class))
+    };
     let points_to = |class: u64| {
         move |p: &Prop, offset: u32| {
             ctx.u64(p.addr + u64::from(offset))
-                .and_then(|v| universe.get(v))
-                .is_some_and(|o| o.class == class)
+                .is_some_and(|v| is_kind(v, class))
         }
     };
     let owned_at = |p: &Prop, offset: u32| -> bool {
@@ -246,8 +258,7 @@ pub(crate) fn solve_typed(
     let byte_instances = instances(props, &[PropertyKind::Byte]);
     let is_enum = |p: &Prop, offset: u32| {
         ctx.u64(p.addr + u64::from(offset))
-            .and_then(|v| universe.get(v))
-            .is_some_and(|o| o.class == a.enum_)
+            .is_some_and(|v| is_kind(v, a.enum_))
     };
     let byte_enum = record(
         "typed.byte_enum",

@@ -275,9 +275,3 @@ pub const PAYLOAD_AGREEMENT_PERCENT: usize = 90;
 /// `GEngine`, over all modules. Each module's data is read once, in large
 /// requests.
 pub const MAX_GLOBALS_SCAN_BYTES: u64 = 2 << 30;
-
-/// Share of samples a name field must decode for.
-pub const MIN_NAME_AGREEMENT: f64 = 0.99;
-
-/// Most properties sampled for the property core.
-pub const MAX_PROPERTY_SAMPLES: usize = 4000;
