@@ -35,9 +35,11 @@ pub struct ChunkObjects {
 /// against the capacity the target states, and a chunk count above the chunk
 /// capacity is refused rather than read past.
 ///
-/// `pointer_transform` of the layout is applied to the pointers that locate
-/// item storage: each entry of the chunk table, or the storage pointer of a
-/// fixed array. Pointers to objects are used as stored.
+/// `pointer_transform` of the layout is applied to exactly one pointer: the
+/// `Objects` field read at `layout.objects`, for both kinds. For a chunked
+/// array that gives the address of the chunk table, for a fixed array the
+/// item storage. Entries of the chunk table and pointers to objects are used
+/// as stored.
 pub struct ObjectArrayView<'a> {
     mem: &'a dyn MemoryReader,
     layout: &'a ObjectArrayLayout,
@@ -185,11 +187,19 @@ impl<'a> ObjectArrayView<'a> {
                 what: "object array",
                 reason: "storage pointer address overflows".to_owned(),
             })?;
-        let table = self
+        let stored = self
             .mem
             .read_u64(table_at)
             .map_err(EngineError::read(table_at, "object array storage pointer"))?;
-        let stored_at = match self.layout.kind {
+        // The one pointer the layout's transform decodes.
+        let table = self.layout.apply_pointer_transform(stored);
+        if table == 0 {
+            return Err(EngineError::Null {
+                addr: table_at,
+                what: "object array storage",
+            });
+        }
+        let entry_at = match self.layout.kind {
             ObjectArrayKind::Fixed => {
                 if chunk != 0 {
                     return Err(EngineError::Limit {
@@ -199,15 +209,9 @@ impl<'a> ObjectArrayView<'a> {
                         limit: 0,
                     });
                 }
-                return self.storage(table, table_at);
+                return Ok(table);
             }
             ObjectArrayKind::Chunked { .. } => {
-                if table == 0 {
-                    return Err(EngineError::Null {
-                        addr: table_at,
-                        what: "chunk table",
-                    });
-                }
                 table
                     .checked_add(u64::from(chunk) * 8)
                     .ok_or(EngineError::Inconsistent {
@@ -217,23 +221,17 @@ impl<'a> ObjectArrayView<'a> {
                     })?
             }
         };
-        let stored = self
+        let chunk_ptr = self
             .mem
-            .read_u64(stored_at)
-            .map_err(EngineError::read(stored_at, "chunk pointer"))?;
-        self.storage(stored, stored_at)
-    }
-
-    /// Applies the layout's pointer transform to a stored storage pointer.
-    fn storage(&self, stored: u64, at: Addr) -> Result<Addr, EngineError> {
-        let pointer = self.layout.apply_pointer_transform(stored);
-        if pointer == 0 {
+            .read_u64(entry_at)
+            .map_err(EngineError::read(entry_at, "chunk pointer"))?;
+        if chunk_ptr == 0 {
             return Err(EngineError::Null {
-                addr: at,
-                what: "object array storage",
+                addr: entry_at,
+                what: "chunk",
             });
         }
-        Ok(pointer)
+        Ok(chunk_ptr)
     }
 
     /// Address of the item for slot `index`.

@@ -62,18 +62,18 @@ fn obfuscate(real: u64) -> u64 {
     (real - 0x1000) ^ 0x5A5A_0000_0000_0000
 }
 
-/// Six objects in two chunks of four: slots 1 and 4 are null. Chunk pointers
-/// are stored scrambled when `scrambled`.
+/// Six objects in two chunks of four: slots 1 and 4 are null. The `Objects`
+/// pointer, which is the address of the chunk table, is stored scrambled when
+/// `scrambled`. The entries of the table are always plain.
 fn chunked_image(scrambled: bool) -> Img {
     let mut img = Img::new(BASE, 0x4000);
-    let store = |real: u64| if scrambled { obfuscate(real) } else { real };
     img.u32(ARRAY + 8, 8);
     img.u32(ARRAY + 0xC, 6);
     img.u32(ARRAY + 0x10, 4);
     img.u32(ARRAY + 0x14, 2);
-    img.u64(ARRAY, TABLE);
-    img.u64(TABLE, store(CHUNK0));
-    img.u64(TABLE + 8, store(CHUNK1));
+    img.u64(ARRAY, if scrambled { obfuscate(TABLE) } else { TABLE });
+    img.u64(TABLE, CHUNK0);
+    img.u64(TABLE + 8, CHUNK1);
     for slot in 0..6u64 {
         if slot == 1 || slot == 4 {
             continue;
@@ -135,8 +135,8 @@ fn a_pointer_transform_is_applied_when_configured_and_fails_cleanly_when_not() {
     assert_eq!(view.object_at(5).unwrap(), Some(slot(5).object));
     assert_eq!(view.slot_address(4).unwrap(), CHUNK1);
 
-    // The same image without the transform: the scrambled chunk pointers
-    // point nowhere, which is an error and not a panic.
+    // The same image without the transform: the scrambled table pointer
+    // points nowhere, which is an error and not a panic.
     let unconfigured = layout(chunked(), Vec::new());
     let view = ObjectArrayView::new(&scrambled, &unconfigured).unwrap();
     for chunk in 0..view.chunk_count() {
