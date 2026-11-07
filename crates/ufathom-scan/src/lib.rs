@@ -12,6 +12,7 @@ mod objects;
 mod options;
 pub mod pe;
 mod result;
+mod structs;
 mod universe;
 mod uobject;
 pub mod version;
