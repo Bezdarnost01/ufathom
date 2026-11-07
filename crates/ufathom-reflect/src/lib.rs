@@ -36,9 +36,10 @@
 //!   object array, and only for functions flagged native whose entry point
 //!   lies inside that module. A module is found by the file name of the
 //!   object array's location, or by the address range for an absolute one.
-//! - `EnumDef::underlying_size` is the widest underlying integer of any
-//!   `EnumProperty` that refers to the enum, and 1 when none does: the
-//!   enum object does not store its width.
+//! - `EnumDef::underlying_size` is the widest of the underlying integer of any
+//!   `EnumProperty` that refers to the enum and the smallest integer that
+//!   holds every value (signed if any is negative, ignoring a trailing `_MAX`
+//!   that is one past the range): the enum object does not store its width.
 //! - A reference that does not resolve to a type in the dump (a property's
 //!   class, an array's element) gives `PropertyType::Unknown`, with a
 //!   warning. An unresolved parent leaves `super_path` empty, with a warning.
