@@ -9,6 +9,14 @@ repository.workspace = true
 
 [dependencies]
 ufathom-model.workspace = true
+thiserror.workspace = true
+heck.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+ufathom-testkit.workspace = true
+# Cross-checks the sizes the planner assumes for the runtime views.
+ufathom-runtime.workspace = true
 
 [lints]
 workspace = true
