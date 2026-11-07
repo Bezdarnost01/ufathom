@@ -7,6 +7,7 @@
     clippy::expect_used,
     clippy::indexing_slicing,
     clippy::panic,
+    clippy::too_many_arguments,
     reason = "each test binary uses a different part of this module; test helpers may panic"
 )]
 

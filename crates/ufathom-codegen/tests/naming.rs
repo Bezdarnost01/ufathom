@@ -80,10 +80,7 @@ fn keywords_collisions_and_odd_characters_are_made_valid() {
 #[test]
 fn enumerators_are_unique_constants_and_names_are_optional() {
     let core = &files()["src/core_u_object.rs"];
-    assert!(
-        core.contains("pub const Type: Self = Self(-1);"),
-        "{core}"
-    );
+    assert!(core.contains("pub const Type: Self = Self(-1);"), "{core}");
     assert!(core.contains("pub const Self_: Self = Self(0);"));
     assert!(core.contains("pub const Zero: Self = Self(1);"));
     assert!(core.contains("pub const Zero_1: Self = Self(2);"));
