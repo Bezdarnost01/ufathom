@@ -18,6 +18,7 @@
 mod build;
 mod emit;
 mod error;
+mod header;
 mod names;
 mod output;
 mod planner;

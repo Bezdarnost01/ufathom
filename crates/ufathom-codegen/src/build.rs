@@ -5,8 +5,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ufathom_model::flags::{CPF_CONST_PARM, CPF_OUT_PARM, CPF_RETURN_PARM};
-use ufathom_model::{Dump, EnumDef, FieldDef, FunctionDef, PropertyType, StructDef, StructKind};
+use ufathom_model::{
+    Dump, EngineLayout, EnumDef, FieldDef, FunctionDef, PropertyType, StructDef, StructKind,
+};
 
+use crate::header;
 use crate::names::{self, Namespace};
 use crate::planner::{BaseInfo, BaseMode, FieldKind, Item, Note, Plan, PlanField, PlanInput, plan};
 use crate::report::{Degradation, DegradeReason};
@@ -325,6 +328,7 @@ pub(crate) fn build(dump: &Dump) -> Built {
             module,
             rust_name,
             &table,
+            &dump.layout,
             &defs,
             &by_path,
             &mut degraded,
@@ -530,6 +534,8 @@ struct Classified {
     field: PlanField,
     resolved: Option<Resolved>,
     complaint: Option<(DegradeReason, String)>,
+    /// Replaces the dump type in the doc comment, for members from the layout.
+    doc: Option<String>,
 }
 
 fn classify(f: &FieldDef, table: &TypeTable) -> Classified {
@@ -542,6 +548,7 @@ fn classify(f: &FieldDef, table: &TypeTable) -> Classified {
         },
         resolved: None,
         complaint: Some((reason, detail)),
+        doc: None,
     };
     if let Some(bits) = f.ty.bool_bits() {
         if bits.field_mask != 0xFF {
@@ -562,6 +569,7 @@ fn classify(f: &FieldDef, table: &TypeTable) -> Classified {
                 },
                 resolved: None,
                 complaint: None,
+                doc: None,
             };
         }
     }
@@ -577,6 +585,7 @@ fn classify(f: &FieldDef, table: &TypeTable) -> Classified {
             },
             resolved: Some(r),
             complaint: None,
+            doc: None,
         },
         Ok(r) => opaque(
             DegradeReason::SizeMismatch,
@@ -608,7 +617,7 @@ fn name_fields(
             offset: f.offset,
             element_size: f.element_size,
             count: f.array_dim.max(1),
-            ty_display: f.ty.to_string(),
+            ty_display: c.doc.unwrap_or_else(|| f.ty.to_string()),
             resolved: c.resolved,
             rust_field: None,
             const_name: None,
@@ -663,10 +672,10 @@ fn name_fields(
             let storage_field = storage.get(offset).cloned().unwrap_or_default();
             for b in bits {
                 if let Some(p) = out.get_mut(b.field) {
-                    let snake = names::snake(&p.name);
+                    let raw = names::snake_raw(&p.name);
                     p.bit = Some(BitAccess {
-                        getter: vals.claim(&snake),
-                        setter: vals.claim(&format!("set_{snake}")),
+                        getter: vals.claim(&names::keyword_safe(&raw)),
+                        setter: vals.claim(&names::keyword_safe(&format!("set_{raw}"))),
                         storage_byte: b.byte,
                         storage_field: storage_field.clone(),
                         mask: b.mask,
@@ -720,18 +729,52 @@ fn plan_struct(
     module: String,
     rust_name: String,
     table: &TypeTable,
+    layout: &EngineLayout,
     defs: &[&StructDef],
     by_path: &BTreeMap<&str, usize>,
     degraded: &mut Vec<Degradation>,
 ) -> PlannedStruct {
-    let mut sorted: Vec<&FieldDef> = def.fields.iter().collect();
+    // Members the dump does not reflect, taken from the layout.
+    let members = header::members(def, layout, table);
+    let member_defs: Vec<FieldDef> = members
+        .iter()
+        .map(|m| FieldDef {
+            name: m.name.to_owned(),
+            offset: m.offset,
+            ty: PropertyType::Unknown {
+                type_name: m.name.to_owned(),
+            },
+            element_size: m.resolved.size,
+            array_dim: 1,
+            flags: 0,
+        })
+        .collect();
+    let mut sorted: Vec<&FieldDef> = def.fields.iter().chain(member_defs.iter()).collect();
     sorted.sort_by(|a, b| {
         a.offset
             .cmp(&b.offset)
             .then_with(|| a.name.cmp(&b.name))
             .then_with(|| a.cmp(b))
     });
-    let classified: Vec<Classified> = sorted.iter().map(|f| classify(f, table)).collect();
+    let classified: Vec<Classified> = sorted
+        .iter()
+        .map(|f| match members.iter().find(|m| m.name == f.name) {
+            Some(m) if member_defs.iter().any(|d| std::ptr::eq(d, *f)) => Classified {
+                field: PlanField {
+                    offset: m.offset,
+                    kind: FieldKind::Typed {
+                        size: m.resolved.size,
+                        align: m.resolved.align,
+                        count: 1,
+                    },
+                },
+                resolved: Some(m.resolved.clone()),
+                complaint: None,
+                doc: Some(format!("{} (from the engine layout)", m.doc)),
+            },
+            _ => classify(f, table),
+        })
+        .collect();
 
     // The parent, when it is generated and its layout is known.
     let parent = def
