@@ -23,7 +23,7 @@ mod validate;
 pub mod version;
 
 pub use discover::discover;
-pub use error::ScanError;
+pub use error::{RejectedCandidate, ScanError};
 pub use inspect::{ExeFacts, PackingHints, inspect_exe};
 pub use options::{DiscoverOptions, LayoutOverrides};
 pub use pe::{DataDirectory, PeImage, Section, load_pe_file, load_pe_reader};

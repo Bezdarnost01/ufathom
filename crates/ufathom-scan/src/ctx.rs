@@ -1,7 +1,9 @@
 //! The state shared by every solving step: the reader, the module, local
 //! copies of writable data, and the evidence recorder.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::rc::Rc;
 
 use ufathom_mem::{MemoryReader, MemoryRegion, PAGE_SIZE, PageCache};
 
@@ -23,21 +25,47 @@ pub(crate) struct LocalRange {
     pub bytes: Vec<u8>,
 }
 
+/// A loaded module.
+#[derive(Debug, Clone)]
+pub(crate) struct ModuleEntry {
+    pub name: String,
+    pub base: u64,
+    pub size: u64,
+}
+
+impl ModuleEntry {
+    fn end(&self) -> u64 {
+        self.base.saturating_add(self.size)
+    }
+}
+
 /// Everything a solving step needs to read the target and record results.
+///
+/// A target may be one executable or, in a modular build, hundreds of
+/// modules with the engine's globals spread over a few of them. The context
+/// lists every module in search order (the selected or main module first, then
+/// those whose name says `Core`, then the rest) and holds the writable data of
+/// one module at a time: [`use_module`](Self::use_module) switches it.
 pub(crate) struct Ctx<'a> {
+    raw: &'a dyn MemoryReader,
     cache: PageCache<&'a dyn MemoryReader>,
     pub options: &'a DiscoverOptions<'a>,
-    pub module_name: String,
-    pub module_base: u64,
-    pub module_size: u64,
-    /// Address ranges of every loaded module.
-    images: Vec<(u64, u64)>,
+    /// Every module, in search order. Index 0 is the primary module.
+    modules: Vec<ModuleEntry>,
+    primary: ModuleEntry,
+    /// `(base, end, index into modules)` sorted by base.
+    by_base: Vec<(u64, u64, usize)>,
     /// Merged readable intervals of the target.
     readable: Vec<(u64, u64)>,
-    /// Writable data of the module, in address order.
-    pub locals: Vec<LocalRange>,
-    /// Regions of the target that are not part of the module and are writable.
-    pub other_writable: Vec<MemoryRegion>,
+    regions: Vec<MemoryRegion>,
+    /// The module whose writable data `locals` holds.
+    current: Cell<usize>,
+    locals: RefCell<Rc<Vec<LocalRange>>>,
+    /// Modules whose data has been copied, so that a second pass over the
+    /// modules does not read them again.
+    loaded: RefCell<HashMap<usize, Rc<Vec<LocalRange>>>>,
+    /// Bytes of module data that may still be copied.
+    load_budget: Cell<u64>,
     evidence: RefCell<Vec<Evidence>>,
     warnings: RefCell<Vec<String>>,
 }
@@ -59,24 +87,24 @@ fn merge(mut spans: Vec<(u64, u64)>) -> Vec<(u64, u64)> {
 }
 
 impl<'a> Ctx<'a> {
-    /// Selects the module, lists the regions and copies the module's writable
-    /// data into local buffers.
+    /// Selects the primary module and orders the others behind it. No module
+    /// data is read yet.
     pub(crate) fn new(
         mem: &'a dyn MemoryReader,
         options: &'a DiscoverOptions<'a>,
     ) -> Result<Self, ScanError> {
-        let modules = mem.modules().map_err(|source| ScanError::Target {
+        let listed = mem.modules().map_err(|source| ScanError::Target {
             what: "module list",
             source,
         })?;
         let wanted = options.module.as_deref().map(file_name);
-        let module = match wanted {
-            Some(name) => modules
+        let primary = match wanted {
+            Some(name) => listed
                 .iter()
-                .find(|m| file_name(&m.name).eq_ignore_ascii_case(name)),
-            None => modules
+                .position(|m| file_name(&m.name).eq_ignore_ascii_case(name)),
+            None => listed
                 .iter()
-                .find(|m| file_name(&m.name).to_ascii_lowercase().ends_with(".exe")),
+                .position(|m| file_name(&m.name).to_ascii_lowercase().ends_with(".exe")),
         }
         .ok_or_else(|| ScanError::ModuleNotFound {
             requested: options.module.clone(),
@@ -85,7 +113,6 @@ impl<'a> Ctx<'a> {
             what: "region list",
             source,
         })?;
-        let module_end = module.base.saturating_add(module.size);
         let readable = merge(
             regions
                 .iter()
@@ -93,70 +120,156 @@ impl<'a> Ctx<'a> {
                 .map(|r| (r.base, r.base.saturating_add(r.size)))
                 .collect(),
         );
-        let images = modules
+        let entry = |m: &ufathom_mem::ModuleInfo| ModuleEntry {
+            name: file_name(&m.name).to_owned(),
+            base: m.base,
+            size: m.size,
+        };
+        let mut others: Vec<ModuleEntry> = listed
             .iter()
-            .map(|m| (m.base, m.base.saturating_add(m.size)))
+            .enumerate()
+            .filter(|&(i, _)| i != primary)
+            .map(|(_, m)| entry(m))
             .collect();
-        let other_writable = regions
+        // `Core` and `CoreUObject` hold the object array and the name table
+        // in a modular build, so they come before the rest.
+        others.sort_by_key(|m| (!m.name.to_ascii_lowercase().contains("core"), m.base));
+        let primary_entry =
+            listed
+                .get(primary)
+                .map(entry)
+                .ok_or_else(|| ScanError::ModuleNotFound {
+                    requested: options.module.clone(),
+                })?;
+        let mut modules = Vec::with_capacity(listed.len());
+        modules.push(primary_entry.clone());
+        modules.extend(others);
+        let mut by_base: Vec<(u64, u64, usize)> = modules
             .iter()
-            .filter(|r| r.perms.read && r.perms.write)
-            .filter(|r| r.base >= module_end || r.base.saturating_add(r.size) <= module.base)
-            .cloned()
+            .enumerate()
+            .map(|(i, m)| (m.base, m.end(), i))
             .collect();
-        let mut ctx = Self {
+        by_base.sort_unstable();
+        Ok(Self {
+            raw: mem,
             cache: PageCache::new(mem),
             options,
-            module_name: file_name(&module.name).to_owned(),
-            module_base: module.base,
-            module_size: module.size,
-            images,
+            modules,
+            primary: primary_entry,
+            by_base,
             readable,
-            locals: Vec::new(),
-            other_writable,
+            regions,
+            current: Cell::new(0),
+            locals: RefCell::new(Rc::new(Vec::new())),
+            loaded: RefCell::new(HashMap::new()),
+            load_budget: Cell::new(MAX_LOCAL_DATA_BYTES),
             evidence: RefCell::new(Vec::new()),
             warnings: RefCell::new(Vec::new()),
-        };
-        ctx.load_locals(mem, &regions, module_end);
-        if ctx.locals.is_empty() {
-            return Err(ScanError::NoWritableData {
-                module: ctx.module_name.clone(),
-            });
-        }
-        Ok(ctx)
+        })
     }
 
-    /// Copies each writable span of the module once, with a few large reads.
-    fn load_locals(&mut self, mem: &dyn MemoryReader, regions: &[MemoryRegion], module_end: u64) {
-        let mut budget = MAX_LOCAL_DATA_BYTES;
-        for region in regions.iter().filter(|r| r.perms.read && r.perms.write) {
-            let start = region.base.max(self.module_base);
-            let end = region.base.saturating_add(region.size).min(module_end);
+    /// Number of modules, in search order.
+    pub(crate) fn module_count(&self) -> usize {
+        self.modules.len()
+    }
+
+    /// The module at `index` in search order.
+    pub(crate) fn module(&self, index: usize) -> Option<&ModuleEntry> {
+        self.modules.get(index)
+    }
+
+    /// The primary module: the one the caller selected, or the main
+    /// executable.
+    pub(crate) fn primary(&self) -> &ModuleEntry {
+        &self.primary
+    }
+
+    /// Loads the writable data of module `index` and makes it the one the
+    /// slot searches look at. Returns `false` when the module has none or the
+    /// budget for copying module data is spent.
+    pub(crate) fn use_module(&self, index: usize) -> bool {
+        let Some(module) = self.modules.get(index) else {
+            return false;
+        };
+        self.current.set(index);
+        if let Some(cached) = self.loaded.borrow().get(&index) {
+            let any = !cached.is_empty();
+            *self.locals.borrow_mut() = Rc::clone(cached);
+            return any;
+        }
+        let mut ranges = Vec::new();
+        let mut budget = self.load_budget.get();
+        for region in self
+            .regions
+            .iter()
+            .filter(|r| r.perms.read && r.perms.write)
+        {
+            let start = region.base.max(module.base);
+            let end = region.base.saturating_add(region.size).min(module.end());
             if start >= end || budget == 0 {
                 continue;
             }
             let end = end.min(start.saturating_add(budget));
-            let len = usize::try_from(end - start).unwrap_or(0);
-            let mut bytes = vec![0u8; len];
-            let mut done = 0usize;
-            while done < len {
-                let take = LOCAL_READ_CHUNK.min(len - done);
-                let at = start + done as u64;
-                let Some(slice) = bytes.get_mut(done..done + take) else {
-                    break;
-                };
-                if mem.read_exact(at, slice).is_err() {
-                    // A guarded or unmapped page inside the span: read page by
-                    // page and leave the unreadable ones zero.
-                    for (n, page) in slice.chunks_mut(PAGE_SIZE).enumerate() {
-                        let _ = mem.read_exact(at + (n * PAGE_SIZE) as u64, page);
-                    }
-                }
-                done += take;
-            }
-            budget = budget.saturating_sub(len as u64);
-            self.locals.push(LocalRange { base: start, bytes });
+            let bytes = self.read_scan(start, usize::try_from(end - start).unwrap_or(0));
+            budget = budget.saturating_sub(bytes.len() as u64);
+            ranges.push(LocalRange { base: start, bytes });
         }
-        self.locals.sort_by_key(|range| range.base);
+        self.load_budget.set(budget);
+        ranges.sort_by_key(|range| range.base);
+        let any = !ranges.is_empty();
+        let ranges = Rc::new(ranges);
+        self.loaded.borrow_mut().insert(index, Rc::clone(&ranges));
+        *self.locals.borrow_mut() = ranges;
+        any
+    }
+
+    /// Writable, readable ranges of the whole target as `(base, size)`, in
+    /// address order.
+    pub(crate) fn writable_regions(&self) -> impl Iterator<Item = (u64, u64)> + '_ {
+        self.regions
+            .iter()
+            .filter(|r| r.perms.read && r.perms.write)
+            .map(|r| (r.base, r.size))
+    }
+
+    /// Writable ranges of module `index` as `(base, size)`.
+    pub(crate) fn module_writable(&self, index: usize) -> Vec<(u64, u64)> {
+        let Some(module) = self.modules.get(index) else {
+            return Vec::new();
+        };
+        self.regions
+            .iter()
+            .filter(|r| r.perms.read && r.perms.write)
+            .filter_map(|r| {
+                let start = r.base.max(module.base);
+                let end = r.base.saturating_add(r.size).min(module.end());
+                (start < end).then(|| (start, end - start))
+            })
+            .collect()
+    }
+
+    /// Reads `len` bytes straight from the target, in large requests that
+    /// bypass the page cache: a scan touches every page once, and caching them
+    /// would only evict the pages the solver reads again. Pages that cannot be
+    /// read stay zero, so a span with a guarded page inside it is still
+    /// scanned.
+    pub(crate) fn read_scan(&self, addr: u64, len: usize) -> Vec<u8> {
+        let mut bytes = vec![0u8; len];
+        let mut done = 0usize;
+        while done < len {
+            let take = LOCAL_READ_CHUNK.min(len - done);
+            let at = addr + done as u64;
+            let Some(slice) = bytes.get_mut(done..done + take) else {
+                break;
+            };
+            if self.raw.read_exact(at, slice).is_err() {
+                for (n, page) in slice.chunks_mut(PAGE_SIZE).enumerate() {
+                    let _ = self.raw.read_exact(at + (n * PAGE_SIZE) as u64, page);
+                }
+            }
+            done += take;
+        }
+        bytes
     }
 
     /// The reader the typed views of `ufathom-engine` should use.
@@ -166,17 +279,21 @@ impl<'a> Ctx<'a> {
 
     // ----- memory access -----
 
-    fn local_slice(&self, addr: u64, len: usize) -> Option<&[u8]> {
-        let after = self.locals.partition_point(|range| range.base <= addr);
-        let range = self.locals.get(after.checked_sub(1)?)?;
+    fn local_copy(&self, addr: u64, len: usize) -> Option<Vec<u8>> {
+        let locals = self.locals.borrow();
+        let after = locals.partition_point(|range| range.base <= addr);
+        let range = locals.get(after.checked_sub(1)?)?;
         let offset = usize::try_from(addr.checked_sub(range.base)?).ok()?;
-        range.bytes.get(offset..offset.checked_add(len)?)
+        range
+            .bytes
+            .get(offset..offset.checked_add(len)?)
+            .map(<[u8]>::to_vec)
     }
 
     /// Reads `len` bytes. `None` when any part is unreadable.
     pub(crate) fn read(&self, addr: u64, len: usize) -> Option<Vec<u8>> {
-        if let Some(slice) = self.local_slice(addr, len) {
-            return Some(slice.to_vec());
+        if let Some(copy) = self.local_copy(addr, len) {
+            return Some(copy);
         }
         let mut buf = vec![0u8; len];
         self.cache.read_exact(addr, &mut buf).ok()?;
@@ -233,42 +350,42 @@ impl<'a> Ctx<'a> {
         (USER_ADDRESS_FLOOR..USER_ADDRESS_LIMIT).contains(&value) && self.is_mapped(value)
     }
 
-    /// Whether `addr` is inside any loaded module.
-    pub(crate) fn in_image(&self, addr: u64) -> bool {
-        self.images
-            .iter()
-            .any(|&(start, end)| addr >= start && addr < end)
-    }
-
-    /// Whether `addr` is inside the solved module.
-    pub(crate) fn in_module(&self, addr: u64) -> bool {
-        addr >= self.module_base && addr - self.module_base < self.module_size
-    }
-
-    /// A layout location for `addr`: an RVA inside the module, an absolute
-    /// address elsewhere.
-    pub(crate) fn location(&self, addr: u64) -> ufathom_model::layout::Location {
-        if self.in_module(addr) {
-            ufathom_model::layout::Location::Rva {
-                module: self.module_name.clone(),
-                rva: self.rva(addr),
-            }
+    /// The module that contains `addr`.
+    pub(crate) fn module_of(&self, addr: u64) -> Option<&ModuleEntry> {
+        let after = self.by_base.partition_point(|&(base, _, _)| base <= addr);
+        let &(_, end, index) = self.by_base.get(after.checked_sub(1)?)?;
+        if addr < end {
+            self.modules.get(index)
         } else {
-            ufathom_model::layout::Location::Absolute(addr)
+            None
         }
     }
 
-    /// The RVA of an address inside the module.
-    pub(crate) fn rva(&self, addr: u64) -> u64 {
-        addr.wrapping_sub(self.module_base)
+    /// Whether `addr` is inside any loaded module.
+    pub(crate) fn in_image(&self, addr: u64) -> bool {
+        self.module_of(addr).is_some()
     }
 
-    /// Every 8-aligned slot of the module's writable data that holds a pointer
-    /// to readable memory, as `(slot address, pointer)`. With `transform` the
-    /// user's pointer transform is applied to each stored value first.
+    /// A layout location for `addr`: an RVA inside the module that contains
+    /// it, an absolute address elsewhere.
+    pub(crate) fn location(&self, addr: u64) -> ufathom_model::layout::Location {
+        match self.module_of(addr) {
+            Some(module) => ufathom_model::layout::Location::Rva {
+                module: module.name.clone(),
+                rva: addr - module.base,
+            },
+            None => ufathom_model::layout::Location::Absolute(addr),
+        }
+    }
+
+    /// Every 8-aligned slot of the current module's writable data that holds a
+    /// pointer to readable memory, as `(slot address, pointer)`. With
+    /// `transform` the user's pointer transform is applied to each stored
+    /// value first.
     pub(crate) fn pointer_slots(&self, transform: bool) -> Vec<(u64, u64)> {
         let mut slots = Vec::new();
-        'ranges: for range in &self.locals {
+        let locals = self.locals.borrow();
+        'ranges: for range in locals.iter() {
             let mut offset = 0usize;
             while let Some(stored) = le_u64(&range.bytes, offset) {
                 if stored != 0 {
@@ -311,6 +428,14 @@ impl<'a> Ctx<'a> {
             samples: u32::try_from(samples).unwrap_or(u32::MAX),
             matched: u32::try_from(matched).unwrap_or(u32::MAX),
         };
+        tracing::debug!(
+            field = %record.field,
+            value = record.value,
+            samples = record.samples,
+            matched = record.matched,
+            method = %record.method,
+            "solved"
+        );
         self.evidence.borrow_mut().push(record);
     }
 

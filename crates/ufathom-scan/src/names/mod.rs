@@ -77,13 +77,21 @@ impl<'c, 'a> Names<'c, 'a> {
                 kind: Kind::Array { candidate, table },
             })
         };
-        let found = if array_first {
-            try_array(ctx).or_else(|| try_pool(ctx))
-        } else {
-            try_pool(ctx).or_else(|| try_array(ctx))
-        };
-        if let Some(found) = found {
-            return Ok(found);
+        // The module the caller selected first, then those that say Core, then
+        // the rest: in a modular build the name table is in `Core`, far from
+        // the executable.
+        for index in 0..ctx.module_count() {
+            if !ctx.use_module(index) {
+                continue;
+            }
+            let found = if array_first {
+                try_array(ctx).or_else(|| try_pool(ctx))
+            } else {
+                try_pool(ctx).or_else(|| try_array(ctx))
+            };
+            if let Some(found) = found {
+                return Ok(found);
+            }
         }
         match fallback::find(ctx) {
             Some(Fallback::Pool(candidate)) => Ok(Self {
@@ -99,11 +107,13 @@ impl<'c, 'a> Names<'c, 'a> {
                 })
             }
             None => Err(ScanError::NameTableNotFound {
-                reason: "neither an FNamePool nor a TNameEntryArray whose first entries are \
-                         None, ByteProperty, IntProperty and BoolProperty was found in the \
-                         module's writable data, and the scan of other memory found no \
-                         ByteProperty text that a pointer leads to"
-                    .to_owned(),
+                reason: format!(
+                    "neither an FNamePool nor a TNameEntryArray whose first entries are None, \
+                     ByteProperty, IntProperty and BoolProperty was found in the writable data \
+                     of any of {} modules, and the scan of other memory found no ByteProperty \
+                     text that a pointer leads to",
+                    ctx.module_count()
+                ),
             }),
         }
     }
@@ -363,6 +373,7 @@ mod tests {
         };
         let options = DiscoverOptions::default();
         let ctx = Ctx::new(&fx.memory, &options).unwrap();
+        assert!(ctx.use_module(0));
         let data = &fx.anchors.data;
 
         // A buffer that starts with `None` but is not followed by `ByteProperty`.
@@ -397,6 +408,7 @@ mod tests {
         let fx = fixture("ue4.21");
         let options = DiscoverOptions::default();
         let ctx = Ctx::new(&fx.memory, &options).unwrap();
+        assert!(ctx.use_module(0));
         let data = &fx.anchors.data;
         let table = ctx.u64(data.decoy_name_slot).unwrap();
         let chunk = ctx.u64(table).unwrap();

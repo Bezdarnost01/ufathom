@@ -8,15 +8,19 @@
 //!   `FunctionFlags` for `FUNC_Native` and `FUNC_HasOutParms`, found by
 //!   reading the machine code of each virtual function. Nothing is executed.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use ufathom_model::flags::{FUNC_HAS_OUT_PARMS, FUNC_NATIVE, RF_CLASS_DEFAULT_OBJECT};
 
 use crate::ctx::{Ctx, le_u32};
-use crate::limits::{MAX_VTABLE_SLOTS, PROCESS_EVENT_WINDOW, VTABLE_SAMPLE_OBJECTS};
+use crate::limits::{
+    LOCAL_READ_CHUNK, MAX_GLOBALS_SCAN_BYTES, MAX_VTABLE_SLOTS, PROCESS_EVENT_WINDOW,
+    VTABLE_SAMPLE_OBJECTS,
+};
 use crate::result::Globals;
 use crate::structs::derives_from;
 use crate::universe::Universe;
+use ufathom_model::layout::Location;
 
 /// `test dword [reg + disp32], imm32` is `F7 /0`.
 const TEST_RM32_IMM32: u8 = 0xF7;
@@ -41,35 +45,66 @@ pub(crate) struct GlobalsInput<'u> {
     pub world: Option<u64>,
     pub game_engine: Option<u64>,
     pub engine: Option<u64>,
+    /// File name of the module that holds the object array: the globals the
+    /// caller expects are listed relative to it.
+    pub module: String,
 }
 
-/// Whether the object at `addr` is a live instance of a class that derives
-/// from `base`.
-fn is_live_instance(ctx: &Ctx<'_>, input: &GlobalsInput<'_>, addr: u64, base: u64) -> bool {
-    let Some(obj) = input.universe.get(addr) else {
-        return false;
+/// The live instances, in the object array, of classes that derive from
+/// `base`.
+fn live_instances(ctx: &Ctx<'_>, input: &GlobalsInput<'_>, base: u64) -> HashSet<u64> {
+    // Thousands of objects share a few hundred classes: decide each class once.
+    let mut derives: HashMap<u64, bool> = HashMap::new();
+    let mut out = HashSet::new();
+    for obj in &input.universe.objs {
+        let is_kind = *derives
+            .entry(obj.class)
+            .or_insert_with(|| derives_from(ctx, input.super_offset, obj.class, base));
+        if !is_kind {
+            continue;
+        }
+        let stored_index = ctx.u32(obj.addr + u64::from(input.index_offset));
+        let flags = ctx.u32(obj.addr + u64::from(input.object_flags_offset));
+        if stored_index == Some(obj.index)
+            && flags.is_some_and(|f| f & RF_CLASS_DEFAULT_OBJECT == 0)
+        {
+            out.insert(obj.addr);
+        }
+    }
+    out
+}
+
+/// Slots of every module's writable data that hold one of `targets`, as
+/// addresses. The scan reads each module's data once, in large requests, up
+/// to [`MAX_GLOBALS_SCAN_BYTES`].
+fn slots_holding(ctx: &Ctx<'_>, targets: &HashSet<u64>) -> Vec<u64> {
+    let (Some(&low), Some(&high)) = (targets.iter().min(), targets.iter().max()) else {
+        return Vec::new();
     };
-    let stored_index = ctx.u32(addr + u64::from(input.index_offset));
-    let flags = ctx.u32(addr + u64::from(input.object_flags_offset));
-    stored_index == Some(obj.index)
-        && flags.is_some_and(|f| f & RF_CLASS_DEFAULT_OBJECT == 0)
-        && derives_from(ctx, input.super_offset, obj.class, base)
-}
-
-fn slots_holding(
-    ctx: &Ctx<'_>,
-    input: &GlobalsInput<'_>,
-    slots: &[(u64, u64)],
-    base: u64,
-) -> Vec<u64> {
-    let mut out: Vec<u64> = slots
-        .iter()
-        .copied()
-        .filter(|&(_, pointer)| is_live_instance(ctx, input, pointer, base))
-        .map(|(slot, _)| ctx.rva(slot))
-        .collect();
-    out.sort_unstable();
-    out.dedup();
+    let mut budget = MAX_GLOBALS_SCAN_BYTES;
+    let mut out = Vec::new();
+    for index in 0..ctx.module_count() {
+        for (base, size) in ctx.module_writable(index) {
+            let size = size.min(budget);
+            if size == 0 {
+                continue;
+            }
+            budget -= size;
+            let mut offset = 0u64;
+            while offset < size {
+                let take = usize::try_from((size - offset).min(LOCAL_READ_CHUNK as u64))
+                    .unwrap_or(LOCAL_READ_CHUNK);
+                let bytes = ctx.read_scan(base + offset, take);
+                for (n, word) in bytes.chunks_exact(8).enumerate() {
+                    let value = u64::from_le_bytes(<[u8; 8]>::try_from(word).unwrap_or([0; 8]));
+                    if value >= low && value <= high && targets.contains(&value) {
+                        out.push(base + offset + (n * 8) as u64);
+                    }
+                }
+                offset += take as u64;
+            }
+        }
+    }
     out
 }
 
@@ -192,7 +227,7 @@ fn find_process_event(ctx: &Ctx<'_>, input: &GlobalsInput<'_>) -> (Option<u32>, 
                 slots.len(),
                 1,
             );
-            (Some(*index), Some(ctx.rva(*start)))
+            (Some(*index), Some(*start))
         }
         [] => {
             ctx.warn(format!(
@@ -213,15 +248,34 @@ fn find_process_event(ctx: &Ctx<'_>, input: &GlobalsInput<'_>) -> (Option<u32>, 
 
 /// Finds the globals.
 pub(crate) fn find_globals(ctx: &Ctx<'_>, input: &GlobalsInput<'_>) -> Globals {
-    let slots = ctx.pointer_slots(false);
-    let gworld = input
+    let worlds = input
         .world
-        .map(|world| slots_holding(ctx, input, &slots, world))
+        .map(|world| live_instances(ctx, input, world))
         .unwrap_or_default();
     let engine_base = input.game_engine.or(input.engine);
-    let gengine = engine_base
-        .map(|base| slots_holding(ctx, input, &slots, base))
+    let engines = engine_base
+        .map(|base| live_instances(ctx, input, base))
         .unwrap_or_default();
+    let mut gworld_slots = slots_holding(ctx, &worlds);
+    let mut gengine_slots = slots_holding(ctx, &engines);
+    // `GEngine` is a `GameEngine` in a game, an `UnrealEdEngine` in the
+    // editor: when no slot holds the first, the root `Engine` class decides.
+    if gengine_slots.is_empty()
+        && input.game_engine.is_some()
+        && let Some(engine) = input.engine
+    {
+        let any_engine = live_instances(ctx, input, engine);
+        gengine_slots = slots_holding(ctx, &any_engine);
+        if !gengine_slots.is_empty() {
+            ctx.warn(
+                "gengine: no slot holds a GameEngine; the slots listed hold instances of other Engine classes",
+            );
+        }
+    }
+    gworld_slots.sort_unstable();
+    gengine_slots.sort_unstable();
+    let gworld: Vec<u64> = gworld_slots.clone();
+    let gengine: Vec<u64> = gengine_slots.clone();
     if input.game_engine.is_none() && input.engine.is_some() {
         ctx.warn("gengine: no GameEngine class in the image; slots holding any Engine instance are listed");
     }
@@ -234,13 +288,30 @@ pub(crate) fn find_globals(ctx: &Ctx<'_>, input: &GlobalsInput<'_>) -> Globals {
             )),
         }
     }
-    let (process_event_index, process_event_rva) = find_process_event(ctx, input);
+    let (process_event_index, process_event_start) = find_process_event(ctx, input);
+    let (process_event_module, process_event_rva) =
+        match process_event_start.map(|start| ctx.location(start)) {
+            Some(Location::Rva { module, rva }) => (Some(module), Some(rva)),
+            _ => (None, None),
+        };
+    let in_module = |slots: &[u64]| -> Vec<u64> {
+        slots
+            .iter()
+            .filter_map(|&slot| match ctx.location(slot) {
+                Location::Rva { module, rva } if module == input.module => Some(rva),
+                _ => None,
+            })
+            .collect()
+    };
     Globals {
-        module: ctx.module_name.clone(),
-        gworld,
-        gengine,
+        module: input.module.clone(),
+        gworld: in_module(&gworld),
+        gengine: in_module(&gengine),
+        gworld_slots: gworld.iter().map(|&slot| ctx.location(slot)).collect(),
+        gengine_slots: gengine.iter().map(|&slot| ctx.location(slot)).collect(),
         process_event_index,
         process_event_rva,
+        process_event_module,
     }
 }
 

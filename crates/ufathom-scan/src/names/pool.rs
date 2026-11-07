@@ -96,17 +96,6 @@ impl<'c, 'a> PoolProbe<'c, 'a> {
         })
         .unwrap_or(false)
     }
-
-    /// Largest slot of any entry of the blocks parsed so far.
-    pub(crate) fn largest_slot(&self) -> u32 {
-        self.parsed
-            .borrow()
-            .values()
-            .flatten()
-            .filter_map(|(parsed, _)| parsed.starts.last().copied())
-            .max()
-            .unwrap_or(0)
-    }
 }
 
 /// The run of non-null pointers that starts at `slot`.
@@ -214,9 +203,12 @@ pub(crate) fn block_format(ctx: &Ctx<'_>, pointer: u64) -> Option<EntryFormat> {
 pub(crate) fn find_in_module(ctx: &Ctx<'_>) -> Vec<PoolCandidate> {
     let mut found = Vec::new();
     let mut seen: HashMap<u64, Option<EntryFormat>> = HashMap::new();
+    // Blocks are heap allocations: a pointer into a module is a vtable or a
+    // function, never a block, and skipping them spares most of the reads.
     for (slot, pointer) in ctx
         .pointer_slots(false)
         .into_iter()
+        .filter(|&(_, pointer)| !ctx.in_image(pointer))
         .take(MAX_CANDIDATE_SLOTS)
     {
         let format = *seen
