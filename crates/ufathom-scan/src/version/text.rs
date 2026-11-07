@@ -280,7 +280,7 @@ mod tests {
             b.engine_release.map(|v| v.to_string()).as_deref(),
             Some("5.4")
         );
-        assert_eq!(b.changelist, Some(35_576_357));
+        assert_eq!(b.changelist, Some(1_234_567));
 
         let b = parse_build_string("++UE4+Release-4.21", StringEncoding::Ascii).unwrap();
         assert_eq!(b.changelist, None);
