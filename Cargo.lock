@@ -475,9 +475,16 @@ dependencies = [
 name = "ufathom-reflect"
 version = "0.1.0"
 dependencies = [
+ "rayon",
+ "serde_json",
+ "thiserror",
+ "tracing",
  "ufathom-engine",
  "ufathom-mem",
  "ufathom-model",
+ "ufathom-scan",
+ "ufathom-testkit",
+ "ufathom-usmap",
 ]
 
 [[package]]

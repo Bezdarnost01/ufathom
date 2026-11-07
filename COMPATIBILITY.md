@@ -21,12 +21,19 @@ An entry changes only when a check was actually run and recorded here. Synthetic
 | UE 4.21 | Chunked | `TNameEntryArray` | `UProperty` | static |
 | UE 4.22 | Chunked | `TNameEntryArray` | `UProperty` | static |
 | UE 4.23, 4.24 | Chunked | `FNamePool` | `UProperty` | none |
-| UE 4.25 to 4.27 | Chunked | `FNamePool` | `FProperty` | discovery on a 4.25 editor |
+| UE 4.25 to 4.27 | Chunked | `FNamePool` | `FProperty` | oracle on a 4.25 editor |
 | UE 5.0 to 5.8 | Chunked, reordered in 5.8 | `FNamePool` | `FProperty` | static on 5.4 |
 
 `static` above means only that `inspect-exe` read the right engine version from a real executable. No dump has run on a real build yet.
 
 **Discovery on UE 4.25.** A stock UE 4.25 editor from an engine install, a modular build with editor-only data, was probed read-only from outside. With no hints and no module option, `discover` found the object array and the name pool in two different DLLs and solved the layout in about 2 seconds. Independent check against public per-version type descriptions, for an editor build: `SuperStruct` 0x38 (no `FStructBaseChain` in editor builds), `FProperty::ArrayDim` 0x40 (editor-only `FField` metadata pointer), `Offset_Internal` 0x54, `sizeof(FProperty)` 0x88, and a 12-byte `FName`. All agree. This is not yet a dump and not a shipping build.
+
+**Dump on UE 4.25, checked against engine source.** On the same editor, `build_dump` produced 3,502 classes, 1,950 structs, 1,152 enums and 6,971 functions in about 1 second, with no diagnostics. Checked against the engine's own source headers, which ufathom does not use:
+- **Members:** all 267 `UPROPERTY` declarations of `AActor`, `APawn`, `ACharacter`, `AController`, `APlayerController`, `USceneComponent`, `UWorld` and `UGameInstance` appear by name. The one textual difference is expected: the engine drops the `_DEPRECATED` suffix from reflected names.
+- **Parents:** every parent matches.
+- **Core structs:** `FVector` (0xC, three floats), `FTransform` (0x30, alignment 16, `Rotation`, `Translation`, `Scale3D` at 0, 0x10, 0x20), `FGuid` and the `ENetRole` values match.
+
+This was an external read of an editor build, not the DLL and not a shipping game.
 
 Two more UE5 executables claim 5.2.1 and 5.7.4 through the fixed version field alone, with no other evidence, so those versions are not listed as confirmed.
 
