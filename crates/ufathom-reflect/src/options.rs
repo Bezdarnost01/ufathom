@@ -21,6 +21,8 @@ pub struct ReflectOptions<'a> {
     /// Set from another thread to stop the dump. It is checked between
     /// objects in every phase; once set, [`build_dump`](crate::build_dump)
     /// returns [`ReflectError::Cancelled`](crate::ReflectError::Cancelled).
+    /// The one exception is loading the name table, a single bulk call of
+    /// `ufathom-engine` that runs to its end first.
     pub cancel: Option<&'a AtomicBool>,
     /// The dump is degraded when more than this share of the objects failed.
     /// `0.05` means 5%.
