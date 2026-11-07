@@ -268,17 +268,22 @@ struct SlotChanges<'a> {
     remaining: AtomicUsize,
 }
 
+/// Decrements `counter` if it is above zero. A plain compare-exchange loop,
+/// because the closure-based atomic update helper is renamed in newer Rust.
+fn take_one(counter: &AtomicUsize) -> bool {
+    let mut current = counter.load(Ordering::SeqCst);
+    while let Some(next) = current.checked_sub(1) {
+        match counter.compare_exchange(current, next, Ordering::SeqCst, Ordering::SeqCst) {
+            Ok(_) => return true,
+            Err(actual) => current = actual,
+        }
+    }
+    false
+}
+
 impl MemoryReader for SlotChanges<'_> {
     fn read_exact(&self, addr: Addr, buf: &mut [u8]) -> Result<(), MemError> {
-        if addr == self.at
-            && buf.len() == 8
-            && self
-                .remaining
-                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
-                    left.checked_sub(1)
-                })
-                .is_ok()
-        {
+        if addr == self.at && buf.len() == 8 && take_one(&self.remaining) {
             buf.copy_from_slice(&self.replacement.to_le_bytes());
             return Ok(());
         }
