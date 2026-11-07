@@ -48,7 +48,14 @@ fn golden_dump_compiles_one_package_at_a_time() {
         .tempdir()
         .unwrap();
     generate(&dump, &common::local_options(), dir.path()).unwrap();
-    for feature in ["core_u_object", "engine", "mods"] {
+    for feature in [
+        "core_uobject",
+        "engine",
+        "mods",
+        "main_pkg",
+        "std_pkg",
+        "core_pkg",
+    ] {
         let run = run_cargo(
             dir.path(),
             &["check", "--no-default-features", "--features", feature],

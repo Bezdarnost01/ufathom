@@ -270,7 +270,7 @@ fn everything() -> StructDef {
             PropertyType::LazyObject {
                 class: path(ENGINE, "Actor"),
             },
-            24,
+            28,
             4,
         )
         .add(
@@ -790,8 +790,78 @@ fn tricky() -> Vec<StructDef> {
             class(ENGINE, "Type", Some(&object), size, c.fields, Vec::new())
         },
     ];
+    out.extend(regressions());
     out.sort();
     out
+}
+
+/// Names that are keywords once turned into identifiers, and packages whose
+/// module names would collide with special modules.
+fn regressions() -> Vec<StructDef> {
+    let object = path(CORE, "Object");
+    let owner = path(ENGINE, "Keywords");
+    let mut c = Cursor::new(0x38);
+    c.add("Plain", PropertyType::UInt32, 4, 4);
+    let mut fields = vec![
+        // Bit-field booleans named like keywords: the setter is `set_loop`,
+        // the getter `r#loop`.
+        bit("Loop", 0x30, 0, 0x01),
+        bit("Type", 0x30, 0, 0x02),
+        bit("Self", 0x30, 0, 0x04),
+        bit("bLoop", 0x30, 0, 0x08),
+        native_bool("Match", 0x31),
+    ];
+    fields.extend(c.fields);
+    let functions = vec![
+        // Same names as the bits, and parameters named like keywords.
+        function(
+            &owner,
+            "Loop",
+            8,
+            vec![
+                param("type", 0, PropertyType::Int32, 4, 0),
+                param("self", 4, PropertyType::Int32, 4, 0),
+            ],
+        ),
+        function(
+            &owner,
+            "Type",
+            1,
+            vec![{
+                let mut b = bit("Move", 0, 0, 0x01);
+                b.flags = CPF_PARM;
+                b
+            }],
+        ),
+    ];
+    vec![
+        class(ENGINE, "Keywords", Some(&object), 0x40, fields, functions),
+        // Packages named like special modules.
+        class(
+            "/Script/Main",
+            "Entry",
+            Some(&object),
+            0x38,
+            vec![field("Value", 0x30, PropertyType::UInt32, 4)],
+            Vec::new(),
+        ),
+        class(
+            "/Script/Std",
+            "Entry",
+            Some(&object),
+            0x38,
+            vec![field("Value", 0x30, PropertyType::UInt32, 4)],
+            Vec::new(),
+        ),
+        class(
+            "/Script/Core",
+            "Entry",
+            Some(&object),
+            0x38,
+            vec![field("Value", 0x30, PropertyType::UInt32, 4)],
+            Vec::new(),
+        ),
+    ]
 }
 
 /// The hand-written dump behind the golden files.
@@ -801,7 +871,31 @@ pub fn golden_dump() -> Dump {
     let actor = path(ENGINE, "Actor");
     let mut structs = vec![
         class(CORE, "Object", None, 0x30, Vec::new(), Vec::new()),
-        class(CORE, "Class", Some(&object), 0x38, Vec::new(), Vec::new()),
+        class(CORE, "Field", Some(&object), 0x38, Vec::new(), Vec::new()),
+        class(
+            CORE,
+            "Struct",
+            Some(&path(CORE, "Field")),
+            0x70,
+            Vec::new(),
+            Vec::new(),
+        ),
+        class(
+            CORE,
+            "Class",
+            Some(&path(CORE, "Struct")),
+            0x130,
+            Vec::new(),
+            Vec::new(),
+        ),
+        class(
+            CORE,
+            "Function",
+            Some(&path(CORE, "Struct")),
+            0xF0,
+            Vec::new(),
+            Vec::new(),
+        ),
         script_struct(
             CORE,
             "Vector",

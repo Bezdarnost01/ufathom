@@ -73,6 +73,7 @@ fn cargo() -> PathBuf {
 pub struct CargoRun {
     pub elapsed: Duration,
     pub stdout: String,
+    pub stderr: String,
 }
 
 /// Runs `cargo <args>` on the crate in `dir`, offline, with a target directory
@@ -115,6 +116,7 @@ pub fn run_cargo(dir: &Path, args: &[&str]) -> CargoRun {
     CargoRun {
         elapsed,
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
     }
 }
 
@@ -128,6 +130,13 @@ pub fn generate_and_check(dump: &Dump, label: &str) -> (tempfile::TempDir, GenRe
         .expect("temp dir");
     let report = generate(dump, &local_options(), dir.path()).expect("generate");
     let run = run_cargo(dir.path(), &["check", "--all-targets"]);
+    // The generated crate must be warning-free too.
+    assert!(
+        !run.stderr.contains("warning:"),
+        "warnings in the generated crate {label}:
+{}",
+        run.stderr
+    );
     (dir, report, run.elapsed)
 }
 

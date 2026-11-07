@@ -211,7 +211,7 @@ impl TypeTable {
                 }
             }
             PropertyType::WeakObject { .. } => self.leaf(&format!("{RT}::FWeakObjectPtr"), 8, 4),
-            PropertyType::LazyObject { .. } => self.leaf(&format!("{RT}::FLazyObjectPtr"), 24, 4),
+            PropertyType::LazyObject { .. } => self.leaf(&format!("{RT}::FLazyObjectPtr"), 28, 4),
             PropertyType::SoftObject { .. } | PropertyType::SoftClass { .. } => {
                 let path = repr_c(&[fname, (16, 8)]);
                 let (size, align) = repr_c(&[(8, 4), (4, 4), path]);

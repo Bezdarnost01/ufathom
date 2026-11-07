@@ -5,7 +5,7 @@ use std::cell::RefCell;
 
 use ufathom_runtime::mem::Snapshot;
 use ufathom_runtime::{CallError, Executor, IsA, ObjectRef, Ptr, UObjectBase};
-use ufathom_sdk::core_u_object::FVector;
+use ufathom_sdk::core_uobject::{FVector, UObject};
 use ufathom_sdk::engine::{AActor, APawn, EMode};
 
 const BASE: u64 = 0x7000_0000;
@@ -13,6 +13,12 @@ const BASE: u64 = 0x7000_0000;
 /// A pawn: health 75.5, `bCanTick` set, mode flying, location (1, 2, 3), speed 600.
 fn pawn_bytes() -> Vec<u8> {
     let mut b = vec![0u8; 0x48];
+    // The `UObject` header, from the layout: index, class, name, outer.
+    b[0x0C..0x10].copy_from_slice(&77i32.to_le_bytes());
+    b[0x10..0x18].copy_from_slice(&0x1234u64.to_le_bytes());
+    b[0x18..0x1C].copy_from_slice(&5u32.to_le_bytes());
+    b[0x1C..0x20].copy_from_slice(&2u32.to_le_bytes());
+    b[0x20..0x28].copy_from_slice(&0x5678u64.to_le_bytes());
     b[0x28..0x2C].copy_from_slice(&75.5f32.to_le_bytes());
     b[0x2C] = 0b10;
     b[0x2D] = 1;
@@ -57,6 +63,19 @@ fn fields_are_read_through_object_ref_and_field_ref() {
 }
 
 #[test]
+fn the_uobject_header_comes_from_the_layout() {
+    let mem = memory();
+    let pawn = ObjectRef::<APawn>::new(&mem, BASE);
+    assert_eq!(pawn.get(UObject::INTERNAL_INDEX).unwrap(), 77);
+    assert_eq!(pawn.get(UObject::CLASS_PRIVATE).unwrap().addr(), 0x1234);
+    assert_eq!(pawn.get(UObject::OUTER_PRIVATE).unwrap().addr(), 0x5678);
+    let name = pawn.get(UObject::NAME_PRIVATE).unwrap();
+    assert_eq!((name.comparison_index, name.number), (5, 2));
+    let whole: APawn = pawn.read().unwrap();
+    assert_eq!(whole.internal_index, 77);
+}
+
+#[test]
 fn unreadable_address_is_an_error() {
     let mem = memory();
     assert!(ObjectRef::<APawn>::new(&mem, 0x10).read().is_err());
@@ -86,8 +105,8 @@ fn is_a_covers_self_and_ancestors() {
     fn needs<T: IsA<U>, U>() {}
     needs::<APawn, APawn>();
     needs::<APawn, AActor>();
-    needs::<APawn, ufathom_sdk::core_u_object::UObject>();
-    needs::<AActor, ufathom_sdk::core_u_object::UObject>();
+    needs::<APawn, ufathom_sdk::core_uobject::UObject>();
+    needs::<AActor, ufathom_sdk::core_uobject::UObject>();
 }
 
 struct Recorder {

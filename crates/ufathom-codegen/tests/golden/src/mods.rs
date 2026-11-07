@@ -35,7 +35,7 @@ unsafe impl rt::IsA<ABP_Thing_C> for ABP_Thing_C {}
 unsafe impl rt::IsA<crate::engine::AActor> for ABP_Thing_C {}
 
 // SAFETY: the parent layout is the prefix of this type: embedded, or checked by a size assertion.
-unsafe impl rt::IsA<crate::core_u_object::UObject> for ABP_Thing_C {}
+unsafe impl rt::IsA<crate::core_uobject::UObject> for ABP_Thing_C {}
 
 impl ::core::ops::Deref for ABP_Thing_C {
     type Target = crate::engine::AActor;
@@ -60,7 +60,7 @@ impl ABP_Thing_C {
     /// runs nothing itself. `this` must be the address of a live object of this
     /// class. Memory the engine allocates for return values or out parameters
     /// (strings, arrays) is not freed here.
-    pub fn get_home(this: rt::Ptr<Self>, exec: &impl rt::Executor) -> Result<crate::core_u_object::FVector, rt::CallError> {
+    pub fn get_home(this: rt::Ptr<Self>, exec: &impl rt::Executor) -> Result<crate::core_uobject::FVector, rt::CallError> {
         let mut params: ABP_Thing_C_GetHome_Params = rt::zeroed();
         exec.process_event(this.cast(), "/Game/Mods.BP_Thing_C:GetHome", rt::as_bytes_mut(&mut params))?;
         Ok(params.return_value)
@@ -74,7 +74,7 @@ impl ABP_Thing_C {
 #[derive(Clone, Copy, Debug)]
 pub struct ABP_Thing_C_GetHome_Params {
     /// Offset 0x0, `Struct</Script/CoreUObject.Vector>`.
-    pub return_value: crate::core_u_object::FVector,
+    pub return_value: crate::core_uobject::FVector,
 }
 
 // SAFETY: every field is `Pod`, the type is `Copy`, and the explicit padding

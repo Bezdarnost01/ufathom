@@ -54,8 +54,9 @@ pub(crate) fn keyword_safe(word: &str) -> String {
     }
 }
 
-/// A snake case field, parameter or function name.
-pub(crate) fn snake(raw: &str) -> String {
+/// Snake case of a sanitized name, never escaped. Build compound names from
+/// this (`set_` + name) and escape only the finished identifier.
+pub(crate) fn snake_raw(raw: &str) -> String {
     let clean = sanitize(raw);
     let mut out = clean.to_snake_case();
     if out.is_empty() {
@@ -64,11 +65,16 @@ pub(crate) fn snake(raw: &str) -> String {
     if out.starts_with(|c: char| c.is_ascii_digit()) {
         out.insert(0, '_');
     }
-    keyword_safe(&out)
+    out
 }
 
-/// An upper snake case constant name.
-pub(crate) fn shouty(raw: &str) -> String {
+/// A snake case field, parameter or function name.
+pub(crate) fn snake(raw: &str) -> String {
+    keyword_safe(&snake_raw(raw))
+}
+
+/// Upper snake case of a sanitized name, never escaped.
+pub(crate) fn shouty_raw(raw: &str) -> String {
     let clean = sanitize(raw);
     let mut out = clean.to_shouty_snake_case();
     if out.is_empty() {
@@ -77,7 +83,12 @@ pub(crate) fn shouty(raw: &str) -> String {
     if out.starts_with(|c: char| c.is_ascii_digit()) {
         out.insert(0, '_');
     }
-    keyword_safe(&out)
+    out
+}
+
+/// An upper snake case constant name.
+pub(crate) fn shouty(raw: &str) -> String {
+    keyword_safe(&shouty_raw(raw))
 }
 
 /// A name that keeps its case: used for types and enumerators.
@@ -85,18 +96,38 @@ pub(crate) fn plain(raw: &str) -> String {
     keyword_safe(&sanitize(raw))
 }
 
+/// Module names that would collide with a special module, a well-known crate
+/// or something the generated code imports. They get a `_pkg` suffix.
+const RESERVED_MODULES: &[&str] = &[
+    "main",
+    "lib",
+    "mod",
+    "std",
+    "core",
+    "alloc",
+    "test",
+    "proc_macro",
+    "rt",
+    "ufathom_runtime",
+    "default",
+    "all",
+];
+
+/// Words that stay in one piece when a package name is split into snake case.
+const WHOLE_WORDS: &[(&str, &str)] = &[("UObject", "Uobject")];
+
 /// A module or feature name: snake case, never a keyword (a trailing `_`
-/// replaces the raw form, since a feature name cannot be raw).
+/// replaces the raw form, since a feature name cannot be raw) and never a
+/// reserved name (a `_pkg` suffix).
 pub(crate) fn module_name(raw: &str) -> String {
-    let clean = sanitize(raw);
-    let mut out = clean.to_snake_case();
-    if out.is_empty() {
-        out = clean.to_lowercase();
+    let mut text = sanitize(raw);
+    for (word, whole) in WHOLE_WORDS {
+        text = text.replace(word, whole);
     }
-    if out.starts_with(|c: char| c.is_ascii_digit()) {
-        out.insert(0, '_');
-    }
-    if KEYWORDS.contains(&out.as_str()) || out == "_" {
+    let mut out = snake_raw(&text);
+    if RESERVED_MODULES.contains(&out.as_str()) {
+        out.push_str("_pkg");
+    } else if KEYWORDS.contains(&out.as_str()) || out == "_" {
         out.push('_');
     }
     out
@@ -170,7 +201,31 @@ mod tests {
         assert_eq!(snake("gen"), "r#gen");
         assert_eq!(plain("Self"), "Self_");
         assert_eq!(module_name("Type"), "type_");
-        assert_eq!(module_name("Core"), "core");
+        assert_eq!(module_name("Core"), "core_pkg");
+    }
+
+    #[test]
+    fn reserved_and_known_module_names() {
+        assert_eq!(module_name("Main"), "main_pkg");
+        assert_eq!(module_name("Lib"), "lib_pkg");
+        assert_eq!(module_name("Std"), "std_pkg");
+        assert_eq!(module_name("Alloc"), "alloc_pkg");
+        assert_eq!(module_name("Rt"), "rt_pkg");
+        assert_eq!(module_name("Self"), "self_");
+        assert_eq!(module_name("Crate"), "crate_");
+        assert_eq!(module_name("CoreUObject"), "core_uobject");
+        assert_eq!(module_name("Engine"), "engine");
+        assert_eq!(module_name("AIModule"), "ai_module");
+    }
+
+    #[test]
+    fn compound_names_use_the_unescaped_word() {
+        // `set_` + the raw word is a valid identifier; escaping applies last.
+        assert_eq!(snake("Loop"), "r#loop");
+        assert_eq!(snake_raw("Loop"), "loop");
+        assert_eq!(format!("set_{}", snake_raw("bLoop")), "set_b_loop");
+        assert_eq!(format!("set_{}", snake_raw("Loop")), "set_loop");
+        assert_eq!(shouty("Loop"), "LOOP");
     }
 
     #[test]

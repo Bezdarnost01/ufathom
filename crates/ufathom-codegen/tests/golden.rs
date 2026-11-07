@@ -99,7 +99,7 @@ fn report_lists_every_degradation_case() {
     ] {
         assert!(reasons.contains_key(&reason), "no {reason} in {reasons:?}");
     }
-    assert_eq!(report.packages, 3);
+    assert_eq!(report.packages, 6);
     assert!(report.functions >= 7);
     assert_eq!(report.functions_skipped, 1);
     assert!(report.degraded_fields() > 10);

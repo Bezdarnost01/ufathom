@@ -23,8 +23,17 @@ pub type FName = ::ufathom_runtime::FName12;
 #[cfg(feature = "mods")]
 pub mod mods;
 
-#[cfg(feature = "core_u_object")]
-pub mod core_u_object;
+#[cfg(feature = "core_pkg")]
+pub mod core_pkg;
+
+#[cfg(feature = "core_uobject")]
+pub mod core_uobject;
 
 #[cfg(feature = "engine")]
 pub mod engine;
+
+#[cfg(feature = "main_pkg")]
+pub mod main_pkg;
+
+#[cfg(feature = "std_pkg")]
+pub mod std_pkg;

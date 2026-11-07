@@ -10,10 +10,13 @@ ufathom-runtime = { version = "0.1.0" }
 
 [features]
 default = ["all"]
-all = ["mods", "core_u_object", "engine"]
-mods = ["core_u_object", "engine"]
-core_u_object = []
-engine = ["core_u_object"]
+all = ["mods", "core_pkg", "core_uobject", "engine", "main_pkg", "std_pkg"]
+mods = ["core_uobject", "engine"]
+core_pkg = ["core_uobject"]
+core_uobject = []
+engine = ["core_uobject"]
+main_pkg = ["core_uobject"]
+std_pkg = ["core_uobject"]
 
 # This crate is its own workspace, so it builds from any directory.
 [workspace]

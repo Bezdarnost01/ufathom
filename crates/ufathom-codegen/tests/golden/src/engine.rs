@@ -81,7 +81,7 @@ const _: () = assert!(::core::mem::size_of::<EWide>() == ::core::mem::size_of::<
 #[derive(Clone, Copy, Debug)]
 pub struct AActor {
     /// The parent class.
-    pub base: crate::core_u_object::UObject,
+    pub base: crate::core_uobject::UObject,
     /// Offset 0x30, `float`.
     pub health: f32,
     /// Storage of the bit-field booleans `bCanBeDamaged`, `bHidden`, `bReplicates` at 0x34.
@@ -91,9 +91,9 @@ pub struct AActor {
     /// Offset 0x36, `bool(byte 0, byte_mask 0xff, field_mask 0xff, size 1)`.
     pub b_native: rt::UBool,
     /// Offset 0x37, `Byte</Script/CoreUObject.ENetRole>`.
-    pub mode: crate::core_u_object::ENetRole,
+    pub mode: crate::core_uobject::ENetRole,
     /// Offset 0x38, `Struct</Script/CoreUObject.Vector>`.
-    pub location: crate::core_u_object::FVector,
+    pub location: crate::core_uobject::FVector,
     /// Padding at 0x44.
     pub _pad_0x0044: [u8; 4],
 }
@@ -117,17 +117,17 @@ const _: () = {
 unsafe impl rt::IsA<AActor> for AActor {}
 
 // SAFETY: the parent layout is the prefix of this type: embedded, or checked by a size assertion.
-unsafe impl rt::IsA<crate::core_u_object::UObject> for AActor {}
+unsafe impl rt::IsA<crate::core_uobject::UObject> for AActor {}
 
 impl ::core::ops::Deref for AActor {
-    type Target = crate::core_u_object::UObject;
-    fn deref(&self) -> &crate::core_u_object::UObject {
+    type Target = crate::core_uobject::UObject;
+    fn deref(&self) -> &crate::core_uobject::UObject {
         &self.base
     }
 }
 
 impl ::core::ops::DerefMut for AActor {
-    fn deref_mut(&mut self) -> &mut crate::core_u_object::UObject {
+    fn deref_mut(&mut self) -> &mut crate::core_uobject::UObject {
         &mut self.base
     }
 }
@@ -152,10 +152,10 @@ impl AActor {
     pub const B_NATIVE: rt::FieldRef<Self, rt::UBool> = rt::FieldRef::new(0x36);
 
     /// Offset of `Mode`: Offset 0x37, `Byte</Script/CoreUObject.ENetRole>`.
-    pub const MODE: rt::FieldRef<Self, crate::core_u_object::ENetRole> = rt::FieldRef::new(0x37);
+    pub const MODE: rt::FieldRef<Self, crate::core_uobject::ENetRole> = rt::FieldRef::new(0x37);
 
     /// Offset of `Location`: Offset 0x38, `Struct</Script/CoreUObject.Vector>`.
-    pub const LOCATION: rt::FieldRef<Self, crate::core_u_object::FVector> = rt::FieldRef::new(0x38);
+    pub const LOCATION: rt::FieldRef<Self, crate::core_uobject::FVector> = rt::FieldRef::new(0x38);
 
     /// Bit `bCanBeDamaged`: byte 0x34 of the owner, mask 0x02.
     pub fn b_can_be_damaged(&self) -> bool {
@@ -231,7 +231,7 @@ impl AActor {
     /// runs nothing itself. `this` must be the address of a live object of this
     /// class. Memory the engine allocates for return values or out parameters
     /// (strings, arrays) is not freed here.
-    pub fn get_location(this: rt::Ptr<Self>, exec: &impl rt::Executor) -> Result<crate::core_u_object::FVector, rt::CallError> {
+    pub fn get_location(this: rt::Ptr<Self>, exec: &impl rt::Executor) -> Result<crate::core_uobject::FVector, rt::CallError> {
         let mut params: AActor_GetLocation_Params = rt::zeroed();
         exec.process_event(this.cast(), "/Script/Engine.Actor:GetLocation", rt::as_bytes_mut(&mut params))?;
         Ok(params.return_value)
@@ -294,7 +294,7 @@ impl AActor {
     /// runs nothing itself. `this` must be the address of a live object of this
     /// class. Memory the engine allocates for return values or out parameters
     /// (strings, arrays) is not freed here.
-    pub fn teleport_to(this: rt::Ptr<Self>, exec: &impl rt::Executor, target: crate::core_u_object::FVector, exec_1: i32, this_1: i32, params_1: i32, b_sweep: bool) -> Result<i32, rt::CallError> {
+    pub fn teleport_to(this: rt::Ptr<Self>, exec: &impl rt::Executor, target: crate::core_uobject::FVector, exec_1: i32, this_1: i32, params_1: i32, b_sweep: bool) -> Result<i32, rt::CallError> {
         let mut params: AActor_TeleportTo_Params = rt::zeroed();
         params.target = target;
         params.exec = exec_1;
@@ -333,7 +333,7 @@ const _: () = {
 #[derive(Clone, Copy, Debug)]
 pub struct AActor_GetLocation_Params {
     /// Offset 0x0, `Struct</Script/CoreUObject.Vector>`.
-    pub return_value: crate::core_u_object::FVector,
+    pub return_value: crate::core_uobject::FVector,
 }
 
 // SAFETY: every field is `Pod`, the type is `Copy`, and the explicit padding
@@ -443,7 +443,7 @@ const _: () = {
 #[derive(Clone, Copy, Debug)]
 pub struct AActor_TeleportTo_Params {
     /// Offset 0x0, `Struct</Script/CoreUObject.Vector>`.
-    pub target: crate::core_u_object::FVector,
+    pub target: crate::core_uobject::FVector,
     /// Offset 0xc, `int32`.
     pub exec: i32,
     /// Offset 0x10, `int32`.
@@ -497,7 +497,7 @@ impl AActor_TeleportTo_Params {
 #[derive(Clone, Copy, Debug)]
 pub struct UBitShare {
     /// The parent class.
-    pub base: crate::core_u_object::UObject,
+    pub base: crate::core_uobject::UObject,
     /// Storage of the bit-field booleans `bFirst`, `bSecond`, `bThird` at 0x30.
     pub _bits_0x0030: [u8; 1],
     /// Storage of the bit-field booleans `bNext` at 0x31.
@@ -526,17 +526,17 @@ const _: () = {
 unsafe impl rt::IsA<UBitShare> for UBitShare {}
 
 // SAFETY: the parent layout is the prefix of this type: embedded, or checked by a size assertion.
-unsafe impl rt::IsA<crate::core_u_object::UObject> for UBitShare {}
+unsafe impl rt::IsA<crate::core_uobject::UObject> for UBitShare {}
 
 impl ::core::ops::Deref for UBitShare {
-    type Target = crate::core_u_object::UObject;
-    fn deref(&self) -> &crate::core_u_object::UObject {
+    type Target = crate::core_uobject::UObject;
+    fn deref(&self) -> &crate::core_uobject::UObject {
         &self.base
     }
 }
 
 impl ::core::ops::DerefMut for UBitShare {
-    fn deref_mut(&mut self) -> &mut crate::core_u_object::UObject {
+    fn deref_mut(&mut self) -> &mut crate::core_uobject::UObject {
         &mut self.base
     }
 }
@@ -680,7 +680,7 @@ impl FCycleB {
 #[derive(Clone, Copy, Debug)]
 pub struct UDup {
     /// The parent class.
-    pub base: crate::core_u_object::UObject,
+    pub base: crate::core_uobject::UObject,
     /// Offset 0x30, `uint32`.
     pub a: u32,
     /// Padding at 0x34.
@@ -701,17 +701,17 @@ const _: () = {
 unsafe impl rt::IsA<UDup> for UDup {}
 
 // SAFETY: the parent layout is the prefix of this type: embedded, or checked by a size assertion.
-unsafe impl rt::IsA<crate::core_u_object::UObject> for UDup {}
+unsafe impl rt::IsA<crate::core_uobject::UObject> for UDup {}
 
 impl ::core::ops::Deref for UDup {
-    type Target = crate::core_u_object::UObject;
-    fn deref(&self) -> &crate::core_u_object::UObject {
+    type Target = crate::core_uobject::UObject;
+    fn deref(&self) -> &crate::core_uobject::UObject {
         &self.base
     }
 }
 
 impl ::core::ops::DerefMut for UDup {
-    fn deref_mut(&mut self) -> &mut crate::core_u_object::UObject {
+    fn deref_mut(&mut self) -> &mut crate::core_uobject::UObject {
         &mut self.base
     }
 }
@@ -795,12 +795,12 @@ impl FEmptyStruct {
 
 /// Class `/Script/Engine.Everything`.
 ///
-/// Size 0x2f0, alignment 8.
+/// Size 0x300, alignment 8.
 #[repr(C, align(8))]
 #[derive(Clone, Copy, Debug)]
 pub struct UEverything {
     /// The parent class.
-    pub base: crate::core_u_object::UObject,
+    pub base: crate::core_uobject::UObject,
     /// Offset 0x30, `int8`.
     pub int8_value: i8,
     /// Padding at 0x31.
@@ -842,71 +842,73 @@ pub struct UEverything {
     /// Offset 0xa0, `Object</Script/Gone.Gone>`.
     pub missing_ref: rt::Ptr<rt::UObjectBase>,
     /// Offset 0xa8, `Class</Script/CoreUObject.Class, meta /Script/Engine.Actor>`.
-    pub class_ref: rt::Ptr<crate::core_u_object::UClass>,
+    pub class_ref: rt::Ptr<crate::core_uobject::UClass>,
     /// Offset 0xb0, `WeakObject</Script/Engine.Actor>`.
     pub weak_ref: rt::FWeakObjectPtr,
     /// Offset 0xb8, `LazyObject</Script/Engine.Actor>`.
     pub lazy_ref: rt::FLazyObjectPtr,
-    /// Offset 0xd0, `SoftObject</Script/Engine.Actor>`.
+    /// Padding at 0xd4.
+    pub _pad_0x00d4: [u8; 4],
+    /// Offset 0xd8, `SoftObject</Script/Engine.Actor>`.
     pub soft_ref: rt::FSoftObjectPtr<crate::FName>,
-    /// Offset 0x100, `SoftClass</Script/Engine.Actor>`.
+    /// Offset 0x108, `SoftClass</Script/Engine.Actor>`.
     pub soft_class_ref: rt::FSoftObjectPtr<crate::FName>,
-    /// Offset 0x130, `Interface</Script/Engine.Actor>`.
+    /// Offset 0x138, `Interface</Script/Engine.Actor>`.
     pub interface_ref: rt::FScriptInterface<crate::engine::AActor>,
-    /// Offset 0x140, `Struct</Script/CoreUObject.Vector>`.
-    pub position: crate::core_u_object::FVector,
-    /// Offset 0x14c, `Struct</Script/CoreUObject.Guid>`.
-    pub id: crate::core_u_object::FGuid,
-    /// Padding at 0x15c.
-    pub _pad_0x015c: [u8; 4],
-    /// Offset 0x160, `Struct</Script/CoreUObject.Transform>`. Not exact: alignment-too-low: type needs alignment 16, the owner has 8.
+    /// Offset 0x148, `Struct</Script/CoreUObject.Vector>`.
+    pub position: crate::core_uobject::FVector,
+    /// Offset 0x154, `Struct</Script/CoreUObject.Guid>`.
+    pub id: crate::core_uobject::FGuid,
+    /// Padding at 0x164.
+    pub _pad_0x0164: [u8; 12],
+    /// Offset 0x170, `Struct</Script/CoreUObject.Transform>`. Not exact: alignment-too-low: type needs alignment 16, the owner has 8.
     pub pose: [u8; 32],
-    /// Offset 0x180, `Array<int32>`.
+    /// Offset 0x190, `Array<int32>`.
     pub numbers: rt::TArray<i32>,
-    /// Offset 0x190, `Array<Object</Script/Engine.Actor>>`.
+    /// Offset 0x1a0, `Array<Object</Script/Engine.Actor>>`.
     pub actors: rt::TArray<rt::Ptr<crate::engine::AActor>>,
-    /// Offset 0x1a0, `Array<Unknown(FooProperty)>`.
+    /// Offset 0x1b0, `Array<Unknown(FooProperty)>`.
     pub unresolved: rt::TArray<()>,
-    /// Offset 0x1b0, `Set<FName>`.
+    /// Offset 0x1c0, `Set<FName>`.
     pub tags: rt::TSet<crate::FName>,
-    /// Offset 0x200, `Map<FName, Struct</Script/CoreUObject.Vector>>`.
-    pub table: rt::TMap<crate::FName, crate::core_u_object::FVector>,
-    /// Offset 0x250, `Enum</Script/CoreUObject.ENetRole: uint8>`.
-    pub role: crate::core_u_object::ENetRole,
-    /// Offset 0x251, `Byte</Script/CoreUObject.ENetRole>`.
-    pub role_byte: crate::core_u_object::ENetRole,
-    /// Padding at 0x252.
-    pub _pad_0x0252: [u8; 2],
-    /// Offset 0x254, `Enum</Script/CoreUObject.ESigned: int32>`.
-    pub signed: crate::core_u_object::ESigned,
-    /// Offset 0x258, `Enum</Script/Gone.EGone: uint16>`.
+    /// Offset 0x210, `Map<FName, Struct</Script/CoreUObject.Vector>>`.
+    pub table: rt::TMap<crate::FName, crate::core_uobject::FVector>,
+    /// Offset 0x260, `Enum</Script/CoreUObject.ENetRole: uint8>`.
+    pub role: crate::core_uobject::ENetRole,
+    /// Offset 0x261, `Byte</Script/CoreUObject.ENetRole>`.
+    pub role_byte: crate::core_uobject::ENetRole,
+    /// Padding at 0x262.
+    pub _pad_0x0262: [u8; 2],
+    /// Offset 0x264, `Enum</Script/CoreUObject.ESigned: int32>`.
+    pub signed: crate::core_uobject::ESigned,
+    /// Offset 0x268, `Enum</Script/Gone.EGone: uint16>`.
     pub gone_enum: u16,
-    /// Offset 0x25a, `Byte</Script/Gone.EGone>`.
+    /// Offset 0x26a, `Byte</Script/Gone.EGone>`.
     pub gone_byte: u8,
-    /// Padding at 0x25b.
-    pub _pad_0x025b: [u8; 1],
-    /// Offset 0x25c, `Delegate</Script/Engine.Everything:OnDone__Sig>`.
+    /// Padding at 0x26b.
+    pub _pad_0x026b: [u8; 1],
+    /// Offset 0x26c, `Delegate</Script/Engine.Everything:OnDone__Sig>`.
     pub on_done: rt::FScriptDelegate<crate::FName>,
-    /// Offset 0x270, `MulticastInlineDelegate</Script/Engine.Everything:OnMany__Sig>`.
+    /// Offset 0x280, `MulticastInlineDelegate</Script/Engine.Everything:OnMany__Sig>`.
     pub on_many: rt::FMulticastInlineDelegate<crate::FName>,
-    /// Offset 0x280, `MulticastSparseDelegate</Script/Engine.Everything:OnSparse__Sig>`.
+    /// Offset 0x290, `MulticastSparseDelegate</Script/Engine.Everything:OnSparse__Sig>`.
     pub on_sparse: rt::FMulticastSparseDelegate,
-    /// Padding at 0x281.
-    pub _pad_0x0281: [u8; 7],
-    /// Offset 0x288, `FieldPath`. Not exact: no-runtime-view: the runtime has no view of FieldPath.
+    /// Padding at 0x291.
+    pub _pad_0x0291: [u8; 7],
+    /// Offset 0x298, `FieldPath`. Not exact: no-runtime-view: the runtime has no view of FieldPath.
     pub path_value: [u8; 32],
-    /// Offset 0x2a8, `Optional<int32>`. Not exact: no-runtime-view: the runtime has no view of Optional<int32>.
+    /// Offset 0x2b8, `Optional<int32>`. Not exact: no-runtime-view: the runtime has no view of Optional<int32>.
     pub maybe_int: [u8; 8],
-    /// Offset 0x2b0, `Unknown(MysteryProperty)`. Not exact: unknown-type: property class MysteryProperty is not decoded.
+    /// Offset 0x2c0, `Unknown(MysteryProperty)`. Not exact: unknown-type: property class MysteryProperty is not decoded.
     pub mystery: [u8; 16],
-    /// Offset 0x2c0, `int32`.
+    /// Offset 0x2d0, `int32`.
     pub grid: [i32; 4],
-    /// Offset 0x2d0, `Struct</Script/CoreUObject.Vector>`.
-    pub corners: [crate::core_u_object::FVector; 2],
-    /// Storage of the bit-field booleans `bFirst`, `bSecond` at 0x2e8.
-    pub _bits_0x02e8: [u8; 1],
-    /// Padding at 0x2e9.
-    pub _pad_0x02e9: [u8; 7],
+    /// Offset 0x2e0, `Struct</Script/CoreUObject.Vector>`.
+    pub corners: [crate::core_uobject::FVector; 2],
+    /// Storage of the bit-field booleans `bFirst`, `bSecond` at 0x2f8.
+    pub _bits_0x02f8: [u8; 1],
+    /// Padding at 0x2f9.
+    pub _pad_0x02f9: [u8; 7],
 }
 
 // SAFETY: every field is `Pod`, the type is `Copy`, and the explicit padding
@@ -914,7 +916,7 @@ pub struct UEverything {
 unsafe impl rt::Pod for UEverything {}
 
 const _: () = {
-    assert!(::core::mem::size_of::<UEverything>() == 0x2f0);
+    assert!(::core::mem::size_of::<UEverything>() == 0x300);
     assert!(::core::mem::align_of::<UEverything>() == 8);
     assert!(::core::mem::offset_of!(UEverything, int8_value) == 0x30);
     assert!(::core::mem::offset_of!(UEverything, int16_value) == 0x32);
@@ -935,48 +937,48 @@ const _: () = {
     assert!(::core::mem::offset_of!(UEverything, class_ref) == 0xa8);
     assert!(::core::mem::offset_of!(UEverything, weak_ref) == 0xb0);
     assert!(::core::mem::offset_of!(UEverything, lazy_ref) == 0xb8);
-    assert!(::core::mem::offset_of!(UEverything, soft_ref) == 0xd0);
-    assert!(::core::mem::offset_of!(UEverything, soft_class_ref) == 0x100);
-    assert!(::core::mem::offset_of!(UEverything, interface_ref) == 0x130);
-    assert!(::core::mem::offset_of!(UEverything, position) == 0x140);
-    assert!(::core::mem::offset_of!(UEverything, id) == 0x14c);
-    assert!(::core::mem::offset_of!(UEverything, pose) == 0x160);
-    assert!(::core::mem::offset_of!(UEverything, numbers) == 0x180);
-    assert!(::core::mem::offset_of!(UEverything, actors) == 0x190);
-    assert!(::core::mem::offset_of!(UEverything, unresolved) == 0x1a0);
-    assert!(::core::mem::offset_of!(UEverything, tags) == 0x1b0);
-    assert!(::core::mem::offset_of!(UEverything, table) == 0x200);
-    assert!(::core::mem::offset_of!(UEverything, role) == 0x250);
-    assert!(::core::mem::offset_of!(UEverything, role_byte) == 0x251);
-    assert!(::core::mem::offset_of!(UEverything, signed) == 0x254);
-    assert!(::core::mem::offset_of!(UEverything, gone_enum) == 0x258);
-    assert!(::core::mem::offset_of!(UEverything, gone_byte) == 0x25a);
-    assert!(::core::mem::offset_of!(UEverything, on_done) == 0x25c);
-    assert!(::core::mem::offset_of!(UEverything, on_many) == 0x270);
-    assert!(::core::mem::offset_of!(UEverything, on_sparse) == 0x280);
-    assert!(::core::mem::offset_of!(UEverything, path_value) == 0x288);
-    assert!(::core::mem::offset_of!(UEverything, maybe_int) == 0x2a8);
-    assert!(::core::mem::offset_of!(UEverything, mystery) == 0x2b0);
-    assert!(::core::mem::offset_of!(UEverything, grid) == 0x2c0);
-    assert!(::core::mem::offset_of!(UEverything, corners) == 0x2d0);
-    assert!(::core::mem::offset_of!(UEverything, _bits_0x02e8) == 0x2e8);
+    assert!(::core::mem::offset_of!(UEverything, soft_ref) == 0xd8);
+    assert!(::core::mem::offset_of!(UEverything, soft_class_ref) == 0x108);
+    assert!(::core::mem::offset_of!(UEverything, interface_ref) == 0x138);
+    assert!(::core::mem::offset_of!(UEverything, position) == 0x148);
+    assert!(::core::mem::offset_of!(UEverything, id) == 0x154);
+    assert!(::core::mem::offset_of!(UEverything, pose) == 0x170);
+    assert!(::core::mem::offset_of!(UEverything, numbers) == 0x190);
+    assert!(::core::mem::offset_of!(UEverything, actors) == 0x1a0);
+    assert!(::core::mem::offset_of!(UEverything, unresolved) == 0x1b0);
+    assert!(::core::mem::offset_of!(UEverything, tags) == 0x1c0);
+    assert!(::core::mem::offset_of!(UEverything, table) == 0x210);
+    assert!(::core::mem::offset_of!(UEverything, role) == 0x260);
+    assert!(::core::mem::offset_of!(UEverything, role_byte) == 0x261);
+    assert!(::core::mem::offset_of!(UEverything, signed) == 0x264);
+    assert!(::core::mem::offset_of!(UEverything, gone_enum) == 0x268);
+    assert!(::core::mem::offset_of!(UEverything, gone_byte) == 0x26a);
+    assert!(::core::mem::offset_of!(UEverything, on_done) == 0x26c);
+    assert!(::core::mem::offset_of!(UEverything, on_many) == 0x280);
+    assert!(::core::mem::offset_of!(UEverything, on_sparse) == 0x290);
+    assert!(::core::mem::offset_of!(UEverything, path_value) == 0x298);
+    assert!(::core::mem::offset_of!(UEverything, maybe_int) == 0x2b8);
+    assert!(::core::mem::offset_of!(UEverything, mystery) == 0x2c0);
+    assert!(::core::mem::offset_of!(UEverything, grid) == 0x2d0);
+    assert!(::core::mem::offset_of!(UEverything, corners) == 0x2e0);
+    assert!(::core::mem::offset_of!(UEverything, _bits_0x02f8) == 0x2f8);
 };
 
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UEverything> for UEverything {}
 
 // SAFETY: the parent layout is the prefix of this type: embedded, or checked by a size assertion.
-unsafe impl rt::IsA<crate::core_u_object::UObject> for UEverything {}
+unsafe impl rt::IsA<crate::core_uobject::UObject> for UEverything {}
 
 impl ::core::ops::Deref for UEverything {
-    type Target = crate::core_u_object::UObject;
-    fn deref(&self) -> &crate::core_u_object::UObject {
+    type Target = crate::core_uobject::UObject;
+    fn deref(&self) -> &crate::core_uobject::UObject {
         &self.base
     }
 }
 
 impl ::core::ops::DerefMut for UEverything {
-    fn deref_mut(&mut self) -> &mut crate::core_u_object::UObject {
+    fn deref_mut(&mut self) -> &mut crate::core_uobject::UObject {
         &mut self.base
     }
 }
@@ -1031,7 +1033,7 @@ impl UEverything {
     pub const MISSING_REF: rt::FieldRef<Self, rt::Ptr<rt::UObjectBase>> = rt::FieldRef::new(0xa0);
 
     /// Offset of `ClassRef`: Offset 0xa8, `Class</Script/CoreUObject.Class, meta /Script/Engine.Actor>`.
-    pub const CLASS_REF: rt::FieldRef<Self, rt::Ptr<crate::core_u_object::UClass>> = rt::FieldRef::new(0xa8);
+    pub const CLASS_REF: rt::FieldRef<Self, rt::Ptr<crate::core_uobject::UClass>> = rt::FieldRef::new(0xa8);
 
     /// Offset of `WeakRef`: Offset 0xb0, `WeakObject</Script/Engine.Actor>`.
     pub const WEAK_REF: rt::FieldRef<Self, rt::FWeakObjectPtr> = rt::FieldRef::new(0xb0);
@@ -1039,109 +1041,109 @@ impl UEverything {
     /// Offset of `LazyRef`: Offset 0xb8, `LazyObject</Script/Engine.Actor>`.
     pub const LAZY_REF: rt::FieldRef<Self, rt::FLazyObjectPtr> = rt::FieldRef::new(0xb8);
 
-    /// Offset of `SoftRef`: Offset 0xd0, `SoftObject</Script/Engine.Actor>`.
-    pub const SOFT_REF: rt::FieldRef<Self, rt::FSoftObjectPtr<crate::FName>> = rt::FieldRef::new(0xd0);
+    /// Offset of `SoftRef`: Offset 0xd8, `SoftObject</Script/Engine.Actor>`.
+    pub const SOFT_REF: rt::FieldRef<Self, rt::FSoftObjectPtr<crate::FName>> = rt::FieldRef::new(0xd8);
 
-    /// Offset of `SoftClassRef`: Offset 0x100, `SoftClass</Script/Engine.Actor>`.
-    pub const SOFT_CLASS_REF: rt::FieldRef<Self, rt::FSoftObjectPtr<crate::FName>> = rt::FieldRef::new(0x100);
+    /// Offset of `SoftClassRef`: Offset 0x108, `SoftClass</Script/Engine.Actor>`.
+    pub const SOFT_CLASS_REF: rt::FieldRef<Self, rt::FSoftObjectPtr<crate::FName>> = rt::FieldRef::new(0x108);
 
-    /// Offset of `InterfaceRef`: Offset 0x130, `Interface</Script/Engine.Actor>`.
-    pub const INTERFACE_REF: rt::FieldRef<Self, rt::FScriptInterface<crate::engine::AActor>> = rt::FieldRef::new(0x130);
+    /// Offset of `InterfaceRef`: Offset 0x138, `Interface</Script/Engine.Actor>`.
+    pub const INTERFACE_REF: rt::FieldRef<Self, rt::FScriptInterface<crate::engine::AActor>> = rt::FieldRef::new(0x138);
 
-    /// Offset of `Position`: Offset 0x140, `Struct</Script/CoreUObject.Vector>`.
-    pub const POSITION: rt::FieldRef<Self, crate::core_u_object::FVector> = rt::FieldRef::new(0x140);
+    /// Offset of `Position`: Offset 0x148, `Struct</Script/CoreUObject.Vector>`.
+    pub const POSITION: rt::FieldRef<Self, crate::core_uobject::FVector> = rt::FieldRef::new(0x148);
 
-    /// Offset of `Id`: Offset 0x14c, `Struct</Script/CoreUObject.Guid>`.
-    pub const ID: rt::FieldRef<Self, crate::core_u_object::FGuid> = rt::FieldRef::new(0x14c);
+    /// Offset of `Id`: Offset 0x154, `Struct</Script/CoreUObject.Guid>`.
+    pub const ID: rt::FieldRef<Self, crate::core_uobject::FGuid> = rt::FieldRef::new(0x154);
 
-    /// Offset of `Pose`: Offset 0x160, `Struct</Script/CoreUObject.Transform>`. Not exact: alignment-too-low: type needs alignment 16, the owner has 8.
-    pub const POSE: rt::FieldRef<Self, [u8; 32]> = rt::FieldRef::new(0x160);
+    /// Offset of `Pose`: Offset 0x170, `Struct</Script/CoreUObject.Transform>`. Not exact: alignment-too-low: type needs alignment 16, the owner has 8.
+    pub const POSE: rt::FieldRef<Self, [u8; 32]> = rt::FieldRef::new(0x170);
 
-    /// Offset of `Numbers`: Offset 0x180, `Array<int32>`.
-    pub const NUMBERS: rt::FieldRef<Self, rt::TArray<i32>> = rt::FieldRef::new(0x180);
+    /// Offset of `Numbers`: Offset 0x190, `Array<int32>`.
+    pub const NUMBERS: rt::FieldRef<Self, rt::TArray<i32>> = rt::FieldRef::new(0x190);
 
-    /// Offset of `Actors`: Offset 0x190, `Array<Object</Script/Engine.Actor>>`.
-    pub const ACTORS: rt::FieldRef<Self, rt::TArray<rt::Ptr<crate::engine::AActor>>> = rt::FieldRef::new(0x190);
+    /// Offset of `Actors`: Offset 0x1a0, `Array<Object</Script/Engine.Actor>>`.
+    pub const ACTORS: rt::FieldRef<Self, rt::TArray<rt::Ptr<crate::engine::AActor>>> = rt::FieldRef::new(0x1a0);
 
-    /// Offset of `Unresolved`: Offset 0x1a0, `Array<Unknown(FooProperty)>`.
-    pub const UNRESOLVED: rt::FieldRef<Self, rt::TArray<()>> = rt::FieldRef::new(0x1a0);
+    /// Offset of `Unresolved`: Offset 0x1b0, `Array<Unknown(FooProperty)>`.
+    pub const UNRESOLVED: rt::FieldRef<Self, rt::TArray<()>> = rt::FieldRef::new(0x1b0);
 
-    /// Offset of `Tags`: Offset 0x1b0, `Set<FName>`.
-    pub const TAGS: rt::FieldRef<Self, rt::TSet<crate::FName>> = rt::FieldRef::new(0x1b0);
+    /// Offset of `Tags`: Offset 0x1c0, `Set<FName>`.
+    pub const TAGS: rt::FieldRef<Self, rt::TSet<crate::FName>> = rt::FieldRef::new(0x1c0);
 
-    /// Offset of `Table`: Offset 0x200, `Map<FName, Struct</Script/CoreUObject.Vector>>`.
-    pub const TABLE: rt::FieldRef<Self, rt::TMap<crate::FName, crate::core_u_object::FVector>> = rt::FieldRef::new(0x200);
+    /// Offset of `Table`: Offset 0x210, `Map<FName, Struct</Script/CoreUObject.Vector>>`.
+    pub const TABLE: rt::FieldRef<Self, rt::TMap<crate::FName, crate::core_uobject::FVector>> = rt::FieldRef::new(0x210);
 
-    /// Offset of `Role`: Offset 0x250, `Enum</Script/CoreUObject.ENetRole: uint8>`.
-    pub const ROLE: rt::FieldRef<Self, crate::core_u_object::ENetRole> = rt::FieldRef::new(0x250);
+    /// Offset of `Role`: Offset 0x260, `Enum</Script/CoreUObject.ENetRole: uint8>`.
+    pub const ROLE: rt::FieldRef<Self, crate::core_uobject::ENetRole> = rt::FieldRef::new(0x260);
 
-    /// Offset of `RoleByte`: Offset 0x251, `Byte</Script/CoreUObject.ENetRole>`.
-    pub const ROLE_BYTE: rt::FieldRef<Self, crate::core_u_object::ENetRole> = rt::FieldRef::new(0x251);
+    /// Offset of `RoleByte`: Offset 0x261, `Byte</Script/CoreUObject.ENetRole>`.
+    pub const ROLE_BYTE: rt::FieldRef<Self, crate::core_uobject::ENetRole> = rt::FieldRef::new(0x261);
 
-    /// Offset of `Signed`: Offset 0x254, `Enum</Script/CoreUObject.ESigned: int32>`.
-    pub const SIGNED: rt::FieldRef<Self, crate::core_u_object::ESigned> = rt::FieldRef::new(0x254);
+    /// Offset of `Signed`: Offset 0x264, `Enum</Script/CoreUObject.ESigned: int32>`.
+    pub const SIGNED: rt::FieldRef<Self, crate::core_uobject::ESigned> = rt::FieldRef::new(0x264);
 
-    /// Offset of `GoneEnum`: Offset 0x258, `Enum</Script/Gone.EGone: uint16>`.
-    pub const GONE_ENUM: rt::FieldRef<Self, u16> = rt::FieldRef::new(0x258);
+    /// Offset of `GoneEnum`: Offset 0x268, `Enum</Script/Gone.EGone: uint16>`.
+    pub const GONE_ENUM: rt::FieldRef<Self, u16> = rt::FieldRef::new(0x268);
 
-    /// Offset of `GoneByte`: Offset 0x25a, `Byte</Script/Gone.EGone>`.
-    pub const GONE_BYTE: rt::FieldRef<Self, u8> = rt::FieldRef::new(0x25a);
+    /// Offset of `GoneByte`: Offset 0x26a, `Byte</Script/Gone.EGone>`.
+    pub const GONE_BYTE: rt::FieldRef<Self, u8> = rt::FieldRef::new(0x26a);
 
-    /// Offset of `OnDone`: Offset 0x25c, `Delegate</Script/Engine.Everything:OnDone__Sig>`.
-    pub const ON_DONE: rt::FieldRef<Self, rt::FScriptDelegate<crate::FName>> = rt::FieldRef::new(0x25c);
+    /// Offset of `OnDone`: Offset 0x26c, `Delegate</Script/Engine.Everything:OnDone__Sig>`.
+    pub const ON_DONE: rt::FieldRef<Self, rt::FScriptDelegate<crate::FName>> = rt::FieldRef::new(0x26c);
 
-    /// Offset of `OnMany`: Offset 0x270, `MulticastInlineDelegate</Script/Engine.Everything:OnMany__Sig>`.
-    pub const ON_MANY: rt::FieldRef<Self, rt::FMulticastInlineDelegate<crate::FName>> = rt::FieldRef::new(0x270);
+    /// Offset of `OnMany`: Offset 0x280, `MulticastInlineDelegate</Script/Engine.Everything:OnMany__Sig>`.
+    pub const ON_MANY: rt::FieldRef<Self, rt::FMulticastInlineDelegate<crate::FName>> = rt::FieldRef::new(0x280);
 
-    /// Offset of `OnSparse`: Offset 0x280, `MulticastSparseDelegate</Script/Engine.Everything:OnSparse__Sig>`.
-    pub const ON_SPARSE: rt::FieldRef<Self, rt::FMulticastSparseDelegate> = rt::FieldRef::new(0x280);
+    /// Offset of `OnSparse`: Offset 0x290, `MulticastSparseDelegate</Script/Engine.Everything:OnSparse__Sig>`.
+    pub const ON_SPARSE: rt::FieldRef<Self, rt::FMulticastSparseDelegate> = rt::FieldRef::new(0x290);
 
-    /// Offset of `PathValue`: Offset 0x288, `FieldPath`. Not exact: no-runtime-view: the runtime has no view of FieldPath.
-    pub const PATH_VALUE: rt::FieldRef<Self, [u8; 32]> = rt::FieldRef::new(0x288);
+    /// Offset of `PathValue`: Offset 0x298, `FieldPath`. Not exact: no-runtime-view: the runtime has no view of FieldPath.
+    pub const PATH_VALUE: rt::FieldRef<Self, [u8; 32]> = rt::FieldRef::new(0x298);
 
-    /// Offset of `MaybeInt`: Offset 0x2a8, `Optional<int32>`. Not exact: no-runtime-view: the runtime has no view of Optional<int32>.
-    pub const MAYBE_INT: rt::FieldRef<Self, [u8; 8]> = rt::FieldRef::new(0x2a8);
+    /// Offset of `MaybeInt`: Offset 0x2b8, `Optional<int32>`. Not exact: no-runtime-view: the runtime has no view of Optional<int32>.
+    pub const MAYBE_INT: rt::FieldRef<Self, [u8; 8]> = rt::FieldRef::new(0x2b8);
 
-    /// Offset of `Mystery`: Offset 0x2b0, `Unknown(MysteryProperty)`. Not exact: unknown-type: property class MysteryProperty is not decoded.
-    pub const MYSTERY: rt::FieldRef<Self, [u8; 16]> = rt::FieldRef::new(0x2b0);
+    /// Offset of `Mystery`: Offset 0x2c0, `Unknown(MysteryProperty)`. Not exact: unknown-type: property class MysteryProperty is not decoded.
+    pub const MYSTERY: rt::FieldRef<Self, [u8; 16]> = rt::FieldRef::new(0x2c0);
 
-    /// Offset of `Grid`: Offset 0x2c0, `int32`.
-    pub const GRID: rt::FieldRef<Self, [i32; 4]> = rt::FieldRef::new(0x2c0);
+    /// Offset of `Grid`: Offset 0x2d0, `int32`.
+    pub const GRID: rt::FieldRef<Self, [i32; 4]> = rt::FieldRef::new(0x2d0);
 
-    /// Offset of `Corners`: Offset 0x2d0, `Struct</Script/CoreUObject.Vector>`.
-    pub const CORNERS: rt::FieldRef<Self, [crate::core_u_object::FVector; 2]> = rt::FieldRef::new(0x2d0);
+    /// Offset of `Corners`: Offset 0x2e0, `Struct</Script/CoreUObject.Vector>`.
+    pub const CORNERS: rt::FieldRef<Self, [crate::core_uobject::FVector; 2]> = rt::FieldRef::new(0x2e0);
 
     /// Bit `bFirst` of the owner.
-    pub const B_FIRST: rt::BitRef<Self> = rt::BitRef::new(0x2e8, 0x01);
+    pub const B_FIRST: rt::BitRef<Self> = rt::BitRef::new(0x2f8, 0x01);
 
     /// Bit `bSecond` of the owner.
-    pub const B_SECOND: rt::BitRef<Self> = rt::BitRef::new(0x2e8, 0x02);
+    pub const B_SECOND: rt::BitRef<Self> = rt::BitRef::new(0x2f8, 0x02);
 
-    /// Bit `bFirst`: byte 0x2e8 of the owner, mask 0x01.
+    /// Bit `bFirst`: byte 0x2f8 of the owner, mask 0x01.
     pub fn b_first(&self) -> bool {
-        self._bits_0x02e8[0] & 0x01u8 != 0
+        self._bits_0x02f8[0] & 0x01u8 != 0
     }
 
     /// Sets bit `bFirst`.
     pub fn set_b_first(&mut self, value: bool) {
         if value {
-            self._bits_0x02e8[0] |= 0x01u8;
+            self._bits_0x02f8[0] |= 0x01u8;
         } else {
-            self._bits_0x02e8[0] &= !0x01u8;
+            self._bits_0x02f8[0] &= !0x01u8;
         }
     }
 
-    /// Bit `bSecond`: byte 0x2e8 of the owner, mask 0x02.
+    /// Bit `bSecond`: byte 0x2f8 of the owner, mask 0x02.
     pub fn b_second(&self) -> bool {
-        self._bits_0x02e8[0] & 0x02u8 != 0
+        self._bits_0x02f8[0] & 0x02u8 != 0
     }
 
     /// Sets bit `bSecond`.
     pub fn set_b_second(&mut self, value: bool) {
         if value {
-            self._bits_0x02e8[0] |= 0x02u8;
+            self._bits_0x02f8[0] |= 0x02u8;
         } else {
-            self._bits_0x02e8[0] &= !0x02u8;
+            self._bits_0x02f8[0] &= !0x02u8;
         }
     }
 }
@@ -1190,6 +1192,220 @@ impl ::core::ops::DerefMut for UFromEmpty {
 impl UFromEmpty {
     /// Offset of `Value`: Offset 0x0, `uint64`.
     pub const VALUE: rt::FieldRef<Self, u64> = rt::FieldRef::new(0x0);
+}
+
+/// Class `/Script/Engine.Keywords`.
+///
+/// Size 0x40, alignment 8.
+#[repr(C, align(8))]
+#[derive(Clone, Copy, Debug)]
+pub struct UKeywords {
+    /// The parent class.
+    pub base: crate::core_uobject::UObject,
+    /// Storage of the bit-field booleans `Loop`, `Self`, `Type`, `bLoop` at 0x30.
+    pub _bits_0x0030: [u8; 1],
+    /// Offset 0x31, `bool(byte 0, byte_mask 0xff, field_mask 0xff, size 1)`.
+    pub r#match: rt::UBool,
+    /// Padding at 0x32.
+    pub _pad_0x0032: [u8; 6],
+    /// Offset 0x38, `uint32`.
+    pub plain: u32,
+    /// Padding at 0x3c.
+    pub _pad_0x003c: [u8; 4],
+}
+
+// SAFETY: every field is `Pod`, the type is `Copy`, and the explicit padding
+// leaves no implicit padding: the size assertion below covers every byte.
+unsafe impl rt::Pod for UKeywords {}
+
+const _: () = {
+    assert!(::core::mem::size_of::<UKeywords>() == 0x40);
+    assert!(::core::mem::align_of::<UKeywords>() == 8);
+    assert!(::core::mem::offset_of!(UKeywords, _bits_0x0030) == 0x30);
+    assert!(::core::mem::offset_of!(UKeywords, r#match) == 0x31);
+    assert!(::core::mem::offset_of!(UKeywords, plain) == 0x38);
+};
+
+// SAFETY: the type starts with itself.
+unsafe impl rt::IsA<UKeywords> for UKeywords {}
+
+// SAFETY: the parent layout is the prefix of this type: embedded, or checked by a size assertion.
+unsafe impl rt::IsA<crate::core_uobject::UObject> for UKeywords {}
+
+impl ::core::ops::Deref for UKeywords {
+    type Target = crate::core_uobject::UObject;
+    fn deref(&self) -> &crate::core_uobject::UObject {
+        &self.base
+    }
+}
+
+impl ::core::ops::DerefMut for UKeywords {
+    fn deref_mut(&mut self) -> &mut crate::core_uobject::UObject {
+        &mut self.base
+    }
+}
+
+impl UKeywords {
+    /// Bit `Loop` of the owner.
+    pub const LOOP: rt::BitRef<Self> = rt::BitRef::new(0x30, 0x01);
+
+    /// Bit `Self` of the owner.
+    pub const SELF: rt::BitRef<Self> = rt::BitRef::new(0x30, 0x04);
+
+    /// Bit `Type` of the owner.
+    pub const TYPE: rt::BitRef<Self> = rt::BitRef::new(0x30, 0x02);
+
+    /// Bit `bLoop` of the owner.
+    pub const B_LOOP: rt::BitRef<Self> = rt::BitRef::new(0x30, 0x08);
+
+    /// Offset of `Match`: Offset 0x31, `bool(byte 0, byte_mask 0xff, field_mask 0xff, size 1)`.
+    pub const MATCH: rt::FieldRef<Self, rt::UBool> = rt::FieldRef::new(0x31);
+
+    /// Offset of `Plain`: Offset 0x38, `uint32`.
+    pub const PLAIN: rt::FieldRef<Self, u32> = rt::FieldRef::new(0x38);
+
+    /// Bit `Loop`: byte 0x30 of the owner, mask 0x01.
+    pub fn r#loop(&self) -> bool {
+        self._bits_0x0030[0] & 0x01u8 != 0
+    }
+
+    /// Sets bit `Loop`.
+    pub fn set_loop(&mut self, value: bool) {
+        if value {
+            self._bits_0x0030[0] |= 0x01u8;
+        } else {
+            self._bits_0x0030[0] &= !0x01u8;
+        }
+    }
+
+    /// Bit `Self`: byte 0x30 of the owner, mask 0x04.
+    pub fn self_(&self) -> bool {
+        self._bits_0x0030[0] & 0x04u8 != 0
+    }
+
+    /// Sets bit `Self`.
+    pub fn set_self(&mut self, value: bool) {
+        if value {
+            self._bits_0x0030[0] |= 0x04u8;
+        } else {
+            self._bits_0x0030[0] &= !0x04u8;
+        }
+    }
+
+    /// Bit `Type`: byte 0x30 of the owner, mask 0x02.
+    pub fn r#type(&self) -> bool {
+        self._bits_0x0030[0] & 0x02u8 != 0
+    }
+
+    /// Sets bit `Type`.
+    pub fn set_type(&mut self, value: bool) {
+        if value {
+            self._bits_0x0030[0] |= 0x02u8;
+        } else {
+            self._bits_0x0030[0] &= !0x02u8;
+        }
+    }
+
+    /// Bit `bLoop`: byte 0x30 of the owner, mask 0x08.
+    pub fn b_loop(&self) -> bool {
+        self._bits_0x0030[0] & 0x08u8 != 0
+    }
+
+    /// Sets bit `bLoop`.
+    pub fn set_b_loop(&mut self, value: bool) {
+        if value {
+            self._bits_0x0030[0] |= 0x08u8;
+        } else {
+            self._bits_0x0030[0] &= !0x08u8;
+        }
+    }
+
+    /// Calls `/Script/Engine.Keywords:Loop` through `exec`.
+    ///
+    /// This wrapper fills the parameter block and hands it to the executor; it
+    /// runs nothing itself. `this` must be the address of a live object of this
+    /// class. Memory the engine allocates for return values or out parameters
+    /// (strings, arrays) is not freed here.
+    pub fn r#loop_1(this: rt::Ptr<Self>, exec: &impl rt::Executor, r#type: i32, self_: i32) -> Result<(), rt::CallError> {
+        let mut params: UKeywords_Loop_Params = rt::zeroed();
+        params.r#type = r#type;
+        params.self_ = self_;
+        exec.process_event(this.cast(), "/Script/Engine.Keywords:Loop", rt::as_bytes_mut(&mut params))?;
+        Ok(())
+    }
+
+    /// Calls `/Script/Engine.Keywords:Type` through `exec`.
+    ///
+    /// This wrapper fills the parameter block and hands it to the executor; it
+    /// runs nothing itself. `this` must be the address of a live object of this
+    /// class. Memory the engine allocates for return values or out parameters
+    /// (strings, arrays) is not freed here.
+    pub fn r#type_1(this: rt::Ptr<Self>, exec: &impl rt::Executor, r#move: bool) -> Result<(), rt::CallError> {
+        let mut params: UKeywords_Type_Params = rt::zeroed();
+        params.set_move(r#move);
+        exec.process_event(this.cast(), "/Script/Engine.Keywords:Type", rt::as_bytes_mut(&mut params))?;
+        Ok(())
+    }
+}
+
+/// Parameter block of `/Script/Engine.Keywords:Loop`.
+///
+/// Size 0x8, alignment 8.
+#[repr(C, align(8))]
+#[derive(Clone, Copy, Debug)]
+pub struct UKeywords_Loop_Params {
+    /// Offset 0x0, `int32`.
+    pub r#type: i32,
+    /// Offset 0x4, `int32`.
+    pub self_: i32,
+}
+
+// SAFETY: every field is `Pod`, the type is `Copy`, and the explicit padding
+// leaves no implicit padding: the size assertion below covers every byte.
+unsafe impl rt::Pod for UKeywords_Loop_Params {}
+
+const _: () = {
+    assert!(::core::mem::size_of::<UKeywords_Loop_Params>() == 0x8);
+    assert!(::core::mem::align_of::<UKeywords_Loop_Params>() == 8);
+    assert!(::core::mem::offset_of!(UKeywords_Loop_Params, r#type) == 0x0);
+    assert!(::core::mem::offset_of!(UKeywords_Loop_Params, self_) == 0x4);
+};
+
+/// Parameter block of `/Script/Engine.Keywords:Type`.
+///
+/// Size 0x1, alignment 1.
+#[repr(C, align(1))]
+#[derive(Clone, Copy, Debug)]
+pub struct UKeywords_Type_Params {
+    /// Storage of the bit-field booleans `Move` at 0x0.
+    pub _bits_0x0000: [u8; 1],
+}
+
+// SAFETY: every field is `Pod`, the type is `Copy`, and the explicit padding
+// leaves no implicit padding: the size assertion below covers every byte.
+unsafe impl rt::Pod for UKeywords_Type_Params {}
+
+const _: () = {
+    assert!(::core::mem::size_of::<UKeywords_Type_Params>() == 0x1);
+    assert!(::core::mem::align_of::<UKeywords_Type_Params>() == 1);
+    assert!(::core::mem::offset_of!(UKeywords_Type_Params, _bits_0x0000) == 0x0);
+};
+
+impl UKeywords_Type_Params {
+    /// Bit `Move`: byte 0x0 of the owner, mask 0x01.
+    pub fn r#move(&self) -> bool {
+        self._bits_0x0000[0] & 0x01u8 != 0
+    }
+
+    /// Sets bit `Move`.
+    pub fn set_move(&mut self, value: bool) {
+        if value {
+            self._bits_0x0000[0] |= 0x01u8;
+        } else {
+            self._bits_0x0000[0] &= !0x01u8;
+        }
+    }
+
 }
 
 /// Struct `/Script/Engine.LowAlign`.
@@ -1353,7 +1569,7 @@ impl UOrphan {
 #[derive(Clone, Copy, Debug)]
 pub struct UDup_1 {
     /// The parent class.
-    pub base: crate::core_u_object::UObject,
+    pub base: crate::core_uobject::UObject,
     /// Offset 0x30, `uint32`.
     pub b: u32,
     /// Padding at 0x34.
@@ -1374,17 +1590,17 @@ const _: () = {
 unsafe impl rt::IsA<UDup_1> for UDup_1 {}
 
 // SAFETY: the parent layout is the prefix of this type: embedded, or checked by a size assertion.
-unsafe impl rt::IsA<crate::core_u_object::UObject> for UDup_1 {}
+unsafe impl rt::IsA<crate::core_uobject::UObject> for UDup_1 {}
 
 impl ::core::ops::Deref for UDup_1 {
-    type Target = crate::core_u_object::UObject;
-    fn deref(&self) -> &crate::core_u_object::UObject {
+    type Target = crate::core_uobject::UObject;
+    fn deref(&self) -> &crate::core_uobject::UObject {
         &self.base
     }
 }
 
 impl ::core::ops::DerefMut for UDup_1 {
-    fn deref_mut(&mut self) -> &mut crate::core_u_object::UObject {
+    fn deref_mut(&mut self) -> &mut crate::core_uobject::UObject {
         &mut self.base
     }
 }
@@ -1401,7 +1617,7 @@ impl UDup_1 {
 #[derive(Clone, Copy, Debug)]
 pub struct UOverlapper {
     /// The parent class.
-    pub base: crate::core_u_object::UObject,
+    pub base: crate::core_uobject::UObject,
     /// Offset 0x30, `uint64`.
     pub big: u64,
     /// Offset 0x38, `uint32`.
@@ -1425,17 +1641,17 @@ const _: () = {
 unsafe impl rt::IsA<UOverlapper> for UOverlapper {}
 
 // SAFETY: the parent layout is the prefix of this type: embedded, or checked by a size assertion.
-unsafe impl rt::IsA<crate::core_u_object::UObject> for UOverlapper {}
+unsafe impl rt::IsA<crate::core_uobject::UObject> for UOverlapper {}
 
 impl ::core::ops::Deref for UOverlapper {
-    type Target = crate::core_u_object::UObject;
-    fn deref(&self) -> &crate::core_u_object::UObject {
+    type Target = crate::core_uobject::UObject;
+    fn deref(&self) -> &crate::core_uobject::UObject {
         &self.base
     }
 }
 
 impl ::core::ops::DerefMut for UOverlapper {
-    fn deref_mut(&mut self) -> &mut crate::core_u_object::UObject {
+    fn deref_mut(&mut self) -> &mut crate::core_uobject::UObject {
         &mut self.base
     }
 }
@@ -1482,7 +1698,7 @@ unsafe impl rt::IsA<APawn> for APawn {}
 unsafe impl rt::IsA<crate::engine::AActor> for APawn {}
 
 // SAFETY: the parent layout is the prefix of this type: embedded, or checked by a size assertion.
-unsafe impl rt::IsA<crate::core_u_object::UObject> for APawn {}
+unsafe impl rt::IsA<crate::core_uobject::UObject> for APawn {}
 
 impl ::core::ops::Deref for APawn {
     type Target = crate::engine::AActor;
@@ -1642,8 +1858,8 @@ impl UReuseChild {
 #[derive(Clone, Copy, Debug)]
 pub struct USizeMismatch {
     /// The parent class.
-    pub base: crate::core_u_object::UObject,
-    /// Offset 0x30, `Struct</Script/CoreUObject.Vector>`. Not exact: size-mismatch: the dump says 16 bytes, crate::core_u_object::FVector is 12 bytes.
+    pub base: crate::core_uobject::UObject,
+    /// Offset 0x30, `Struct</Script/CoreUObject.Vector>`. Not exact: size-mismatch: the dump says 16 bytes, crate::core_uobject::FVector is 12 bytes.
     pub v: [u8; 16],
     /// Offset 0x40, `Struct</Script/Gone.FGone>`. Not exact: unknown-type: struct /Script/Gone.FGone is not in the dump or has a cyclic layout.
     pub gone: [u8; 8],
@@ -1666,23 +1882,23 @@ const _: () = {
 unsafe impl rt::IsA<USizeMismatch> for USizeMismatch {}
 
 // SAFETY: the parent layout is the prefix of this type: embedded, or checked by a size assertion.
-unsafe impl rt::IsA<crate::core_u_object::UObject> for USizeMismatch {}
+unsafe impl rt::IsA<crate::core_uobject::UObject> for USizeMismatch {}
 
 impl ::core::ops::Deref for USizeMismatch {
-    type Target = crate::core_u_object::UObject;
-    fn deref(&self) -> &crate::core_u_object::UObject {
+    type Target = crate::core_uobject::UObject;
+    fn deref(&self) -> &crate::core_uobject::UObject {
         &self.base
     }
 }
 
 impl ::core::ops::DerefMut for USizeMismatch {
-    fn deref_mut(&mut self) -> &mut crate::core_u_object::UObject {
+    fn deref_mut(&mut self) -> &mut crate::core_uobject::UObject {
         &mut self.base
     }
 }
 
 impl USizeMismatch {
-    /// Offset of `V`: Offset 0x30, `Struct</Script/CoreUObject.Vector>`. Not exact: size-mismatch: the dump says 16 bytes, crate::core_u_object::FVector is 12 bytes.
+    /// Offset of `V`: Offset 0x30, `Struct</Script/CoreUObject.Vector>`. Not exact: size-mismatch: the dump says 16 bytes, crate::core_uobject::FVector is 12 bytes.
     pub const V: rt::FieldRef<Self, [u8; 16]> = rt::FieldRef::new(0x30);
 
     /// Offset of `Gone`: Offset 0x40, `Struct</Script/Gone.FGone>`. Not exact: unknown-type: struct /Script/Gone.FGone is not in the dump or has a cyclic layout.
@@ -1696,7 +1912,7 @@ impl USizeMismatch {
 #[derive(Clone, Copy, Debug)]
 pub struct UType {
     /// The parent class.
-    pub base: crate::core_u_object::UObject,
+    pub base: crate::core_uobject::UObject,
     /// Offset 0x30, `uint32`.
     pub r#type: u32,
     /// Offset 0x34, `uint32`.
@@ -1747,17 +1963,17 @@ const _: () = {
 unsafe impl rt::IsA<UType> for UType {}
 
 // SAFETY: the parent layout is the prefix of this type: embedded, or checked by a size assertion.
-unsafe impl rt::IsA<crate::core_u_object::UObject> for UType {}
+unsafe impl rt::IsA<crate::core_uobject::UObject> for UType {}
 
 impl ::core::ops::Deref for UType {
-    type Target = crate::core_u_object::UObject;
-    fn deref(&self) -> &crate::core_u_object::UObject {
+    type Target = crate::core_uobject::UObject;
+    fn deref(&self) -> &crate::core_uobject::UObject {
         &self.base
     }
 }
 
 impl ::core::ops::DerefMut for UType {
-    fn deref_mut(&mut self) -> &mut crate::core_u_object::UObject {
+    fn deref_mut(&mut self) -> &mut crate::core_uobject::UObject {
         &mut self.base
     }
 }

@@ -26,7 +26,7 @@ fn files() -> BTreeMap<String, String> {
 fn unreal_prefixes_come_from_the_dump() {
     let f = files();
     let engine = &f["src/engine.rs"];
-    let core = &f["src/core_u_object.rs"];
+    let core = &f["src/core_uobject.rs"];
     // Actor-derived classes get A, other classes U, structs F, enums E.
     assert!(engine.contains("pub struct AActor {"));
     assert!(engine.contains("pub struct APawn {"));
@@ -79,7 +79,7 @@ fn keywords_collisions_and_odd_characters_are_made_valid() {
 
 #[test]
 fn enumerators_are_unique_constants_and_names_are_optional() {
-    let core = &files()["src/core_u_object.rs"];
+    let core = &files()["src/core_uobject.rs"];
     assert!(core.contains("pub const Type: Self = Self(-1);"), "{core}");
     assert!(core.contains("pub const Self_: Self = Self(0);"));
     assert!(core.contains("pub const Zero: Self = Self(1);"));
@@ -96,8 +96,72 @@ fn modules_and_features_are_named_by_package() {
     let f = files();
     assert!(f["src/lib.rs"].contains("#[cfg(feature = \"engine\")]\npub mod engine;"));
     let cargo = &f["Cargo.toml"];
-    assert!(cargo.contains("engine = [\"core_u_object\"]"));
-    assert!(cargo.contains("core_u_object = []"));
-    assert!(cargo.contains("mods = [\"core_u_object\", \"engine\"]"));
+    assert!(cargo.contains("engine = [\"core_uobject\"]"));
+    assert!(cargo.contains("core_uobject = []"));
+    assert!(cargo.contains("mods = [\"core_uobject\", \"engine\"]"));
     assert!(f["src/lib.rs"].contains("pub type FName = ::ufathom_runtime::FName12;"));
+}
+
+#[test]
+fn compound_names_are_built_before_escaping() {
+    let engine = &files()["src/engine.rs"];
+    // A setter is `set_` plus the plain word, never `set_r#loop`.
+    assert!(!engine.contains("set_r#"));
+    for expected in [
+        "pub fn r#loop(&self) -> bool",
+        "pub fn set_loop(&mut self, value: bool)",
+        "pub fn r#type(&self) -> bool",
+        "pub fn set_type(&mut self, value: bool)",
+        "pub fn self_(&self) -> bool",
+        "pub fn set_self(&mut self, value: bool)",
+        "pub fn set_b_loop(&mut self, value: bool)",
+        "pub const LOOP: rt::BitRef<Self>",
+        "pub struct UKeywords_Loop_Params {",
+        "pub r#type: i32,",
+        "pub self_: i32,",
+    ] {
+        assert!(engine.contains(expected), "missing `{expected}`");
+    }
+    // A function with the same name as a bit gets a numeric suffix.
+    assert!(engine.contains("pub fn r#loop_1(this: rt::Ptr<Self>"));
+}
+
+#[test]
+fn reserved_package_names_get_a_suffix() {
+    let f = files();
+    let lib = &f["src/lib.rs"];
+    for module in ["main_pkg", "std_pkg", "core_pkg", "core_uobject"] {
+        assert!(
+            lib.contains(&format!("pub mod {module};")),
+            "missing {module}"
+        );
+        assert!(f.contains_key(&format!("src/{module}.rs")));
+    }
+    for bad in [
+        "pub mod main;",
+        "pub mod std;",
+        "pub mod core;",
+        "pub mod core_u_object;",
+    ] {
+        assert!(!lib.contains(bad), "{bad}");
+    }
+}
+
+#[test]
+fn root_classes_get_their_header_members_from_the_layout() {
+    let core = &files()["src/core_uobject.rs"];
+    for expected in [
+        "pub vtable: rt::Ptr<u8>,",
+        "pub object_flags: u32,",
+        "pub internal_index: i32,",
+        "pub class_private: rt::Ptr<crate::core_uobject::UClass>,",
+        "pub name_private: crate::FName,",
+        "pub outer_private: rt::Ptr<crate::core_uobject::UObject>,",
+        "pub next: rt::Ptr<crate::core_uobject::UField>,",
+        "pub super_struct: rt::Ptr<crate::core_uobject::UStruct>,",
+        "assert!(::core::mem::offset_of!(UObject, outer_private) == 0x28);",
+        "pub const INTERNAL_INDEX: rt::FieldRef<Self, i32> = rt::FieldRef::new(0xc);",
+    ] {
+        assert!(core.contains(expected), "missing `{expected}`");
+    }
 }
