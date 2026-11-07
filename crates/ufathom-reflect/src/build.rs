@@ -6,11 +6,11 @@ use std::time::Instant;
 use ufathom_engine::{LoadOptions, NameTable, ObjectArrayView, for_layout};
 use ufathom_mem::{MemoryReader, PageCache};
 use ufathom_model::layout::Location;
-use ufathom_model::{Dump, EngineLayout, TargetInfo, ToolInfo};
+use ufathom_model::{Dump, EngineLayout, Severity, TargetInfo, ToolInfo};
 use ufathom_scan::Discovery;
 
 use crate::classify::classify;
-use crate::ctx::{Ctx, Tally};
+use crate::ctx::{Ctx, Tally, diagnostic};
 use crate::error::ReflectError;
 use crate::objects::read_table;
 use crate::options::{ReflectOptions, ReflectOutput, ReflectStats};
@@ -67,6 +67,8 @@ pub fn build_dump(
     )
     .map_err(|source| ReflectError::Names { source })?;
     stats.timings.names = phase.elapsed();
+    let mut tally = Tally::default();
+    note_name_problems(&names, &mut tally);
     ctx.check()?;
 
     let view = ObjectArrayView::new(mem, &layout.objects)
@@ -75,7 +77,6 @@ pub fn build_dump(
         return Err(ReflectError::NoObjects);
     }
 
-    let mut tally = Tally::default();
     let phase = Instant::now();
     let table = read_table(&ctx, &view, &mut tally)?;
     stats.timings.headers = phase.elapsed();
@@ -219,4 +220,40 @@ fn native_module(mem: &dyn MemoryReader, layout: &EngineLayout) -> Option<Module
 
 fn file_name(path: &str) -> &str {
     path.rsplit(['\\', '/']).next().unwrap_or(path)
+}
+
+/// Name blocks that did not load completely leave some names unresolved. The
+/// objects that need them are reported when they fail; this says why.
+fn note_name_problems(names: &NameTable, tally: &mut Tally) {
+    let stats = names.stats();
+    let blocks = stats
+        .unreadable_blocks
+        .iter()
+        .map(|problem| ("unreadable", problem))
+        .chain(
+            stats
+                .damaged_blocks
+                .iter()
+                .map(|problem| ("damaged", problem)),
+        );
+    for (what, problem) in blocks {
+        tally.diagnostics.push(diagnostic(
+            "",
+            Severity::Warning,
+            format!(
+                "name block {} at {:#x} is {what}, its names are missing or cut short: {}",
+                problem.block, problem.addr, problem.reason
+            ),
+        ));
+    }
+    if stats.unresolved_numbered > 0 || stats.unreadable_entries > 0 {
+        tally.diagnostics.push(diagnostic(
+            "",
+            Severity::Warning,
+            format!(
+                "{} numbered names and {} name entries could not be resolved",
+                stats.unresolved_numbered, stats.unreadable_entries
+            ),
+        ));
+    }
 }

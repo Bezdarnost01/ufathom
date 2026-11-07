@@ -1,6 +1,6 @@
 //! Phase 2: telling types from instances by walking class chains.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ufathom_engine::{NameTable, object_path, super_chain};
 use ufathom_mem::Addr;
@@ -200,6 +200,7 @@ pub(crate) fn classify(
             }
         }
     }
+    let chain_broken: HashSet<Addr> = broken.iter().map(|&(class, _)| class).collect();
     // Every class is a `UClass`: the class of the class object must be one.
     for &class in &classes {
         let Some(entry) = table.entry_at(class) else {
@@ -207,8 +208,8 @@ pub(crate) fn classify(
         };
         let class_of_class = kinds_by_class.get(&entry.header.class);
         if class_of_class != Some(&Kind::Class)
-            && !broken.iter().any(|(addr, _)| *addr == class)
-            && !broken.iter().any(|(addr, _)| *addr == entry.header.class)
+            && !chain_broken.contains(&class)
+            && !chain_broken.contains(&entry.header.class)
         {
             broken.push((
                 class,

@@ -119,3 +119,15 @@ pub fn assert_matches_truth(fx: &Fixture, out: &ReflectOutput) {
     );
     assert_eq!(out.dump.enums, fx.truth.enums, "{name}: enums as a whole");
 }
+
+/// A discovery made from the layout the fixture was built from, for images
+/// too damaged for `discover` to solve.
+pub fn truth_discovery(fx: &Fixture) -> Discovery {
+    Discovery {
+        layout: fx.layout.clone(),
+        engine: ufathom_model::EngineInfo::default(),
+        globals: ufathom_scan::Globals::default(),
+        evidence: Vec::new(),
+        warnings: Vec::new(),
+    }
+}

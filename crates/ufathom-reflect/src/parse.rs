@@ -5,7 +5,8 @@ use std::collections::HashMap;
 use ufathom_engine::limits::MAX_PROPERTY_DEPTH;
 use ufathom_engine::{
     EngineError, NameTable, ObjectArrayView, PropertyKind, PropertySystemReader, RawProperty,
-    property_type, read_enum_entries, read_function, read_header, read_struct, validate_members,
+    property_type, read_enum_entries, read_function, read_header, read_struct, super_chain,
+    validate_members,
 };
 use ufathom_mem::{Addr, MemoryReader};
 use ufathom_model::flags::FUNC_NATIVE;
@@ -132,7 +133,7 @@ fn parse_struct(
         }
     }
 
-    let super_path = match view.super_struct {
+    let mut super_path = match view.super_struct {
         0 => None,
         parent => {
             let found = env.paths.get(&parent).cloned();
@@ -148,6 +149,25 @@ fn parse_struct(
             found
         }
     };
+    // A parent chain that loops or never ends would send every consumer into
+    // an endless walk. The parent is dropped and the struct reported.
+    if super_path.is_some()
+        && let Some(error) = super_chain(reader.mem, &env.layout.ustruct, addr)
+            .filter_map(Result::err)
+            .find(|error| {
+                matches!(
+                    error.root(),
+                    EngineError::Cycle { .. } | EngineError::Limit { .. }
+                )
+            })
+    {
+        diagnostics.push(diagnostic(
+            path,
+            Severity::Error,
+            format!("the parent chain is unusable, the parent is left out: {error}"),
+        ));
+        super_path = None;
+    }
     let function_count = functions.len() as u64;
     Ok(Parsed {
         item: Item::Struct(StructDef {
