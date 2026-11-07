@@ -208,12 +208,16 @@ pub fn write_data(
     let mut anchors = DataAnchors::default();
     let layout = profile.layout.objects.clone();
     let shape = profile.shape.clone();
+    // Noise points at real objects, but never at the live `World` or
+    // `GameEngine`: the only slots that hold them are the global slots, so the
+    // expected globals are unique.
     let pool = NoisePool {
         heap: reflection
             .records
             .iter()
             .step_by(7)
             .map(|r| r.address)
+            .filter(|&address| address != reflection.world && address != reflection.engine)
             .collect(),
         image: code.functions().to_vec(),
     };
