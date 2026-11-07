@@ -5,6 +5,7 @@
 mod bytes;
 mod ctx;
 mod error;
+mod globals;
 mod inspect;
 pub mod limits;
 mod members;
