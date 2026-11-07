@@ -20,7 +20,7 @@ use ufathom_model::layout::{
 
 use crate::ctx::Ctx;
 use crate::error::ScanError;
-use crate::limits::{MAX_CHAIN_STEPS, MAX_PROPERTY_SAMPLES};
+use crate::limits::{MAX_CHAIN_STEPS, MAX_MEMBER_SAMPLES, MAX_PARAM_SAMPLES};
 use crate::structs::{Sizes, StructFields};
 use crate::universe::{Anchors, Obj, Universe};
 
@@ -166,13 +166,18 @@ impl System {
 /// The properties of every struct and function, up to a bound.
 pub(crate) fn sample_props(env: &Env<'_, '_>, system: &System) -> Vec<Prop> {
     let mut out = Vec::new();
-    let structs: Vec<Obj> = crate::structs::structs_of(env.universe, env.table, env.anchors);
+    let mut structs: Vec<Obj> = crate::structs::structs_of(env.universe, env.table, env.anchors);
+    // Script structs first: they are few, small and the anchors of the member
+    // offsets, and a real game's classes would use up the whole budget before
+    // the first of them.
+    structs.sort_by_key(|o| o.class != env.anchors.script_struct);
     for owner in &structs {
         out.extend(system.props_of(env, owner.addr, Role::Member));
-        if out.len() >= MAX_PROPERTY_SAMPLES {
-            return out;
+        if out.len() >= MAX_MEMBER_SAMPLES {
+            break;
         }
     }
+    let members = out.len();
     for function in env
         .universe
         .objs
@@ -180,7 +185,7 @@ pub(crate) fn sample_props(env: &Env<'_, '_>, system: &System) -> Vec<Prop> {
         .filter(|o| o.class == env.anchors.function)
     {
         out.extend(system.props_of(env, function.addr, Role::Param));
-        if out.len() >= MAX_PROPERTY_SAMPLES {
+        if out.len() - members >= MAX_PARAM_SAMPLES {
             break;
         }
     }

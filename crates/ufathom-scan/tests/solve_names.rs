@@ -116,3 +116,69 @@ fn an_array_without_a_pointer_in_module_data_is_found_by_the_scan_of_other_memor
     assert_eq!(got.entry, truth.entry);
     assert_eq!(d.layout.uobject, fx.layout.uobject);
 }
+
+/// Counts reads and records the largest.
+struct Sizing {
+    inner: ufathom_mem::Snapshot,
+    reads: std::sync::atomic::AtomicU64,
+    large: std::sync::atomic::AtomicU64,
+}
+
+impl ufathom_mem::MemoryReader for Sizing {
+    fn read_exact(&self, addr: u64, buf: &mut [u8]) -> Result<(), ufathom_mem::MemError> {
+        use std::sync::atomic::Ordering::Relaxed;
+        self.reads.fetch_add(1, Relaxed);
+        if buf.len() >= 256 * 1024 {
+            self.large.fetch_add(1, Relaxed);
+        }
+        self.inner.read_exact(addr, buf)
+    }
+
+    fn regions(&self) -> Result<Vec<ufathom_mem::MemoryRegion>, ufathom_mem::MemError> {
+        self.inner.regions()
+    }
+
+    fn modules(&self) -> Result<Vec<ufathom_mem::ModuleInfo>, ufathom_mem::MemError> {
+        self.inner.modules()
+    }
+}
+
+#[test]
+fn the_fallback_scan_reads_in_large_requests_and_not_page_by_page() {
+    use std::sync::atomic::Ordering::Relaxed;
+
+    let fx = build(named("ue4.25-cp"), 3, 300);
+    let NameTableLayout::Pool(truth) = &fx.layout.names else {
+        panic!("not a pool");
+    };
+    let anchor = fx.anchors.data.name_anchor;
+    let size = usize::try_from(truth.blocks).unwrap() + 8192 * 8;
+    let moved = fx.addresses.heap + fx.heap_span + 0x100_0000;
+    let snapshot = rebuild(&fx, |parts| {
+        let part = parts
+            .iter()
+            .find(|p| anchor >= p.addr && anchor < p.addr + p.bytes.len() as u64)
+            .unwrap();
+        let at = (anchor - part.addr) as usize;
+        let mut page = part.bytes[at..at + size].to_vec();
+        poke(parts, anchor, &vec![0u8; size]);
+        page.resize(page.len().next_multiple_of(0x1000), 0);
+        parts.push(Part {
+            kind: PartKind::Heap,
+            addr: moved,
+            bytes: page,
+            perms: Perms::RW,
+            region_kind: RegionKind::Private,
+        });
+    });
+    let sizing = Sizing {
+        inner: snapshot,
+        reads: std::sync::atomic::AtomicU64::new(0),
+        large: std::sync::atomic::AtomicU64::new(0),
+    };
+    discover(&sizing, &DiscoverOptions::default()).unwrap();
+    // The scan asks the target for megabyte spans, not for pages one by one.
+    assert!(sizing.large.load(Relaxed) > 0, "no large read was made");
+    let reads = sizing.reads.load(Relaxed);
+    assert!(reads < 6000, "{reads} reads");
+}

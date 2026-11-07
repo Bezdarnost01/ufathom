@@ -71,7 +71,7 @@ pub const MAX_SCAN_BYTES_TOTAL: u64 = 1 << 30;
 // sized from target data is bounded by one of these.
 
 /// Most bytes of writable module data copied into local buffers.
-pub const MAX_LOCAL_DATA_BYTES: u64 = 256 << 20;
+pub const MAX_LOCAL_DATA_BYTES: u64 = 1 << 30;
 
 /// Bytes read per request when copying module data.
 pub const LOCAL_READ_CHUNK: usize = 1 << 20;
@@ -84,7 +84,31 @@ pub const MAX_CANDIDATE_SLOTS: usize = 4_000_000;
 pub const OBJECT_ARRAY_WINDOW: i64 = 0x30;
 
 /// Fewest objects an object array must hold to be accepted.
-pub const MIN_OBJECTS: u32 = 64;
+///
+/// Every engine registers all of CoreUObject's classes, structs, enums and
+/// their properties before any game code runs, which is thousands of objects
+/// in a real process; the synthetic images hold about 450 at the least.
+/// Anything with fewer slots in use is some other table that happens to have
+/// the right counts around a pointer, and a low bar only admits more of them.
+pub const MIN_OBJECTS: u32 = 256;
+
+/// Share of sampled objects, in percent, that must hold a pointer to an object
+/// of the array at the class offset. Low enough that one damaged class object
+/// does not fail the array (it takes all of its instances with it: a fifth of
+/// the objects in the synthetic images), high enough that a table which is not
+/// a set of `UObject`s, whose pointers rarely lead to members of the array at
+/// all, never reaches it.
+pub const STRUCTURE_IN_ARRAY_PERCENT: usize = 60;
+
+/// Share of sampled objects, in percent, whose class chain must reach the
+/// same fixed point (the metaclass). Low on purpose: a damaged class link
+/// breaks every chain that runs through it, and the only thing this check
+/// has to separate is "some objects reach a fixed point" from "none do".
+pub const STRUCTURE_FIXED_POINT_PERCENT: usize = 10;
+
+/// Fewest sampled objects that must reach the fixed point. A floor under the
+/// percentage for small samples.
+pub const MIN_FIXED_POINTS: usize = 3;
 
 /// Largest object array accepted, in objects.
 pub const MAX_OBJECT_COUNT: u32 = 1 << 26;
@@ -164,8 +188,11 @@ pub const MAX_FALLBACK_SCAN_BYTES: u64 = 512 << 20;
 /// Objects sampled when solving `UObject` fields.
 pub const OBJECT_SAMPLE_COUNT: usize = 1024;
 
-/// Share of samples a name field must decode for.
-pub const MIN_NAME_AGREEMENT: f64 = 0.99;
+/// Share of sampled objects, in percent, a name field must decode for.
+/// A wrong offset decodes for a small share at best (small integers and
+/// pointer halves rarely land on an entry start); a real array has a few
+/// percent of objects that are freed, under construction or damaged.
+pub const NAME_AGREEMENT_PERCENT: usize = 95;
 
 /// Most objects read by the universe scan.
 pub const MAX_UNIVERSE_OBJECTS: usize = 500_000;
@@ -182,8 +209,11 @@ pub const MAX_REFLECTION_OFFSET: u32 = 0x180;
 /// Most members read from one member chain.
 pub const MAX_CHAIN_STEPS: usize = 512;
 
-/// Most properties sampled for the property core.
-pub const MAX_PROPERTY_SAMPLES: usize = 4000;
+/// Most struct and class members sampled for the property core.
+pub const MAX_MEMBER_SAMPLES: usize = 4000;
+
+/// Most function parameters sampled for the property core.
+pub const MAX_PARAM_SAMPLES: usize = 1500;
 
 /// Most instances of one property kind sampled for its typed payload.
 pub const MAX_PAYLOAD_SAMPLES: usize = 400;
@@ -213,8 +243,9 @@ pub const VTABLE_SAMPLE_OBJECTS: usize = 96;
 pub const MAX_VALIDATION_STRUCTS: usize = 6000;
 
 /// Share of validated items that may violate an invariant before discovery
-/// fails.
-pub const MAX_VIOLATION_SHARE: f64 = 0.02;
+/// fails. A wrong layout breaks nearly every struct; the structs of a real
+/// game that are half-built or damaged are a few percent at most.
+pub const MAX_VIOLATION_SHARE: f64 = 0.05;
 
 /// Fewest violations that fail discovery. A wrong layout breaks hundreds of
 /// items; a handful of damaged objects is damage to the target and is
@@ -224,3 +255,23 @@ pub const MIN_VIOLATIONS_TO_FAIL: usize = 8;
 /// Failures tolerated when most of a sample must agree, for samples large
 /// enough that a few damaged objects do not mean a wrong offset.
 pub const TOLERATED_FAILURES: usize = 8;
+
+/// The floor of tolerated failures is at most one in this many sampled items,
+/// so that a small sample does not tolerate a large share.
+pub const FAILURE_FLOOR_DIVISOR: usize = 25;
+
+/// Share, in percent, of the sampled values that must agree for a reflection
+/// field (cast flags nesting, primitive sizes, array dimension, flag bits).
+/// Reflection data is regular; the exceptions are editor-only and generated
+/// members, a few percent of a real game's.
+pub const FIELD_AGREEMENT_PERCENT: usize = 95;
+
+/// Share, in percent, of the instances of a property kind that must resolve at
+/// a payload offset. Lower than the other bars: a kind may have few instances
+/// and every game adds variants of its own.
+pub const PAYLOAD_AGREEMENT_PERCENT: usize = 90;
+
+/// Most bytes of module data scanned for the slots that hold `GWorld` and
+/// `GEngine`, over all modules. Each module's data is read once, in large
+/// requests.
+pub const MAX_GLOBALS_SCAN_BYTES: u64 = 2 << 30;

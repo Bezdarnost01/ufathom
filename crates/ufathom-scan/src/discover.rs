@@ -1,16 +1,18 @@
 //! The entry point: runs the solving steps in order and assembles the layout.
 
 use ufathom_mem::MemoryReader;
-use ufathom_model::layout::{FNameLayout, ObjectArrayKind, UObjectLayout, UStructLayout};
+use ufathom_model::layout::{FNameLayout, Location, ObjectArrayKind, UObjectLayout, UStructLayout};
 use ufathom_model::layout::{NameTableLayout, PropertySystem, UEnumLayout};
 use ufathom_model::{EngineInfo, EngineLayout, EngineVersion};
 
 use crate::ctx::Ctx;
-use crate::error::ScanError;
+use crate::error::{RejectedCandidate, ScanError};
 use crate::globals::{GlobalsInput, find_globals};
 use crate::members::{solve_enum, solve_members};
 use crate::names::Names;
-use crate::objects::{find_object_array, load_slots};
+use crate::objects::{
+    ArrayCandidate, build_result, load_slots, not_found_hint, search_current_module,
+};
 use crate::options::DiscoverOptions;
 use crate::pe::PeImage;
 use crate::props::{self, Env};
@@ -24,9 +26,19 @@ use crate::version::detect_version;
 /// Solves the layout of the target from invariants and returns it with the
 /// evidence for every value.
 ///
-/// Reads only through `mem`. Nothing is written, executed or hooked. The
-/// module that holds the engine globals is `options.module`, or the first
-/// `.exe` module the reader lists.
+/// Reads only through `mem`. Nothing is written, executed or hooked.
+///
+/// The object array and the name table are searched for in every module, not
+/// only one: a monolithic game keeps them in its executable, a modular build
+/// in separate libraries (the object array in `CoreUObject`, the name table in
+/// `Core`). `options.module`, or the first `.exe` module the reader lists, is
+/// searched first, then the modules whose name says `Core`, then the rest.
+/// Each result records its own module in its location.
+///
+/// Candidates are ranked and tried in order. A candidate that a later step
+/// rejects (its objects have no `UObject` header, say) is set aside and the
+/// next one is tried; when none works, the error lists every candidate that
+/// was rejected and why.
 ///
 /// # Errors
 ///
@@ -41,31 +53,123 @@ use crate::version::detect_version;
 ///   and [`ScanError::Ambiguous`] when evidence fits several values equally.
 /// - [`ScanError::OverrideContradiction`] when an override differs from the
 ///   target.
+/// - [`ScanError::CandidatesRejected`] when several candidate arrays were
+///   found and every one failed a later step.
 /// - [`ScanError::ValidationFailed`] when the solved layout breaks a global
-///   invariant of the engine for more than 2% of the items checked.
+///   invariant of the engine for more than 5% of the items checked (and at
+///   least eight).
 pub fn discover(
     mem: &dyn MemoryReader,
     options: &DiscoverOptions<'_>,
 ) -> Result<Discovery, ScanError> {
     let ctx = Ctx::new(mem, options)?;
+    let mut rejected: Vec<RejectedCandidate> = Vec::new();
+    let mut slots_seen = 0usize;
+    let mut shapes_seen = 0usize;
+    let mut with_data = 0usize;
+    // The name table is found once and shared by every candidate array.
+    let mut names: Option<Result<Names<'_, '_>, String>> = None;
+    for index in 0..ctx.module_count() {
+        if !ctx.use_module(index) {
+            continue;
+        }
+        with_data += 1;
+        // Step 1: the object arrays of this module, best first.
+        let search = search_current_module(&ctx);
+        slots_seen += search.slots;
+        shapes_seen += search.shapes;
+        for candidate in &search.candidates {
+            match attempt(&ctx, mem, candidate, &mut names) {
+                Ok(found) => return Ok(found),
+                // A caller's mistake is the same for every candidate.
+                Err(
+                    error @ (ScanError::OverrideContradiction { .. }
+                    | ScanError::InvalidOverride { .. }),
+                ) => return Err(error),
+                Err(error) => {
+                    // Whatever a rejected candidate recorded is not evidence.
+                    let _ = ctx.take_records();
+                    tracing::debug!(
+                        module = index,
+                        slot = candidate.slot(),
+                        objects = candidate.num(),
+                        %error,
+                        "candidate object array rejected"
+                    );
+                    let module = ctx
+                        .module(index)
+                        .map_or_else(String::new, |m| m.name.clone());
+                    rejected.push(RejectedCandidate {
+                        module,
+                        slot: candidate.slot(),
+                        objects: candidate.num(),
+                        error: Box::new(error),
+                    });
+                }
+            }
+        }
+    }
+    match rejected.len() {
+        0 if with_data == 0 => Err(ScanError::NoWritableData {
+            module: ctx.primary().name.clone(),
+        }),
+        0 => Err(ScanError::ObjectArrayNotFound {
+            slots: slots_seen,
+            shape_candidates: shapes_seen,
+            confirmed: 0,
+            hint: not_found_hint(&ctx),
+        }),
+        1 => match rejected.pop() {
+            Some(only) => Err(*only.error),
+            None => Err(ScanError::NoWritableData {
+                module: ctx.primary().name.clone(),
+            }),
+        },
+        _ => Err(ScanError::CandidatesRejected { rejected }),
+    }
+}
 
-    // Step 1: the object array.
-    let array = find_object_array(&ctx)?;
-    let slots = load_slots(&ctx, &array.layout)?;
+/// Runs steps 2 to 7 for one candidate object array.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one pass over the solving steps in order"
+)]
+fn attempt<'c, 'a>(
+    ctx: &'c Ctx<'a>,
+    mem: &dyn MemoryReader,
+    candidate: &ArrayCandidate,
+    names: &mut Option<Result<Names<'c, 'a>, String>>,
+) -> Result<Discovery, ScanError> {
+    let array = build_result(ctx, candidate)?;
+    let slots = load_slots(ctx, &array.layout)?;
 
     // Steps 2 and 3: the name table, `FName` and the `UObject` header.
-    let names = Names::find(&ctx)?;
-    let fields = solve_object_fields(&ctx, &names, &slots, array.index_offset)?;
-    drop(names);
+    if names.is_none() {
+        *names = Some(Names::find(ctx).map_err(|error| error.to_string()));
+    }
+    let found = match names {
+        Some(Ok(found)) => found,
+        Some(Err(reason)) => {
+            return Err(ScanError::NameTableNotFound {
+                reason: reason.clone(),
+            });
+        }
+        None => {
+            return Err(ScanError::NameTableNotFound {
+                reason: "not searched".to_owned(),
+            });
+        }
+    };
+    let fields = solve_object_fields(ctx, found, &slots, array.index_offset)?;
 
     // The objects, and the CoreUObject anchors among them.
-    let universe = Universe::scan(&ctx, &slots, &fields);
+    let universe = Universe::scan(ctx, &slots, &fields);
     let anchors = Anchors::find(&universe, &fields.table, fields.metaclass)
         .map_err(|detail| ScanError::missing("coreuobject anchors", detail))?;
 
     // Step 4: structs.
     let structs = solve_structs(
-        &ctx,
+        ctx,
         &universe,
         &fields.table,
         &fields,
@@ -75,7 +179,7 @@ pub fn discover(
 
     // Step 5: properties, and the size of `FName`.
     let env = Env {
-        ctx: &ctx,
+        ctx,
         universe: &universe,
         table: &fields.table,
         fname: fields.fname.clone(),
@@ -124,7 +228,7 @@ pub fn discover(
 
     // Step 6: globals.
     let globals = find_globals(
-        &ctx,
+        ctx,
         &GlobalsInput {
             universe: &universe,
             super_offset: layout.ustruct.super_struct,
@@ -134,14 +238,18 @@ pub fn discover(
             world: anchors.engine.get("world").copied(),
             game_engine: anchors.engine.get("gameengine").copied(),
             engine: anchors.engine.get("engine").copied(),
+            module: match &layout.objects.location {
+                Location::Rva { module, .. } => module.clone(),
+                Location::Absolute(_) => ctx.primary().name.clone(),
+            },
         },
     );
 
     // Step 7: validation.
     let struct_objects = structs_of(&universe, &fields.table, &anchors);
-    validate(&ctx, &layout, &universe, &anchors, &struct_objects)?;
+    validate(ctx, &layout, &universe, &anchors, &struct_objects)?;
 
-    let engine = merge_version_facts(&ctx, mem, engine_facts(&layout));
+    let engine = merge_version_facts(ctx, mem, engine_facts(&layout));
     let (evidence, warnings) = ctx.take_records();
     Ok(Discovery {
         layout,
@@ -160,7 +268,7 @@ fn merge_version_facts(
     mem: &dyn MemoryReader,
     mut engine: EngineInfo,
 ) -> EngineInfo {
-    let image = match PeImage::parse_from_memory(mem, ctx.module_base) {
+    let image = match PeImage::parse_from_memory(mem, ctx.primary().base) {
         Ok(image) => image,
         Err(error) => {
             engine.evidence.push(format!(

@@ -22,8 +22,8 @@ use ufathom_model::layout::{FNameLayout, NameTableLayout};
 use crate::ctx::{Ctx, le_u32, le_u64};
 use crate::error::ScanError;
 use crate::limits::{
-    MAX_CLASS_HOPS, MAX_OUTER_DEPTH, MAX_UOBJECT_OFFSET, MIN_NAME_AGREEMENT, OBJECT_PROBE_BYTES,
-    OBJECT_SAMPLE_COUNT, TOLERATED_FAILURES,
+    MAX_CLASS_HOPS, MAX_OUTER_DEPTH, MAX_UOBJECT_OFFSET, NAME_AGREEMENT_PERCENT,
+    OBJECT_PROBE_BYTES, OBJECT_SAMPLE_COUNT,
 };
 use crate::names::{Names, load_table};
 
@@ -97,14 +97,6 @@ fn offsets_4() -> impl Iterator<Item = u32> {
     (8..MAX_UOBJECT_OFFSET).step_by(4)
 }
 
-fn share(matched: usize, total: usize) -> f64 {
-    if total == 0 {
-        0.0
-    } else {
-        matched as f64 / total as f64
-    }
-}
-
 /// Offsets where a name index is stored, under each variant of the table.
 struct NameScan {
     /// Offsets that decode, with the number of samples that decoded.
@@ -119,8 +111,7 @@ struct NameScan {
 /// a few damaged objects when the sample is large enough for that to mean
 /// the offset is right.
 fn agrees(matched: usize, total: usize) -> bool {
-    let tolerated = (total / 50).min(TOLERATED_FAILURES);
-    share(matched, total) >= MIN_NAME_AGREEMENT || total - matched <= tolerated
+    crate::agree::agrees(matched, total, NAME_AGREEMENT_PERCENT)
 }
 
 fn scan_names(
@@ -187,7 +178,10 @@ fn looks_like_number(values: &[u32], samples: &[Sample]) -> bool {
         .zip(samples)
         .filter(|&(&v, s)| v == s.index)
         .count();
-    share(small, values.len()) >= MIN_NAME_AGREEMENT
+    // Strict on purpose: the bytes just past the end of an object are other
+    // objects' headers, whose halves are small now and then, and only a field
+    // that is small in (nearly) every object is a number.
+    small * 100 >= values.len() * 99
         && nonzero >= 2.max(values.len() / 100)
         && equals_index * 2 < values.len()
 }
@@ -320,7 +314,7 @@ fn object_pointer_offsets(
         let null = values.iter().filter(|&&v| v == 0).count();
         let accepted = if allow_null { known + null } else { known };
         let enough_real = !allow_null || known * 2 >= values.len();
-        if share(accepted, values.len()) >= 0.98 && enough_real {
+        if crate::agree::agrees(accepted, values.len(), NAME_AGREEMENT_PERCENT) && enough_real {
             out.push(offset);
         }
     }
@@ -362,6 +356,7 @@ pub(crate) fn solve_object_fields(
 
     // Name index offsets, per interpretation of the table.
     let mut scored: Vec<(Option<u32>, NameScan)> = Vec::new();
+    tracing::debug!(variants = ?names.variants(), samples = samples.len(), "scoring name offsets");
     for variant in names.variants() {
         scored.push((variant, scan_names(names, variant, &samples, index_offset)));
     }
@@ -390,7 +385,7 @@ pub(crate) fn solve_object_fields(
         return Err(ScanError::missing(
             "uobject.name",
             format!(
-                "no 32-bit offset of the sampled objects holds {what} for 99% of {total} samples; the best, offset {offset:#x}, did for {matched}"
+                "no 32-bit offset of the sampled objects holds {what} for {NAME_AGREEMENT_PERCENT}% of {total} samples; the best, offset {offset:#x}, did for {matched}"
             ),
         ));
     }

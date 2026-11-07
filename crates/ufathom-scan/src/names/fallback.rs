@@ -33,19 +33,12 @@ pub(crate) enum Fallback {
     Array(ArrayCandidate),
 }
 
-/// Every `(address, bytes)` chunk of the memory the fallback may scan: the
-/// module's writable data and the other writable regions, up to the budget.
+/// Every writable region of the target, as `(base, size)`, up to the budget.
+/// Memory outside every module comes first: a name table lives on the heap,
+/// and the module data has already been searched.
 fn scan_spans(ctx: &Ctx<'_>) -> Vec<(u64, u64)> {
-    let mut spans: Vec<(u64, u64)> = ctx
-        .other_writable
-        .iter()
-        .map(|region| (region.base, region.size))
-        .collect();
-    spans.extend(
-        ctx.locals
-            .iter()
-            .map(|local| (local.base, local.bytes.len() as u64)),
-    );
+    let mut spans: Vec<(u64, u64)> = ctx.writable_regions().collect();
+    spans.sort_by_key(|&(base, _)| (ctx.in_image(base), base));
     let mut budget = MAX_FALLBACK_SCAN_BYTES;
     let mut out = Vec::new();
     for (base, size) in spans {
@@ -66,11 +59,14 @@ fn for_each_chunk(ctx: &Ctx<'_>, spans: &[(u64, u64)], mut f: impl FnMut(u64, &[
             let take = usize::try_from((size - offset).min(SCAN_CHUNK as u64)).unwrap_or(0);
             let at = base + offset;
             // The chunk overlaps the next one so text across the seam is seen.
-            let want = take + 16;
-            let bytes = ctx.read(at, want).or_else(|| ctx.read(at, take));
-            if let Some(bytes) = bytes {
-                f(at, &bytes);
-            }
+            // The request goes straight to the target: a scan touches each
+            // page once, and the page cache would only evict what the solver
+            // reads again.
+            let remaining = usize::try_from(size - offset)
+                .unwrap_or(0)
+                .saturating_sub(take);
+            let want = take + remaining.min(16);
+            f(at, &ctx.read_scan(at, want));
             offset += take as u64;
         }
     }

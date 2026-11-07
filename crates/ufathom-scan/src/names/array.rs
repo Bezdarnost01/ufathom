@@ -189,7 +189,12 @@ fn build(
 /// Searches module data for a name array, held directly or through a pointer.
 pub(crate) fn find_in_module(ctx: &Ctx<'_>) -> Vec<ArrayCandidate> {
     let mut found = Vec::new();
-    for (slot, pointer) in ctx.pointer_slots(false) {
+    // The table and its chunks are heap allocations, never part of a module.
+    for (slot, pointer) in ctx
+        .pointer_slots(false)
+        .into_iter()
+        .filter(|&(_, pointer)| !ctx.in_image(pointer))
+    {
         // Indirect: the slot points to the table, whose first word points to
         // the first chunk.
         if let Some(chunk) = ctx.u64(pointer).filter(|&c| ctx.is_pointer(c))

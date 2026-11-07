@@ -18,12 +18,21 @@ use ufathom_model::flags::{
 };
 use ufathom_model::layout::{UClassLayout, UEnumLayout, UFunctionLayout};
 
+use crate::agree::agrees;
 use crate::ctx::{Ctx, le_u64};
 use crate::error::ScanError;
-use crate::limits::{MAX_ENUM_PROBE, MAX_ENUM_STRIDE};
+use crate::limits::{FIELD_AGREEMENT_PERCENT, MAX_ENUM_PROBE, MAX_ENUM_STRIDE};
 use crate::props::{Env, Prop, Role};
 use crate::structs::derives_from;
 use crate::universe::Obj;
+
+/// Share of enums, in percent, whose names must all decode at a stride.
+const ENUM_DECODE_PERCENT: usize = 90;
+
+/// Share of enums, in percent, whose names must mostly carry the enum's name
+/// as prefix. A real game has a few hundred to a thousand enums, a fifth of
+/// them declared without a namespace; a wrong field decodes none.
+const ENUM_PREFIX_PERCENT: usize = 60;
 
 /// Fewest classes that must show a relation for it to count.
 const MIN_CLASSES: usize = 5;
@@ -102,6 +111,7 @@ fn solve_cast_flags(
     env: &Env<'_, '_>,
     classes: &[Obj],
     default_object: Option<u32>,
+    ustruct_end: u32,
 ) -> Result<Option<u32>, ScanError> {
     let ctx = env.ctx;
     let (Some(&actor), Some(&object)) =
@@ -124,7 +134,9 @@ fn solve_cast_flags(
         .map(|c| c.addr)
         .collect();
     let mut found = Vec::new();
-    for offset in offsets_8(0x18, env.sizes.class.saturating_sub(7)) {
+    // `UClass` adds its fields after `UStruct`, and so does `UFunction`, whose
+    // first field is `FunctionFlags`: nothing of `UClass` lies below it.
+    for offset in offsets_8(ustruct_end, env.sizes.class.saturating_sub(7)) {
         if Some(offset) == default_object || offset == super_offset {
             continue;
         }
@@ -136,14 +148,16 @@ fn solve_cast_flags(
                 _ => false,
             })
             .count();
-        if pairs.len() < MIN_CLASSES || nested * 100 < pairs.len() * 98 {
+        if pairs.len() < MIN_CLASSES || !agrees(nested, pairs.len(), FIELD_AGREEMENT_PERCENT) {
             continue;
         }
         let (Some(actor_flags), Some(object_flags)) = (read(actor), read(object)) else {
             continue;
         };
+        // `UObject` is the root of the hierarchy and casts to nothing but
+        // itself: its flags are zero, which `ClassFlags` and the like are not.
         let bits = actor_flags & !object_flags;
-        if bits == 0 {
+        if bits == 0 || object_flags != 0 {
             continue;
         }
         let consistent = classes
@@ -152,7 +166,7 @@ fn solve_cast_flags(
                 read(c.addr).is_some_and(|f| (f & bits == bits) == actor_family.contains(&c.addr))
             })
             .count();
-        if consistent * 100 >= classes.len() * 98 {
+        if agrees(consistent, classes.len(), FIELD_AGREEMENT_PERCENT) {
             found.push((offset, nested, pairs.len()));
         }
     }
@@ -170,8 +184,13 @@ fn solve_cast_flags(
             nested,
         ),
         (None, _) => ctx.warn(format!(
-            "uclass.cast_flags: {} candidate offsets fit; none is chosen",
-            found.len()
+            "uclass.cast_flags: {} candidate offsets fit ({}); none is chosen",
+            found.len(),
+            found
+                .iter()
+                .map(|&(offset, _, _)| format!("{offset:#x}"))
+                .collect::<Vec<_>>()
+                .join(", ")
         )),
         _ => {}
     }
@@ -350,8 +369,8 @@ pub(crate) fn solve_members(
 ) -> Result<Members, ScanError> {
     let classes = classes(env);
     let default_object = solve_default_object(env, &classes)?;
-    let cast_flags = solve_cast_flags(env, &classes, default_object)?;
     let flags = solve_function_flags(env, props, property_flags)?;
+    let cast_flags = solve_cast_flags(env, &classes, default_object, flags)?;
     let native_func = solve_native_func(env, flags)?;
     Ok(Members {
         uclass: UClassLayout {
@@ -390,6 +409,22 @@ fn has_prefix(text: &str, enum_name: &str) -> bool {
 
 /// The number of consecutive prefixed names that start at `data` with the
 /// given stride, up to `limit`.
+fn name_run(env: &Env<'_, '_>, data: u64, stride: u32, name: &str, limit: u32) -> (u32, u32) {
+    let mut run = 0;
+    let mut prefixed = 0;
+    while run < limit {
+        let at = data + u64::from(run) * u64::from(stride);
+        let Some(text) = env.fname_at(at) else {
+            break;
+        };
+        run += 1;
+        prefixed += u32::from(has_prefix(&text, name));
+    }
+    (run, prefixed)
+}
+
+/// The number of consecutive elements, from `data`, whose names all carry the
+/// enum's name as prefix. Used where the array is delimited by that alone.
 fn prefixed_run(env: &Env<'_, '_>, data: u64, stride: u32, name: &str, limit: u32) -> u32 {
     let mut count = 0;
     while count < limit {
@@ -400,6 +435,16 @@ fn prefixed_run(env: &Env<'_, '_>, data: u64, stride: u32, name: &str, limit: u3
         }
     }
     count
+}
+
+/// Whether most of the names of a run carry the enum's name as prefix. Not
+/// all: enums declared without a namespace store bare enumerator names, and
+/// they are a fifth of a real game's enums.
+fn mostly_prefixed((run, prefixed): (u32, u32)) -> bool {
+    // Four in five, not half: read at half the true stride, the values between
+    // the names decode as the name `None`, and half the elements then carry
+    // the prefix.
+    run > 0 && prefixed * 5 >= run * 4
 }
 
 /// Values of the elements of a pair array: little-endian, `width` bytes at
@@ -476,9 +521,31 @@ fn solve_pair_array(
         }
         let min_stride = env.fname.size.max(4);
         for stride in (min_stride..=MAX_ENUM_STRIDE).step_by(4) {
-            let ok = arrays
+            let runs: Vec<(u32, u32, u32)> = arrays
                 .iter()
-                .all(|&(e, data, num)| prefixed_run(env, data, stride, &e.name, num) == num);
+                .map(|&(e, data, num)| {
+                    let (run, prefixed) = name_run(env, data, stride, &e.name, num);
+                    (num, run, prefixed)
+                })
+                .collect();
+            let decoded = runs.iter().filter(|&&(num, run, _)| run == num).count();
+            let good = runs
+                .iter()
+                .filter(|&&(num, run, prefixed)| run == num && mostly_prefixed((run, prefixed)))
+                .count();
+            tracing::trace!(
+                offset,
+                stride,
+                arrays = arrays.len(),
+                decoded,
+                good,
+                "enum names"
+            );
+            // Every element must decode, and the names must belong to the
+            // enum: most of the arrays carry its name as prefix.
+            let ok = good > 0
+                && decoded * 100 >= arrays.len() * ENUM_DECODE_PERCENT
+                && good * 100 >= arrays.len() * ENUM_PREFIX_PERCENT;
             if !ok {
                 continue;
             }

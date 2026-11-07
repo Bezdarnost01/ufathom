@@ -174,6 +174,24 @@ fn find_chain(env: &Env<'_, '_>, core: &[(u64, &[&str], &[&str])]) -> Result<Can
             "no pointer in the core structs leads to a chain of non-object members with the expected names",
         ));
     }
+    // Several chains can satisfy the names. A struct also lists its members
+    // through `PropertyLink`, whose head is the first member and whose
+    // members' own `Next` leads on the same way, and the editor build keeps
+    // both. They are told apart by where the engine puts the fields: the
+    // child properties follow `Children`, and a member's name follows its
+    // `Next`.
+    if best.len() > 1 {
+        let after_children = ustruct.children + 8;
+        let adjacent: Vec<usize> = best
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.child_properties == after_children && c.name == c.next + 8)
+            .map(|(i, _)| i)
+            .collect();
+        if let [only] = adjacent.as_slice() {
+            best = best.drain(*only..=*only).collect();
+        }
+    }
     match best.len() {
         1 => best
             .pop()

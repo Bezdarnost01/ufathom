@@ -33,14 +33,15 @@ pub(crate) struct BitsChoice {
     pub determined: bool,
 }
 
-/// Splits that make every block fit [`MAX_BLOCK_BYTES`] and hold every
-/// recorded slot.
+/// Splits that make a block fit [`MAX_BLOCK_BYTES`]. Whether the entries of a
+/// block fit the split is for the names to say: a block whose last entry the
+/// walk cannot tell from the memory behind it would make any bound taken from
+/// the walk depend on what has been parsed so far.
 pub(crate) fn plausible_bits(probe: &PoolProbe<'_, '_>) -> Vec<u32> {
     let stride = u64::from(probe.candidate.format.stride);
-    let largest = probe.largest_slot();
     BLOCK_BITS_ORDER
         .into_iter()
-        .filter(|&bits| stride << bits <= MAX_BLOCK_BYTES && u64::from(largest) < 1u64 << bits)
+        .filter(|&bits| stride << bits <= MAX_BLOCK_BYTES)
         .collect()
 }
 

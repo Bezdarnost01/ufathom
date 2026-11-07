@@ -115,6 +115,14 @@ pub enum ScanError {
         hint: &'static str,
     },
 
+    /// Several candidate object arrays were found and each failed a later
+    /// step.
+    #[error("{} candidate object arrays were rejected: {}", rejected.len(), describe(rejected))]
+    CandidatesRejected {
+        /// Every candidate, in the order it was tried.
+        rejected: Vec<RejectedCandidate>,
+    },
+
     /// No name table was confirmed.
     #[error("name table not found: {reason}")]
     NameTableNotFound {
@@ -178,6 +186,32 @@ pub enum ScanError {
     /// A typed view rejected the layout that was just solved.
     #[error("the solved layout cannot be used: {0}")]
     Engine(#[from] ufathom_engine::EngineError),
+}
+
+/// A candidate object array that a later solving step rejected.
+#[derive(Debug)]
+pub struct RejectedCandidate {
+    /// The module the `Objects` pointer was found in.
+    pub module: String,
+    /// Address of the `Objects` field.
+    pub slot: u64,
+    /// Objects the candidate claimed to hold.
+    pub objects: u32,
+    /// The step that rejected it.
+    pub error: Box<ScanError>,
+}
+
+fn describe(rejected: &[RejectedCandidate]) -> String {
+    rejected
+        .iter()
+        .map(|c| {
+            format!(
+                "{} at {:#x} ({} objects): {}",
+                c.module, c.slot, c.objects, c.error
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 impl ScanError {

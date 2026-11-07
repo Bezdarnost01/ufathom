@@ -1,5 +1,6 @@
 //! What discovery returns.
 
+use ufathom_model::layout::Location;
 use ufathom_model::{EngineInfo, EngineLayout};
 
 /// How one solved value was established.
@@ -19,7 +20,10 @@ pub struct Evidence {
 
 /// Addresses and indices of the engine globals.
 ///
-/// Slots are RVAs inside [`module`](Self::module). When the evidence leaves
+/// [`gworld`](Self::gworld) and [`gengine`](Self::gengine) are RVAs inside
+/// [`module`](Self::module), the module that holds the object array. In a
+/// modular build the globals may sit in other modules: the `*_slots` lists
+/// name every slot found, each with its own module. When the evidence leaves
 /// several candidates, all are listed and none is chosen.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Globals {
@@ -29,10 +33,17 @@ pub struct Globals {
     pub gworld: Vec<u64>,
     /// Slots holding a pointer to the live `GameEngine`, sorted.
     pub gengine: Vec<u64>,
+    /// Every slot, in any module, holding a pointer to a live `World`.
+    pub gworld_slots: Vec<Location>,
+    /// Every slot, in any module, holding a pointer to a live `GameEngine`.
+    pub gengine_slots: Vec<Location>,
     /// Virtual table index of `UObject::ProcessEvent`.
     pub process_event_index: Option<u32>,
-    /// RVA of `UObject::ProcessEvent`.
+    /// RVA of `UObject::ProcessEvent` inside
+    /// [`process_event_module`](Self::process_event_module).
     pub process_event_rva: Option<u64>,
+    /// The module that holds `UObject::ProcessEvent`.
+    pub process_event_module: Option<String>,
 }
 
 /// The result of [`discover`](crate::discover).

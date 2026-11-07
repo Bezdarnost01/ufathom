@@ -12,15 +12,16 @@
 use std::collections::HashMap;
 
 use ufathom_engine::ObjectArrayView;
-use ufathom_model::layout::{Location, ObjectArrayKind, ObjectArrayLayout};
+use ufathom_model::layout::{ObjectArrayKind, ObjectArrayLayout};
 
 use crate::ctx::{Ctx, le_u32, le_u64};
 use crate::error::ScanError;
 use crate::limits::{
     ARRAY_SAMPLE_COUNT, ARRAY_SAMPLE_EDGE, ITEM_FAILURES_TO_GIVE_UP, ITEM_SIZE_RANGE,
-    LAST_LIVE_PROBE, MAX_ARRAY_CHUNKS, MAX_ITEMS_PER_CHUNK, MAX_OBJECT_COUNT, MAX_TUPLES_PER_SLOT,
-    MIN_CONFIRMING_ITEMS, MIN_INDEX_AGREEMENT, MIN_ITEMS_PER_CHUNK, MIN_OBJECTS,
-    OBJECT_ARRAY_WINDOW, OBJECT_PROBE_BYTES, QUICK_FIT_MATCHES,
+    LAST_LIVE_PROBE, MAX_ARRAY_CHUNKS, MAX_CLASS_HOPS, MAX_ITEMS_PER_CHUNK, MAX_OBJECT_COUNT,
+    MAX_TUPLES_PER_SLOT, MAX_UOBJECT_OFFSET, MIN_CONFIRMING_ITEMS, MIN_FIXED_POINTS,
+    MIN_INDEX_AGREEMENT, MIN_ITEMS_PER_CHUNK, MIN_OBJECTS, OBJECT_ARRAY_WINDOW, OBJECT_PROBE_BYTES,
+    QUICK_FIT_MATCHES, STRUCTURE_FIXED_POINT_PERCENT, STRUCTURE_IN_ARRAY_PERCENT,
 };
 
 /// A candidate set of 32-bit fields around an `Objects` pointer. Offsets are
@@ -97,8 +98,24 @@ pub(crate) struct ObjectArrayFound {
 fn window_values(ctx: &Ctx<'_>, slot: u64) -> Vec<(i64, u32)> {
     let start = slot.wrapping_sub(OBJECT_ARRAY_WINDOW as u64);
     let len = usize::try_from(2 * OBJECT_ARRAY_WINDOW + 8).unwrap_or(0);
-    let Some(bytes) = ctx.read(start, len) else {
-        return Vec::new();
+    // The pointer may be the first word of a region: what lies before it is
+    // then unreadable, and counts there are simply not found.
+    let bytes = match ctx.read(start, len) {
+        Some(bytes) => bytes,
+        None => {
+            let mut bytes = vec![0u8; len];
+            let mut any = false;
+            for (n, piece) in bytes.chunks_mut(8).enumerate() {
+                if let Some(read) = ctx.read(start.wrapping_add((n * 8) as u64), piece.len()) {
+                    piece.copy_from_slice(&read);
+                    any = true;
+                }
+            }
+            if !any {
+                return Vec::new();
+            }
+            bytes
+        }
     };
     let mut out = Vec::new();
     let mut at = -OBJECT_ARRAY_WINDOW;
@@ -449,17 +466,132 @@ fn chunk_table_fits(ctx: &Ctx<'_>, table: u64, tuple: &Tuple) -> bool {
     })
 }
 
+/// What the objects of a candidate array point at, beyond their own index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Structure {
+    /// The pointer offset whose targets are objects of the array and whose
+    /// chains reach a fixed point: `UObject::ClassPrivate`.
+    pub offset: u32,
+    /// Sampled live objects.
+    pub samples: usize,
+    /// Of those, objects holding a pointer to an object of the array.
+    pub in_array: usize,
+    /// Of those, objects whose chain reaches the most common fixed point.
+    pub fixed: usize,
+}
+
 /// A scored interpretation of one slot.
 #[derive(Debug, Clone)]
-struct Interpretation {
+pub(crate) struct ArrayCandidate {
     candidate: ShapeCandidate,
     tuple: Tuple,
     source: Source,
     fit: ItemFit,
     extent: u32,
+    pub structure: Structure,
+    /// Pointer slots, shape candidates and confirmed candidates of the module
+    /// the candidate was found in, for the evidence text.
+    stats: (usize, usize, usize),
 }
 
-fn interpret(ctx: &Ctx<'_>, candidate: &ShapeCandidate) -> Vec<Interpretation> {
+impl ArrayCandidate {
+    /// Address of the `Objects` field.
+    pub(crate) fn slot(&self) -> u64 {
+        self.candidate.slot
+    }
+
+    /// Objects the array claims to hold.
+    pub(crate) fn num(&self) -> u32 {
+        self.tuple.num_value
+    }
+}
+
+/// Whether the object at `pointer` belongs to the array: it stores the index
+/// of a slot that holds it.
+fn in_array(ctx: &Ctx<'_>, source: Source, fit: &ItemFit, num: u32, pointer: u64) -> bool {
+    let Some(index) = ctx.u32(pointer + u64::from(fit.index_offset)) else {
+        return false;
+    };
+    if index >= num {
+        return false;
+    }
+    let Some(item) = source.item(ctx, index, fit.item_size) else {
+        return false;
+    };
+    ctx.u64(item + u64::from(fit.item_object)) == Some(pointer)
+}
+
+/// Checks that the objects form a class hierarchy, as `UObject`s do: at one
+/// offset, nearly every sampled object holds a pointer to another object of
+/// the array, and following that pointer from object to object reaches a
+/// fixed point (the metaclass points at itself). Self-indexed memory that is
+/// not a set of `UObject`s fails this however well its index and vtable fit.
+fn confirm_structure(ctx: &Ctx<'_>, source: Source, fit: &ItemFit, num: u32) -> Option<Structure> {
+    let live: Vec<u64> = sample_indices(num)
+        .into_iter()
+        .filter(|&i| is_live(ctx, source, fit, i))
+        .filter_map(|i| ctx.u64(source.item(ctx, i, fit.item_size)? + u64::from(fit.item_object)))
+        .collect();
+    if live.len() < MIN_CONFIRMING_ITEMS {
+        return None;
+    }
+    let mut best: Option<Structure> = None;
+    for offset in (8..MAX_UOBJECT_OFFSET).step_by(8) {
+        if offset == fit.index_offset {
+            continue;
+        }
+        let targets: Vec<Option<u64>> = live
+            .iter()
+            .map(|&object| {
+                let target = ctx.u64(object + u64::from(offset))?;
+                in_array(ctx, source, fit, num, target).then_some(target)
+            })
+            .collect();
+        let in_array_count = targets.iter().flatten().count();
+        // A class pointer is never null and never dangling: a share of the
+        // sample, not all of it, because objects under construction exist.
+        if in_array_count * 100 < live.len() * STRUCTURE_IN_ARRAY_PERCENT {
+            continue;
+        }
+        let mut fixed_points: std::collections::HashMap<u64, usize> =
+            std::collections::HashMap::new();
+        for &object in &live {
+            let mut current = object;
+            for _ in 0..MAX_CLASS_HOPS {
+                let Some(next) = ctx.u64(current + u64::from(offset)) else {
+                    break;
+                };
+                if next == current {
+                    *fixed_points.entry(current).or_default() += 1;
+                    break;
+                }
+                if next == 0 {
+                    break;
+                }
+                current = next;
+            }
+        }
+        let fixed = fixed_points.values().copied().max().unwrap_or(0);
+        // The fixed point is reached by some of the objects, not all of them:
+        // a damaged class link breaks the chains through it. A false array has
+        // none.
+        if fixed * 100 < live.len() * STRUCTURE_FIXED_POINT_PERCENT || fixed < MIN_FIXED_POINTS {
+            continue;
+        }
+        let found = Structure {
+            offset,
+            samples: live.len(),
+            in_array: in_array_count,
+            fixed,
+        };
+        if best.is_none_or(|b| (found.fixed, found.in_array) > (b.fixed, b.in_array)) {
+            best = Some(found);
+        }
+    }
+    best
+}
+
+fn interpret(ctx: &Ctx<'_>, candidate: &ShapeCandidate) -> Vec<ArrayCandidate> {
     let mut groups: Vec<(Source, Vec<Tuple>)> = Vec::new();
     for tuple in &candidate.tuples {
         let source = match tuple.max_chunks {
@@ -495,6 +627,9 @@ fn interpret(ctx: &Ctx<'_>, candidate: &ShapeCandidate) -> Vec<Interpretation> {
         let Some(extent) = live_extent(ctx, source, &fit, largest) else {
             continue;
         };
+        let Some(structure) = confirm_structure(ctx, source, &fit, extent) else {
+            continue;
+        };
         // The count must cover the live slots. Among the counts that do, the
         // smallest is the one the engine keeps: noise values far above it
         // satisfy the shape rules too, but never lie closer to the live
@@ -511,12 +646,14 @@ fn interpret(ctx: &Ctx<'_>, candidate: &ShapeCandidate) -> Vec<Interpretation> {
             )
         });
         if let Some(&tuple) = fitting.first() {
-            out.push(Interpretation {
+            out.push(ArrayCandidate {
                 candidate: candidate.clone(),
                 tuple,
                 source,
                 fit,
                 extent,
+                structure,
+                stats: (0, 0, 0),
             });
         }
     }
@@ -563,58 +700,68 @@ fn find_serial(ctx: &Ctx<'_>, source: Source, fit: &ItemFit, num: u32) -> Option
 }
 
 /// Finds and confirms the object array.
-pub(crate) fn find_object_array(ctx: &Ctx<'_>) -> Result<ObjectArrayFound, ScanError> {
+/// The candidates found in the module whose data is loaded.
+pub(crate) struct ModuleSearch {
+    /// Pointer slots examined.
+    pub slots: usize,
+    /// Slots with a shape around them.
+    pub shapes: usize,
+    /// Confirmed candidates, best first.
+    pub candidates: Vec<ArrayCandidate>,
+}
+
+/// Finds and ranks the object arrays of the current module.
+///
+/// A candidate needs a shape (the counts around its `Objects` pointer), an
+/// item layout in which each sampled object stores its own index, and a class
+/// structure among its objects. They are ranked by how many objects reach the
+/// class fixed point, then by agreement and size, so the caller can try them
+/// in order.
+pub(crate) fn search_current_module(ctx: &Ctx<'_>) -> ModuleSearch {
     let slots = ctx.pointer_slots(true);
-    let candidates = shape_candidates(ctx, &slots);
-    let mut interpretations: Vec<Interpretation> = Vec::new();
-    for candidate in &candidates {
-        interpretations.extend(interpret(ctx, candidate));
+    let shapes = shape_candidates(ctx, &slots);
+    let mut candidates: Vec<ArrayCandidate> = Vec::new();
+    for shape in &shapes {
+        candidates.extend(interpret(ctx, shape));
     }
-    // Strongest agreement first, then the larger array.
-    interpretations.sort_by(|a, b| {
-        let share = |i: &Interpretation| i.fit.matched as f64 / i.fit.occupied.max(1) as f64;
-        share(b)
-            .total_cmp(&share(a))
+    let share = |c: &ArrayCandidate| c.fit.matched as f64 / c.fit.occupied.max(1) as f64;
+    let fixed = |c: &ArrayCandidate| c.structure.fixed as f64 / c.structure.samples.max(1) as f64;
+    candidates.sort_by(|a, b| {
+        fixed(b)
+            .total_cmp(&fixed(a))
+            .then(share(b).total_cmp(&share(a)))
             .then(b.tuple.num_value.cmp(&a.tuple.num_value))
             .then(a.candidate.slot.cmp(&b.candidate.slot))
     });
-    let confirmed = interpretations.len();
-    let Some(best) = interpretations.first() else {
-        let hint = if ctx.options.pointer_transform.is_empty() {
-            "; if the Objects pointer is stored scrambled, supply a pointer_transform"
-        } else {
-            "; the supplied pointer_transform produced no usable pointer"
-        };
-        return Err(ScanError::ObjectArrayNotFound {
-            slots: slots.len(),
-            shape_candidates: candidates.len(),
-            confirmed,
-            hint,
-        });
-    };
-    if let Some(other) = interpretations.iter().find(|other| {
-        other.candidate.slot != best.candidate.slot
-            && other.fit.matched as f64 >= 0.9 * best.fit.matched as f64
-    }) {
-        ctx.warn(format!(
-            "a second object array shape was confirmed at {:#x}; using {:#x}",
-            other.candidate.slot, best.candidate.slot
-        ));
+    let stats = (slots.len(), shapes.len(), candidates.len());
+    for candidate in &mut candidates {
+        candidate.stats = stats;
     }
-    build_result(ctx, best, slots.len(), candidates.len(), confirmed)
+    ModuleSearch {
+        slots: slots.len(),
+        shapes: shapes.len(),
+        candidates,
+    }
+}
+
+/// The advice that goes with an error when no object array is found.
+pub(crate) fn not_found_hint(ctx: &Ctx<'_>) -> &'static str {
+    if ctx.options.pointer_transform.is_empty() {
+        "; if the Objects pointer is stored scrambled, supply a pointer_transform"
+    } else {
+        "; the supplied pointer_transform produced no usable pointer"
+    }
 }
 
 #[allow(
     clippy::too_many_lines,
     reason = "one pass assigning and recording every solved array field"
 )]
-fn build_result(
+pub(crate) fn build_result(
     ctx: &Ctx<'_>,
-    best: &Interpretation,
-    slots: usize,
-    shapes: usize,
-    confirmed: usize,
+    best: &ArrayCandidate,
 ) -> Result<ObjectArrayFound, ScanError> {
+    let (slots, shapes, confirmed) = best.stats;
     let tuple = best.tuple;
     let slot = best.candidate.slot;
     let relative = [
@@ -735,12 +882,8 @@ fn build_result(
         None => ctx.warn("objects.item_serial: no item field is unique per item"),
     }
 
-    let rva = ctx.rva(base);
     let layout = ObjectArrayLayout {
-        location: Location::Rva {
-            module: ctx.module_name.clone(),
-            rva,
-        },
+        location: ctx.location(base),
         kind,
         objects,
         max_elements,
@@ -791,6 +934,22 @@ mod tests {
     use super::*;
     use crate::options::DiscoverOptions;
 
+    /// The best object array of the primary module.
+    fn find_object_array(ctx: &Ctx<'_>) -> Result<ObjectArrayFound, ScanError> {
+        assert!(ctx.use_module(0));
+        let search = search_current_module(ctx);
+        let best = search
+            .candidates
+            .first()
+            .ok_or(ScanError::ObjectArrayNotFound {
+                slots: search.slots,
+                shape_candidates: search.shapes,
+                confirmed: 0,
+                hint: "",
+            })?;
+        build_result(ctx, best)
+    }
+
     /// Builds a fixture and returns the decoy's and the real array's slots.
     fn setup(name: &str, seed: u64) -> (ufathom_testkit::Fixture, u64, u64) {
         let fx = FixtureBuilder::new(Profile::by_name(name).unwrap())
@@ -809,6 +968,7 @@ mod tests {
         for name in ["ue4.25-cp", "ue4.17"] {
             let (fx, decoy, real) = setup(name, 1);
             let ctx = Ctx::new(&fx.memory, &options).unwrap();
+            assert!(ctx.use_module(0));
             let slots = ctx.pointer_slots(true);
             let shapes = shape_candidates(&ctx, &slots);
             let decoy_shape = shapes
@@ -827,10 +987,10 @@ mod tests {
                 "{name}: real not confirmed"
             );
             let found = find_object_array(&ctx).unwrap();
-            let Location::Rva { rva, .. } = found.layout.location else {
+            let ufathom_model::layout::Location::Rva { rva, .. } = found.layout.location else {
                 panic!("location")
             };
-            let base = ctx.module_base + rva;
+            let base = ctx.primary().base + rva;
             assert!(
                 base <= real && real < base + 0x40,
                 "{name}: the real array was chosen"
@@ -845,6 +1005,7 @@ mod tests {
         for seed in 0..24 {
             let (fx, decoy, real) = setup("ue4.25", seed);
             let ctx = Ctx::new(&fx.memory, &options).unwrap();
+            assert!(ctx.use_module(0));
             let slots = ctx.pointer_slots(true);
             let shapes = shape_candidates(&ctx, &slots);
             // The naive scanner accepts the first slot whose neighbouring
@@ -870,5 +1031,117 @@ mod tests {
             decoy_first > 0,
             "no layout put the decoy first, so the test shows nothing"
         );
+    }
+
+    /// Builds an image with one module and an object array whose 1000
+    /// objects store their own index and have an image vtable, but are not
+    /// `UObject`s: each holds, at offset 0x10, a pointer to another object of
+    /// the array. With `class_like` they all point at one object that points at
+    /// itself, as class links do; without, they form a chain that ends at null.
+    fn array_of_plain_objects(class_like: bool) -> ufathom_mem::Snapshot {
+        use ufathom_mem::{Perms, RegionKind, Snapshot};
+
+        const BASE: u64 = 0x1_4000_0000;
+        const TABLE: u64 = 0x2_0000_0000;
+        const ITEMS: u64 = 0x2_1000_0000;
+        const OBJECTS: u64 = 0x2_2000_0000;
+        const COUNT: u64 = 1000;
+        const OBJECT_SIZE: u64 = 0x40;
+        const ITEM_SIZE: u64 = 0x18;
+
+        let object = |i: u64| OBJECTS + i * OBJECT_SIZE;
+        let vtable = BASE + 0x1000;
+
+        let mut data = vec![0u8; 0x1000];
+        let put32 = |data: &mut Vec<u8>, at: usize, value: u32| {
+            data[at..at + 4].copy_from_slice(&value.to_le_bytes());
+        };
+        let put64 = |data: &mut Vec<u8>, at: usize, value: u64| {
+            data[at..at + 8].copy_from_slice(&value.to_le_bytes());
+        };
+        // Objects, Prealloc, MaxElements, NumElements, MaxChunks, NumChunks.
+        put64(&mut data, 0x100, TABLE);
+        put32(&mut data, 0x110, 0x2_0000);
+        put32(&mut data, 0x114, COUNT as u32);
+        put32(&mut data, 0x118, 2);
+        put32(&mut data, 0x11C, 1);
+
+        let mut table = vec![0u8; 0x1000];
+        put64(&mut table, 0, ITEMS);
+
+        let mut items = vec![0u8; 0x8000];
+        let mut objects = vec![0u8; 0x1_0000];
+        for i in 0..COUNT {
+            put64(&mut items, (i * ITEM_SIZE) as usize, object(i));
+            let at = (i * OBJECT_SIZE) as usize;
+            put64(&mut objects, at, vtable);
+            put32(&mut objects, at + 0xC, i as u32);
+            let link = match (class_like, i + 1 < COUNT) {
+                (true, _) => object(0),
+                (false, true) => object(i + 1),
+                (false, false) => 0,
+            };
+            put64(&mut objects, at + 0x10, link);
+        }
+        let mut text = vec![0u8; 0x1000];
+        put64(&mut text, 0, BASE + 0x1000);
+
+        Snapshot::builder()
+            .region_with(BASE + 0x1000, text, Perms::RX, RegionKind::Image)
+            .region_with(BASE + 0x2000, data, Perms::RW, RegionKind::Image)
+            .region(TABLE, table)
+            .region(ITEMS, items)
+            .region(OBJECTS, objects)
+            .module("Fake.exe", BASE, 0x4000)
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn self_indexed_memory_that_is_not_a_set_of_uobjects_is_not_an_object_array() {
+        let options = DiscoverOptions::default();
+
+        // The control: the same image with class-like links is accepted, which
+        // shows the rest of the image passes every other check.
+        let control = array_of_plain_objects(true);
+        let ctx = Ctx::new(&control, &options).unwrap();
+        assert!(ctx.use_module(0));
+        let search = search_current_module(&ctx);
+        assert_eq!(search.candidates.len(), 1, "the control is an object array");
+        let found = &search.candidates[0];
+        assert_eq!(found.structure.offset, 0x10);
+        assert_eq!(found.num(), 1000);
+
+        // Shape, item layout, self index and vtable all hold for the chain,
+        // and a scanner that stopped there would take it.
+        let chain = array_of_plain_objects(false);
+        let ctx = Ctx::new(&chain, &options).unwrap();
+        assert!(ctx.use_module(0));
+        let slots = ctx.pointer_slots(true);
+        let shapes = shape_candidates(&ctx, &slots);
+        let shape = shapes.iter().find(|c| c.slot == 0x1_4000_2100).unwrap();
+        let source = match shape.tuples.iter().find(|t| t.max_chunks.is_some()) {
+            Some(t) => Source::Chunked {
+                table: shape.pointer,
+                per_chunk: t.max_value / t.max_chunks_value,
+            },
+            None => panic!("no chunked shape"),
+        };
+        let fit = find_fit(&ctx, source, 1000).expect("the item layout is confirmed");
+        assert_eq!(
+            (fit.item_size, fit.item_object, fit.index_offset),
+            (0x18, 0, 0xC)
+        );
+        // Only the class structure rejects it.
+        assert!(confirm_structure(&ctx, source, &fit, 1000).is_none());
+        assert!(search_current_module(&ctx).candidates.is_empty());
+        match discover_error(&chain) {
+            ScanError::ObjectArrayNotFound { .. } => {}
+            other => panic!("expected ObjectArrayNotFound, got {other}"),
+        }
+    }
+
+    fn discover_error(image: &ufathom_mem::Snapshot) -> ScanError {
+        crate::discover(image, &DiscoverOptions::default()).expect_err("discovery fails")
     }
 }

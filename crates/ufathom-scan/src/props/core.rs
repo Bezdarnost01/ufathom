@@ -15,8 +15,9 @@ use std::collections::BTreeMap;
 
 use ufathom_model::flags::{CPF_PARM, CPF_RETURN_PARM};
 
+use crate::agree::agrees;
 use crate::error::ScanError;
-use crate::limits::MAX_PROPERTY_OFFSET;
+use crate::limits::{FIELD_AGREEMENT_PERCENT, MAX_PROPERTY_OFFSET};
 
 use super::{Env, Prop, Role};
 
@@ -82,7 +83,7 @@ fn solve_element_size(env: &Env<'_, '_>, props: &[Prop]) -> Result<u32, ScanErro
             .iter()
             .filter(|&&(p, size)| ctx.u32(p.addr + u64::from(offset)) == Some(size))
             .count();
-        if primitives.len() >= 8 && share(matched, primitives.len()) >= 0.95 {
+        if primitives.len() >= 8 && agrees(matched, primitives.len(), FIELD_AGREEMENT_PERCENT) {
             found.push((offset, matched));
         }
     }
@@ -111,7 +112,7 @@ fn solve_array_dim(env: &Env<'_, '_>, props: &[Prop], element_size: u32) -> Resu
             .iter()
             .filter(|p| ctx.u32(p.addr + u64::from(offset)) == Some(1))
             .count();
-        if members.len() >= 8 && share(ones, members.len()) >= 0.95 {
+        if members.len() >= 8 && agrees(ones, members.len(), FIELD_AGREEMENT_PERCENT) {
             found.push((offset, ones));
         }
     }
@@ -167,6 +168,10 @@ fn solve_offset_internal(
             same.then_some((members, size))
         })
         .collect();
+    tracing::debug!(
+        packed = packed.len(),
+        "packed structs for the member offset"
+    );
     let mut found = Vec::new();
     for offset in candidates_4().filter(|&o| o != element_size && o != array_dim) {
         let agreeing = packed
@@ -181,6 +186,7 @@ fn solve_offset_internal(
                 got == want
             })
             .count();
+        tracing::trace!(offset, agreeing, "member offset candidate");
         if packed.len() >= 3 && agreeing >= 3 && share(agreeing, packed.len()) >= 0.6 {
             found.push((offset, agreeing));
         }
@@ -230,8 +236,8 @@ fn solve_flags(env: &Env<'_, '_>, props: &[Prop]) -> Result<u32, ScanError> {
             .count();
         let enough = !returns.is_empty() && params.len() >= 4 && members.len() >= 8;
         if enough
-            && share(params_ok, params.len()) >= 0.98
-            && share(members_ok, members.len()) >= 0.98
+            && agrees(params_ok, params.len(), FIELD_AGREEMENT_PERCENT)
+            && agrees(members_ok, members.len(), FIELD_AGREEMENT_PERCENT)
             && returns_ok == returns.len()
         {
             found.push((offset, params_ok + members_ok));
