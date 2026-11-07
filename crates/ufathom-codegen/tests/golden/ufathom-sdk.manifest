@@ -1,0 +1,6 @@
+ufathom-codegen manifest 1
+03f45ed3d7304b27	Cargo.toml
+25373a1d030635f3	src/core_u_object.rs
+36ebeddd0321048f	src/engine.rs
+a2dad2f75f3417fc	src/lib.rs
+34699f2cfd49c153	src/mods.rs

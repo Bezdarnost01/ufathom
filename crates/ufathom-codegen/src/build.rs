@@ -436,9 +436,9 @@ fn plan_enum(
     signed: bool,
     degraded: &mut Vec<Degradation>,
 ) -> PlannedEnum {
-    let mut ns = Namespace::with_reserved(&["name", "Self_", "Self"]);
+    let mut ns = Namespace::with_reserved(&["name"]);
     let mut values: Vec<&ufathom_model::EnumValue> = e.values.iter().collect();
-    values.sort();
+    values.sort_by(|a, b| a.value.cmp(&b.value).then_with(|| a.name.cmp(&b.name)));
     let mut consts = Vec::new();
     let mut names = Vec::new();
     let mut seen: BTreeSet<i64> = BTreeSet::new();

@@ -254,7 +254,11 @@ fn emit_layout(
     base_path: Option<&str>,
 ) {
     for line in doc {
-        wl!(out, "/// {line}");
+        if line.is_empty() {
+            wl!(out, "///");
+        } else {
+            wl!(out, "/// {line}");
+        }
     }
     wl!(out, "#[repr(C, align({}))]", plan.align);
     wl!(out, "#[derive(Clone, Copy, Debug)]");
@@ -507,6 +511,8 @@ fn emit_struct(out: &mut String, s: &PlannedStruct) {
 
     wl!(out);
     wl!(out, "impl {name} {{");
+    let mut body = String::new();
+    let out_outer = std::mem::replace(out, std::mem::take(&mut body));
     for f in &s.fields {
         let Some(c) = &f.const_name else { continue };
         if let Some((byte_offset, mask)) = f.bit_raw {
@@ -536,6 +542,9 @@ fn emit_struct(out: &mut String, s: &PlannedStruct) {
     for func in &s.functions {
         emit_wrapper(out, func);
     }
+    let body = std::mem::replace(out, out_outer);
+    out.push_str(body.trim_end_matches('\n'));
+    wl!(out);
     wl!(out, "}}");
 }
 
