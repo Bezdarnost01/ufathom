@@ -11,6 +11,7 @@ mod names;
 mod objects;
 mod options;
 pub mod pe;
+mod props;
 mod result;
 mod structs;
 mod universe;
