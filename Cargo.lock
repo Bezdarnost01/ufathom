@@ -482,9 +482,14 @@ dependencies = [
 name = "ufathom-scan"
 version = "0.1.0"
 dependencies = [
+ "memchr",
+ "thiserror",
+ "toml",
+ "tracing",
  "ufathom-engine",
  "ufathom-mem",
  "ufathom-model",
+ "ufathom-testkit",
 ]
 
 [[package]]

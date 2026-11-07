@@ -48,8 +48,8 @@ impl fmt::Display for EngineVersion {
 /// unknown version is legal and never an error.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EngineInfo {
-    /// The version the binary claims, as written, for example from its
-    /// version resource.
+    /// The numeric version the binary claims, for example `4.25.1`. The raw text
+    /// it came from is kept in [`evidence`](Self::evidence).
     pub claimed: Option<String>,
     /// The build string the binary carries, for example a branch and
     /// changelist.
