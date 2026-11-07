@@ -12,6 +12,8 @@ mod objects;
 mod options;
 pub mod pe;
 mod result;
+mod universe;
+mod uobject;
 pub mod version;
 
 pub use error::ScanError;
