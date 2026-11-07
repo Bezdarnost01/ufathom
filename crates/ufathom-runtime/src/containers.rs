@@ -224,13 +224,15 @@ pub struct FWeakObjectPtr {
 // SAFETY: two integers.
 unsafe impl Pod for FWeakObjectPtr {}
 
-/// `FLazyObjectPtr`: a weak pointer and the GUID of the target. Opaque, 24
-/// bytes, alignment 4.
+/// `FLazyObjectPtr`: a weak pointer, the tag at the last test and the GUID of
+/// the target. 28 bytes, alignment 4 (as measured on a UE 4.25 build).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct FLazyObjectPtr {
     /// The weak pointer part.
     pub weak: FWeakObjectPtr,
+    /// Tag at the last test of the weak pointer.
+    pub tag_at_last_test: i32,
     /// The GUID, as four words.
     pub guid: [u32; 4],
 }
@@ -361,7 +363,7 @@ mod layout_checks {
         align_of::<FWeakObjectPtr>(),
     );
     const _: () = check(
-        24,
+        28,
         4,
         size_of::<FLazyObjectPtr>(),
         align_of::<FLazyObjectPtr>(),
