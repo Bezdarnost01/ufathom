@@ -1,0 +1,128 @@
+name: Release
+
+# Binaries are only ever built here, from a tag on main. See "Releases" in CONTRIBUTING.md.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TARGET: x86_64-pc-windows-msvc
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The full history is needed to prove the tag is reachable from main.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require the tagged commit to be on main
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) { throw "Tag $env:TAG is not on main. Release only from main." }
+        env:
+          TAG: ${{ github.ref_name }}
+
+      - name: Check the tag against the workspace version
+        id: tag
+        run: .github/scripts/check-tag.ps1 -Tag $env:TAG
+        env:
+          TAG: ${{ github.ref_name }}
+
+      - name: Extract the release notes from CHANGELOG.md
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          .github/scripts/changelog-section.ps1 -Version $env:VERSION -OutFile release/RELEASE_NOTES.md
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+
+      - run: rustup update stable
+      - run: rustup default stable
+      - run: rustup component add clippy rustfmt
+      - run: rustup target add $env:TARGET
+
+      # The same gates as CI.
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      # The DLL host tests load the real DLL, which `cargo test` does not build.
+      - run: cargo build -p ufathom-dll -p ufathom-testkit --bins --lib
+      - run: cargo test --workspace
+
+      # Two invocations on purpose: while the CLI bin and the DLL lib share the file stem
+      # `ufathom`, building them together collides on ufathom.pdb and intermediate objects
+      # and fails the link at random.
+      - name: Build the release DLL
+        run: cargo build --release --locked --target $env:TARGET -p ufathom-dll
+      - name: Build the release CLI
+        run: cargo build --release --locked --target $env:TARGET -p ufathom-cli
+
+      - name: Package the assets
+        run: .github/scripts/package-release.ps1 -Tag $env:TAG -Target $env:TARGET -OutDir release/assets
+        env:
+          TAG: ${{ github.ref_name }}
+
+      - name: Verify SHA256SUMS
+        run: .github/scripts/verify-sums.ps1 -Dir release/assets
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: release
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: build
+    runs-on: windows-latest
+    # Write access lives in this job only. It runs no cargo and no code from the build.
+    permissions:
+      contents: write
+      # Needed by actions/attest-build-provenance.
+      id-token: write
+      attestations: write
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+
+      - name: Verify SHA256SUMS
+        run: .github/scripts/verify-sums.ps1 -Dir release/assets
+
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: release/assets/*
+
+      - name: Create the GitHub Release
+        run: |
+          $assets = @(Get-ChildItem -LiteralPath release/assets -File | ForEach-Object { $_.FullName })
+          $arguments = @($env:TAG, '--verify-tag', '--title', "ufathom $env:TAG", '--notes-file', 'release/RELEASE_NOTES.md')
+          if ($env:PRERELEASE -eq 'true') { $arguments += '--prerelease' } else { $arguments += '--latest' }
+          gh release create @arguments @assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}

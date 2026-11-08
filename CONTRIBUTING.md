@@ -17,6 +17,19 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
+## Releases
+
+Binaries are only ever built by the `Release` workflow (`.github/workflows/release.yml`). Never build, sign or upload release files by hand.
+
+To cut a release `X.Y.Z`:
+
+1. In a pull request, set `version` under `[workspace.package]` in the root `Cargo.toml` to `X.Y.Z` (and update `Cargo.lock`).
+2. In the same pull request, move the `[Unreleased]` entries of `CHANGELOG.md` into a new section headed `## [X.Y.Z] - YYYY-MM-DD`, in the Keep a Changelog format. The section becomes the release notes and must not be empty.
+3. Merge the pull request into `main`.
+4. Tag the merge commit on `main` and push the tag: `git tag vX.Y.Z` then `git push origin vX.Y.Z`.
+
+The workflow refuses to release if the tag is not on `main`, does not match the workspace version, has no changelog section, or fails any of the CI checks. It publishes a `x86_64-pc-windows-msvc` zip, the raw `ufathom.exe` and `ufathom.dll`, and `SHA256SUMS`, with build provenance attestations. Versions `0.x` and versions with a pre-release suffix are published as pre-releases. A run that fails before the final step publishes nothing. After fixing the cause, delete the tag and push it again on the corrected commit.
+
 ## Never commit
 
 - Game executables, pak files, memory dumps, usmap files or generated SDKs from real games.
