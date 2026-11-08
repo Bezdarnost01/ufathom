@@ -76,7 +76,7 @@ pub enum Corruption {
     /// A reader checks the chunk count against the chunk capacity and refuses
     /// to read past it.
     TruncatedChunkTable,
-    /// The headers of the `Pawn` class and about 25 filler objects are zero:
+    /// The headers of the `Pawn` class and about 30 filler objects are zero:
     /// no vtable, class, name or outer.
     ///
     /// A reader rejects an object whose header does not validate and moves on.
@@ -128,6 +128,11 @@ pub(crate) struct Context<'a> {
     pub names: &'a NameTable,
     pub unmapped: u64,
 }
+
+/// Filler objects whose header [`Corruption::ZeroedObjectHeaders`] zeroes.
+/// Together with `Pawn` they stay above the 5% agreement bar of the name
+/// solver on the smallest image the solver tests build.
+const ZEROED_FILLERS: usize = 30;
 
 /// A name comparison index far outside any table.
 const BAD_NAME_INDEX: u32 = 0x7FFF_FFF0;
@@ -327,12 +332,12 @@ pub(crate) fn apply(mem: &mut Mem, ctx: &Context<'_>, corruption: Corruption, rn
         Corruption::ZeroedObjectHeaders => {
             let mut victims = vec![ctx.addr("/Script/Engine.Pawn")];
             let actors = ctx.actors();
-            let step = (actors.len() / 25).max(1);
+            let step = (actors.len() / ZEROED_FILLERS).max(1);
             victims.extend(
                 actors
                     .iter()
                     .step_by(step)
-                    .take(25)
+                    .take(ZEROED_FILLERS)
                     .map(|&i| ctx.object_at(i)),
             );
             for victim in victims {

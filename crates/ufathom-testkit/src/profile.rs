@@ -88,6 +88,54 @@ pub struct FieldClassShape {
     pub size: u32,
 }
 
+/// Offsets of the four `UStruct` link-chain heads that [`EngineLayout`] has no
+/// field for. The engine builds these chains when it links a struct.
+///
+/// ASSUMED for every profile: a block of four pointers that follows `Script`,
+/// in the order of the `jmap` type description. Only the 4.21 distance from
+/// `Script` to `DestructorLink` was cross-checked against a real build.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StructLinks {
+    /// `PropertyLink`: every property of the struct and of its parents.
+    pub property_link: u32,
+    /// `RefLink`: the properties that hold object references.
+    pub ref_link: u32,
+    /// `DestructorLink`: the properties that need destruction.
+    pub destructor_link: u32,
+    /// `PostConstructLink`: the config and instanced properties.
+    pub post_construct_link: u32,
+}
+
+/// Offsets of the four link pointers of a property (`UProperty` before UE
+/// 4.25, `FProperty` from it), one per chain of [`StructLinks`].
+///
+/// ASSUMED for every profile: four consecutive pointers after the last
+/// replication member, in the order of the `jmap` type description. The end of
+/// the block matches the measured `sizeof(UProperty)` of the 4.21 build.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PropertyLinks {
+    /// `PropertyLinkNext`.
+    pub property_next: u32,
+    /// `NextRef`.
+    pub ref_next: u32,
+    /// `DestructorLinkNext`.
+    pub destructor_next: u32,
+    /// `PostConstructLinkNext`.
+    pub post_construct_next: u32,
+}
+
+impl PropertyLinks {
+    /// The four offsets of a block that starts at `base`.
+    fn at(base: u32) -> Self {
+        Self {
+            property_next: base,
+            ref_next: base + 8,
+            destructor_next: base + 0x10,
+            post_construct_next: base + 0x18,
+        }
+    }
+}
+
 /// Facts the writer needs that [`EngineLayout`] cannot express. All of them
 /// are ASSUMED for every profile (derived, not measured) unless a constructor
 /// says otherwise.
@@ -100,6 +148,10 @@ pub struct Shape {
     pub sizeof_ufield: u32,
     /// `sizeof(UStruct)`.
     pub sizeof_ustruct: u32,
+    /// Heads of the link chains inside a `UStruct`.
+    pub struct_links: StructLinks,
+    /// Link pointers inside a property.
+    pub property_links: PropertyLinks,
     /// `sizeof(UClass)`.
     pub sizeof_uclass: u32,
     /// `sizeof(UFunction)`.
@@ -444,8 +496,12 @@ pub fn typed_payloads(size: u32, array_flags_first: bool) -> TypedPayloadLayout 
 }
 
 /// Offsets of the `UProperty` / `FProperty` members, from `jmap`.
-/// Returns `(array_dim, element_size, flags, offset_internal, size)`.
-fn property_members(version: u32, base_end: u32, fname: u32) -> (u32, u32, u32, u32, u32) {
+/// Returns `(array_dim, element_size, flags, offset_internal, size, links)`.
+fn property_members(
+    version: u32,
+    base_end: u32,
+    fname: u32,
+) -> (u32, u32, u32, u32, u32, PropertyLinks) {
     // FName is 8-aligned in 4.11 to 4.21 (it held a union with a 64-bit value).
     let fname_align = if (411..422).contains(&version) { 8 } else { 4 };
     let array_dim = base_end;
@@ -468,7 +524,7 @@ fn property_members(version: u32, base_end: u32, fname: u32) -> (u32, u32, u32, 
         }
     }
     // PropertyLinkNext, NextRef, DestructorLinkNext, PostConstructLinkNext.
-    c.place(0x20, 8);
+    let links = PropertyLinks::at(c.place(0x20, 8));
     if version >= 503 {
         c.place(fname, 4); // RepNotifyFunc moved to the end in UE 5.3
     }
@@ -478,6 +534,7 @@ fn property_members(version: u32, base_end: u32, fname: u32) -> (u32, u32, u32, 
         flags,
         offset_internal,
         align_up(c.0, 8),
+        links,
     )
 }
 
@@ -511,7 +568,14 @@ pub fn derive(params: &Params) -> (EngineLayout, Shape) {
     let properties_size = c.place(4, 4);
     let min_alignment = c.place(4, 4); // 2 + 2 (StructStateFlags) from 5.6
     c.place(0x10, 8); // Script
-    c.place(0x20, 8); // PropertyLink, RefLink, DestructorLink, PostConstructLink
+    // PropertyLink, RefLink, DestructorLink, PostConstructLink.
+    let link_block = c.place(0x20, 8);
+    let struct_links = StructLinks {
+        property_link: link_block,
+        ref_link: link_block + 8,
+        destructor_link: link_block + 0x10,
+        post_construct_link: link_block + 0x18,
+    };
     c.place(0x10, 8); // ScriptObjectReferences
     if v >= FIRST_FFIELD {
         c.place(8, 8); // UnresolvedScriptProperties
@@ -683,7 +747,7 @@ pub fn derive(params: &Params) -> (EngineLayout, Shape) {
     } else {
         (None, None, None, None, ufield_end)
     };
-    let (array_dim, element_size, property_flags, offset_internal, property_size) =
+    let (array_dim, element_size, property_flags, offset_internal, property_size, property_links) =
         property_members(v, base_end, fname);
     let system = match (ffield_layout, field_class) {
         (Some(ffield), Some(field_class)) => PropertySystem::Modern {
@@ -731,6 +795,8 @@ pub fn derive(params: &Params) -> (EngineLayout, Shape) {
         version: v,
         sizeof_ufield: ufield_end,
         sizeof_ustruct: ustruct_size,
+        struct_links,
+        property_links,
         sizeof_uclass,
         sizeof_ufunction,
         sizeof_uscriptstruct: ustruct_size + 0x10,

@@ -31,6 +31,10 @@ pub const ENGINE_PACKAGE: &str = "/Script/Engine";
 pub(crate) const CPF_ZERO_CONSTRUCTOR: u64 = 0x200;
 /// `CPF_IsPlainOldData`.
 const CPF_IS_PLAIN_OLD_DATA: u64 = 0x4000_0000;
+/// `CPF_Config`.
+pub(crate) const CPF_CONFIG: u64 = 0x4000;
+/// `CPF_InstancedReference`.
+pub(crate) const CPF_INSTANCED_REFERENCE: u64 = 0x8_0000;
 /// `CPF_NoDestructor`.
 const CPF_NO_DESTRUCTOR: u64 = 0x10_0000_0000;
 /// `CPF_HasGetValueTypeHash`.
@@ -750,7 +754,11 @@ pub fn build_schema(profile: &Profile) -> Schema {
         );
     }
     a.add("NetTag", PropertyType::Int32, MEMBER | POD);
-    a.add("NetUpdateFrequency", PropertyType::Float, MEMBER | POD);
+    a.add(
+        "NetUpdateFrequency",
+        PropertyType::Float,
+        MEMBER | POD | CPF_CONFIG,
+    );
     a.add("MinNetUpdateFrequency", PropertyType::Float, MEMBER | POD);
     a.add("ReplicatedCounter", PropertyType::Int64, MEMBER | POD);
     a.add("InitialLifeSpan", PropertyType::Double, MEMBER | POD);
@@ -769,7 +777,7 @@ pub fn build_schema(profile: &Profile) -> Schema {
     a.add(
         "Instigator",
         object_of(ENGINE_PACKAGE, "Pawn"),
-        MEMBER | CPF_ZERO_CONSTRUCTOR | CPF_IS_PLAIN_OLD_DATA,
+        MEMBER | CPF_ZERO_CONSTRUCTOR | CPF_IS_PLAIN_OLD_DATA | CPF_INSTANCED_REFERENCE,
     );
     a.add(
         "ActorClassRef",
@@ -1161,6 +1169,47 @@ pub fn build_schema(profile: &Profile) -> Schema {
         ge_fields,
         Vec::new(),
     ));
+
+    // Classes that declare functions but no data members, as the many
+    // wrapper and event classes of a real build do. The link chains of such
+    // a class start in its parent, while its `Children` list starts with one
+    // of its functions. They derive from `Engine`, which has data members, and
+    // stay clear of the `Actor` tree that several corruptions damage.
+    let editor_path = path(ENGINE_PACKAGE, "EditorEngine");
+    let wrapper_classes: [(&str, &String, [&str; 2]); 3] = [
+        (
+            "EditorEngine",
+            &engine_path,
+            ["StartPlayInEditor", "EndPlayMap"],
+        ),
+        (
+            "UnrealEdEngine",
+            &editor_path,
+            ["UpdateBuildData", "CloseEditor"],
+        ),
+        (
+            "PreviewEngine",
+            &editor_path,
+            ["StartPreview", "StopPreview"],
+        ),
+    ];
+    for (name, parent_path, function_names) in wrapper_classes {
+        let owner_path = path(ENGINE_PACKAGE, name);
+        let functions = function_names
+            .iter()
+            .map(|&function| {
+                FunctionBuilder::new(profile, &sizes, &owner_path, function, native_public).build()
+            })
+            .collect();
+        structs.push(class_def(
+            ENGINE_PACKAGE,
+            name,
+            Some(parent_path),
+            engine_size,
+            Vec::new(),
+            functions,
+        ));
+    }
 
     // Blueprint function libraries.
     let lib_size = obj_size;
