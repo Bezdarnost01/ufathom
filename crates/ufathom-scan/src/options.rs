@@ -31,6 +31,18 @@ macro_rules! layout_overrides {
                 }
             }
 
+            /// Sets the override for the field with this dotted name, so a
+            /// file of overrides can be read without a field-by-field table.
+            /// Returns `false`, changing nothing, for a name that is not in
+            /// [`NAMES`](Self::NAMES).
+            pub fn set(&mut self, name: &str, value: u32) -> bool {
+                match name {
+                    $($name => self.$field = Some(value),)*
+                    _ => return false,
+                }
+                true
+            }
+
             /// Every override that is set, with its dotted field name.
             pub fn iter(&self) -> impl Iterator<Item = (&'static str, u32)> + '_ {
                 [$(($name, self.$field),)*]
@@ -155,5 +167,45 @@ impl DiscoverOptions<'_> {
     pub(crate) fn hint_number(&self) -> Option<u32> {
         self.hint_version
             .map(|v| u32::from(v.major) * 100 + u32::from(v.minor))
+    }
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    reason = "test code may panic on failure"
+)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_stores_a_value_that_get_and_iter_return() {
+        let mut overrides = LayoutOverrides::default();
+        assert!(overrides.set("uobject.class", 0x10));
+        assert_eq!(overrides.uobject_class, Some(0x10));
+        assert_eq!(overrides.get("uobject.class"), Some(0x10));
+        assert_eq!(
+            overrides.iter().collect::<Vec<_>>(),
+            [("uobject.class", 0x10)]
+        );
+    }
+
+    #[test]
+    fn set_refuses_an_unknown_name_and_changes_nothing() {
+        let mut overrides = LayoutOverrides::default();
+        assert!(!overrides.set("uobject.klass", 1));
+        assert_eq!(overrides, LayoutOverrides::default());
+    }
+
+    #[test]
+    fn every_listed_name_can_be_set() {
+        let mut overrides = LayoutOverrides::default();
+        for name in LayoutOverrides::NAMES {
+            assert!(overrides.set(name, 7), "{name}");
+        }
+        assert_eq!(overrides.iter().count(), LayoutOverrides::NAMES.len());
     }
 }

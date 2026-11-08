@@ -12,7 +12,7 @@
 //! | Key | Default | Meaning |
 //! |---|---|---|
 //! | `output` | `ufathom` beside the game executable | Where dumps and the control folder go. A relative path is relative to the config file. |
-//! | `formats` | `["json", "usmap"]` | What a dump writes. |
+//! | `formats` | `["json", "usmap"]` | What a dump writes: `json`, `usmap`, `rust-sdk`. |
 //! | `auto_dump` | `false` | Dump once by itself, `trigger_delay_seconds` after the DLL started. |
 //! | `trigger_delay_seconds` | `30` | The delay of `auto_dump`, 0 to 86400. |
 //! | `hotkey_dump` | `"F8"` | Starts a dump while a window of the process is in the foreground. `"none"` switches it off. |
@@ -58,6 +58,29 @@ pub enum Format {
     Json,
     /// `Mappings.usmap`, the mappings file other Unreal tools read.
     Usmap,
+    /// `sdk/`, a Rust crate generated from the dump by `ufathom-codegen`.
+    #[serde(rename = "rust-sdk")]
+    RustSdk,
+}
+
+impl Format {
+    /// The name used in the config file and in command files.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Json => "json",
+            Self::Usmap => "usmap",
+            Self::RustSdk => "rust-sdk",
+        }
+    }
+
+    /// The format with this name, in any letter case.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        [Self::Json, Self::Usmap, Self::RustSdk]
+            .into_iter()
+            .find(|format| format.name().eq_ignore_ascii_case(name))
+    }
 }
 
 /// The settings in effect. Build one with [`Config::load`] or
@@ -233,7 +256,7 @@ impl Config {
             if formats.is_empty() {
                 return Err(invalid(
                     "formats",
-                    "must name at least one of json, usmap".to_owned(),
+                    "must name at least one of json, usmap, rust-sdk".to_owned(),
                 ));
             }
             config.formats = formats;
@@ -372,6 +395,28 @@ mod tests {
     fn formats_are_sorted_and_deduplicated() {
         let config = parse(r#"formats = ["usmap", "json", "usmap"]"#).unwrap();
         assert_eq!(config.formats, vec![Format::Json, Format::Usmap]);
+    }
+
+    #[test]
+    fn the_rust_sdk_format_is_read_by_its_hyphenated_name() {
+        let config = parse(r#"formats = ["rust-sdk", "json"]"#).unwrap();
+        assert_eq!(config.formats, vec![Format::Json, Format::RustSdk]);
+        assert!(matches!(
+            parse(r#"formats = ["rust_sdk"]"#),
+            Err(ConfigError::Parse { .. })
+        ));
+    }
+
+    #[test]
+    fn format_names_round_trip_in_any_letter_case() {
+        for format in [Format::Json, Format::Usmap, Format::RustSdk] {
+            assert_eq!(Format::from_name(format.name()), Some(format));
+            assert_eq!(
+                Format::from_name(&format.name().to_ascii_uppercase()),
+                Some(format)
+            );
+        }
+        assert_eq!(Format::from_name("xml"), None);
     }
 
     #[test]

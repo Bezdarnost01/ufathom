@@ -297,8 +297,25 @@ pub fn fixed_info(file: [u16; 4], product: [u16; 4]) -> Vec<u8> {
     out
 }
 
-/// A whole `VS_VERSIONINFO` block with a single string table.
+/// A whole `VS_VERSIONINFO` block with a single string table, for an engine
+/// build: a `ProductName` of "Unreal Engine" is added unless `strings` has
+/// one. A version number is a claim only with Unreal context, and most tests
+/// are about reading the number, not about the context.
 pub fn version_blob(fixed: Option<([u16; 4], [u16; 4])>, strings: &[(&str, &str)]) -> Vec<u8> {
+    if strings.iter().any(|(key, _)| *key == "ProductName") {
+        return version_blob_as_given(fixed, strings);
+    }
+    // First, so a test that damages the table keeps it.
+    let mut with_name = vec![("ProductName", "Unreal Engine")];
+    with_name.extend_from_slice(strings);
+    version_blob_as_given(fixed, &with_name)
+}
+
+/// A whole `VS_VERSIONINFO` block with exactly the given strings.
+pub fn version_blob_as_given(
+    fixed: Option<([u16; 4], [u16; 4])>,
+    strings: &[(&str, &str)],
+) -> Vec<u8> {
     let entries: Vec<Vec<u8>> = strings.iter().map(|(k, v)| string_block(k, v)).collect();
     let table = block("040904B0", &[], 0, true, &entries);
     let info = block("StringFileInfo", &[], 0, true, &[table]);

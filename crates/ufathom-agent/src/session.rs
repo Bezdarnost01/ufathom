@@ -36,10 +36,11 @@ use crate::identity::{
     describe_source,
 };
 use crate::output::{
-    DUMP_JSON, DUMP_LOG, IDENTITY_JSON, MAPPINGS_USMAP, build_id, create_dump_folder, dump_label,
-    session_name,
+    DUMP_JSON, DUMP_LOG, IDENTITY_JSON, MAPPINGS_USMAP, SDK_FOLDER, build_id, create_dump_folder,
+    dump_label, session_name,
 };
-use crate::protocol::DumpSummary;
+use crate::protocol::{DumpSummary, SdkSummary};
+use crate::sdk::write_sdk;
 
 /// A function run on every thread the session starts, before it does any
 /// work. The DLL shell uses it to lower the thread's priority.
@@ -640,18 +641,21 @@ impl Shared {
         let mut files: Vec<String> = Vec::new();
         let written = self.write_dump_files(run, &folder, output, &mut files);
         run.timings.write = millis(step.elapsed());
-        if let Err(message) = written {
-            run.log.error(&message);
-            let identity =
-                self.identity(run, Some(discovery), Some(output), Some(&message), &files);
-            if let Err(error) = write_log_and_identity(run, &folder, &identity, &mut files) {
-                tracing::error!("cannot write the failure record: {error}");
+        let sdk = match written {
+            Ok(sdk) => sdk,
+            Err(message) => {
+                run.log.error(&message);
+                let identity =
+                    self.identity(run, Some(discovery), Some(output), Some(&message), &files);
+                if let Err(error) = write_log_and_identity(run, &folder, &identity, &mut files) {
+                    tracing::error!("cannot write the failure record: {error}");
+                }
+                return Err(DumpError::Output {
+                    message,
+                    folder: Some(folder),
+                });
             }
-            return Err(DumpError::Output {
-                message,
-                folder: Some(folder),
-            });
-        }
+        };
 
         let degraded = output.degraded;
         run.log.info(if degraded {
@@ -678,6 +682,7 @@ impl Shared {
             failures: output.stats.failures,
             diagnostics: u64::try_from(output.dump.diagnostics.len()).unwrap_or(u64::MAX),
             degraded,
+            sdk,
             elapsed_ms: millis(run.started.elapsed()),
         };
         Ok(DumpOutcome {
@@ -693,7 +698,7 @@ impl Shared {
         folder: &Path,
         output: &ufathom_reflect::ReflectOutput,
         files: &mut Vec<String>,
-    ) -> Result<(), String> {
+    ) -> Result<Option<SdkSummary>, String> {
         if run.formats.contains(&Format::Json) {
             let json = output
                 .dump
@@ -705,7 +710,19 @@ impl Shared {
             let usmap = write_usmap(&output.dump);
             write_file(run, folder, MAPPINGS_USMAP, &usmap, files)?;
         }
-        Ok(())
+        if !run.formats.contains(&Format::RustSdk) {
+            return Ok(None);
+        }
+        let sdk = write_sdk(&output.dump, folder)?;
+        run.log.push(
+            "INFO",
+            &format!(
+                "wrote {SDK_FOLDER}/ ({} files, {} packages, {} degraded)",
+                sdk.files, sdk.packages, sdk.degraded
+            ),
+        );
+        files.push(format!("{SDK_FOLDER}/"));
+        Ok(Some(sdk))
     }
 
     fn identity(

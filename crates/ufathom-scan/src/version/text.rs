@@ -165,22 +165,62 @@ pub struct BuildString {
     pub rva: u32,
 }
 
+impl BuildString {
+    /// Whether the string is strong evidence of an engine build, not just a
+    /// `++A+B` shape: it ends in a changelist (`-CL-<digits>`), or its branch
+    /// starts with `UE4`, `UE5` or `Release-`.
+    ///
+    /// Two alphanumeric runs around one `+` also occur in unrelated data such
+    /// as base64 text, so the shape alone proves nothing.
+    #[must_use]
+    pub fn is_engine_grade(&self) -> bool {
+        self.changelist.is_some()
+            || ["UE4", "UE5", "Release-"]
+                .iter()
+                .any(|prefix| self.branch.starts_with(prefix))
+    }
+}
+
 /// Whether `byte` can be part of a build string.
 pub(crate) fn is_build_char(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'+' | b'-' | b'.')
 }
 
+/// Fewest characters a project or branch name of a build string has. A
+/// shorter name is how a stray `++C+C` in an unrelated binary looks.
+const MIN_BUILD_NAME_LEN: usize = 2;
+
+/// Whether `project` can be the project part of a build string: at least
+/// [`MIN_BUILD_NAME_LEN`] characters of `A-Z a-z 0-9 _`.
+fn is_plausible_project(project: &str) -> bool {
+    project.len() >= MIN_BUILD_NAME_LEN
+        && project
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+}
+
+/// Whether `branch` can be the branch part of a build string: at least
+/// [`MIN_BUILD_NAME_LEN`] characters of `A-Z a-z 0-9 _ . -`.
+fn is_plausible_branch(branch: &str) -> bool {
+    branch.len() >= MIN_BUILD_NAME_LEN
+        && branch
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'-'))
+}
+
 /// Parses `text` as `++Project+Branch[-CL-N]`. Returns the fields without
 /// location; the caller fills `section` and `rva`.
+///
+/// Text that cannot be a build string is refused, not kept as weak evidence:
+/// a project or branch shorter than two characters, a project with anything
+/// but letters, digits and `_`, or a branch with anything but those, `.` and
+/// `-`. Random bytes in a binary, such as base64, otherwise pass for one.
 pub(crate) fn parse_build_string(text: &str, encoding: StringEncoding) -> Option<BuildString> {
     if text.len() > MAX_BUILD_STRING_LEN {
         return None;
     }
     let body = text.strip_prefix("++")?;
     let (project, rest) = body.split_once('+')?;
-    if project.is_empty() || rest.is_empty() {
-        return None;
-    }
     let (branch, changelist) = match rest.rfind(CHANGELIST_SEPARATOR) {
         Some(at) => {
             let digits = rest
@@ -194,7 +234,7 @@ pub(crate) fn parse_build_string(text: &str, encoding: StringEncoding) -> Option
         }
         None => (rest, None),
     };
-    if branch.is_empty() {
+    if !is_plausible_project(project) || !is_plausible_branch(branch) {
         return None;
     }
     let engine_release = match project {
@@ -219,6 +259,68 @@ pub(crate) fn parse_build_string(text: &str, encoding: StringEncoding) -> Option
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strings_that_only_look_like_build_strings_are_refused() {
+        for text in [
+            // Base64-like noise: `/` and `=` are not name characters.
+            "++Ab12Cd34/Ef+Gh56Ij78",
+            "++Ab12Cd34+Ef56Gh78==",
+            // One-letter parts.
+            "++C+C",
+            "++C+Live",
+            "++Game+L",
+            // Characters outside the allowed sets.
+            "++Ga-me+Live",
+            "++Game+Li+ve",
+            "++Game+Li=ve",
+            // Empty parts.
+            "++Game+",
+            "+++Live",
+        ] {
+            assert!(
+                parse_build_string(text, StringEncoding::Utf16).is_none(),
+                "{text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_some_build_strings_are_strong_evidence_of_an_engine() {
+        let strong = |text: &str| {
+            parse_build_string(text, StringEncoding::Ascii)
+                .unwrap_or_else(|| panic!("{text:?} is refused"))
+                .is_engine_grade()
+        };
+        // A changelist, or an engine style branch.
+        assert!(strong("++Game+Live-CL-123"));
+        assert!(strong("++UE5+Release-5.4-CL-1"));
+        assert!(strong("++Game+Release-1.2"));
+        assert!(strong("++Game+UE4-Main"));
+        // A bare `++A+B` is not enough: two alphanumeric runs around a `+`
+        // are common in base64 noise.
+        assert!(!strong("++Game+Live"));
+        assert!(!strong("++VQLHqe8RT6q9OKPv+RKY9ji9i0qVQBDb6Thi"));
+        assert!(!strong("++Ab+Cd"));
+    }
+
+    #[test]
+    fn real_shaped_build_strings_are_kept() {
+        for (text, project, branch, changelist) in [
+            ("++Game+Live-CL-123", "Game", "Live", Some(123)),
+            ("++UE5+Release-5.4-CL-1", "UE5", "Release-5.4", Some(1)),
+            ("++Game+Live", "Game", "Live", None),
+            ("++my_game2+Dev_Main-1.2", "my_game2", "Dev_Main-1.2", None),
+        ] {
+            let b = parse_build_string(text, StringEncoding::Ascii)
+                .unwrap_or_else(|| panic!("{text:?} is refused"));
+            assert_eq!(
+                (b.project.as_str(), b.branch.as_str(), b.changelist),
+                (project, branch, changelist),
+                "{text:?}"
+            );
+        }
+    }
 
     fn version(text: &str) -> Option<String> {
         engine_version_from_text(text).map(|v| v.to_string())

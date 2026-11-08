@@ -27,13 +27,21 @@ formats = ["json", "usmap", "rust-sdk"]
 auto_dump = false
 ```
 
+`cargo build -p ufathom-dll` produces `target/<profile>/ufathom_dll.dll`; copy it next to the game as `ufathom.dll`. The library is not called `ufathom`, so that its debug symbols do not clash with the command line tool's on Windows.
+
 **From outside, and for working with results:**
 
 ```
-ufathom dump --process Game-Win64-Shipping.exe -o dump.json
-ufathom gen dump.json -o my_sdk/
+ufathom ps                                         # probable Unreal Engine processes
+ufathom inspect-exe Game-Win64-Shipping.exe        # static facts, nothing is run
+ufathom doctor --process Game-Win64-Shipping.exe   # how well the layout was solved
+ufathom dump --process Game-Win64-Shipping.exe -o dump.json --usmap Mappings.usmap
+ufathom gen dump.json -o my_sdk/ --runtime-path path/to/crates/ufathom-runtime
 ufathom diff old.json new.json
+ufathom command <output dir> dump --label menu --wait 120   # drive a loaded DLL
 ```
+
+A target is `--pid N`, `--process NAME` or `--minidump PATH`, with optional `--module`, `--layout FILE` and `--hint VERSION`. Exit codes: 0 success, 1 failure, 2 usage error, 3 degraded dump. `ufathom --help` has the rest. `gen` needs `--runtime-path` or `--runtime-version` because `ufathom-runtime` is not published yet.
 
 ## Documents
 

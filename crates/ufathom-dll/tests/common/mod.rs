@@ -51,7 +51,12 @@ fn target_dir() -> PathBuf {
         .to_owned()
 }
 
-/// The built `ufathom.dll`. `UFATHOM_DLL` names one explicitly; otherwise the
+/// File name `cargo build -p ufathom-dll` gives the DLL. The library is not
+/// called `ufathom`, so its PDB does not clash with the CLI binary's; the
+/// sandboxes copy it as `ufathom.dll`, the name it is shipped under.
+pub const BUILT_DLL_NAME: &str = "ufathom_dll.dll";
+
+/// The built DLL. `UFATHOM_DLL` names one explicitly; otherwise the
 /// newer of the release and debug builds is used. Fails with an instruction if
 /// there is none, because these tests must test a real DLL.
 pub fn built_dll() -> PathBuf {
@@ -67,7 +72,7 @@ pub fn built_dll() -> PathBuf {
     let target = target_dir();
     let candidates: Vec<PathBuf> = ["release", "debug"]
         .iter()
-        .map(|profile| target.join(profile).join("ufathom.dll"))
+        .map(|profile| target.join(profile).join(BUILT_DLL_NAME))
         .filter(|path| path.is_file())
         .collect();
     let newest = candidates
@@ -75,7 +80,7 @@ pub fn built_dll() -> PathBuf {
         .max_by_key(|path| fs::metadata(path).and_then(|m| m.modified()).ok());
     newest.unwrap_or_else(|| {
         panic!(
-            "ufathom.dll is not built under {}: run `cargo build -p ufathom-dll` (or with --release) first, or set UFATHOM_DLL",
+            "{BUILT_DLL_NAME} is not built under {}: run `cargo build -p ufathom-dll` (or with --release) first, or set UFATHOM_DLL",
             target.display()
         )
     })

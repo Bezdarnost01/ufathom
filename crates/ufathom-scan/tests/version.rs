@@ -211,10 +211,10 @@ fn build_strings_inside_other_text_or_too_long_are_not_candidates() {
 #[test]
 fn the_best_build_does_not_depend_on_where_the_strings_are() {
     let items = [
-        b"++B+Main\0".to_vec(),
-        b"++A+Main-CL-5\0".to_vec(),
-        utf16z("++C+Main-CL-5"),
-        utf16z("++A+Main-CL-5"),
+        b"++BB+Main\0".to_vec(),
+        b"++AA+Main-CL-5\0".to_vec(),
+        utf16z("++CC+Main-CL-5"),
+        utf16z("++AA+Main-CL-5"),
     ];
     let mut order: Vec<usize> = (0..items.len()).collect();
     let mut orders = std::collections::BTreeSet::new();
@@ -235,7 +235,7 @@ fn the_best_build_does_not_depend_on_where_the_strings_are() {
     }
     assert_eq!(orders.len(), 1, "{orders:?}");
     let ranked = orders.into_iter().next().unwrap();
-    assert_eq!(ranked[0].0, "++A+Main-CL-5");
+    assert_eq!(ranked[0].0, "++AA+Main-CL-5");
     assert_eq!(ranked[0].1, StringEncoding::Utf16);
 }
 
@@ -537,4 +537,105 @@ fn detection_is_deterministic() {
     assert_eq!(first.markers.len(), 2);
     assert_eq!(first.markers[0].encoding, StringEncoding::Ascii);
     assert_eq!(first.markers[1].encoding, StringEncoding::Utf16);
+}
+
+// ---- Unreal context --------------------------------------------------------------
+
+/// An image with a version resource made of exactly `strings`, and `rdata`.
+fn pe_with_context(strings: &[(&str, &str)], rdata: Vec<u8>) -> Vec<u8> {
+    let rsrc = rsrc_with_versions(RSRC_RVA, &[(0x409, version_blob_as_given(None, strings))]);
+    standard_pe(rdata, vec![0; 16], Some(rsrc)).to_bytes()
+}
+
+#[test]
+fn a_product_version_with_an_unrelated_name_is_not_a_claim() {
+    for version in ["4.18.26100", "5.8.1", "4.21.1"] {
+        let facts = facts_of(&pe_with_context(
+            &[("ProductName", "Some Helper"), ("ProductVersion", version)],
+            vec![0; 16],
+        ));
+        assert_eq!(facts.engine.claimed, None, "{version}");
+        assert_eq!(facts.claimed, None, "{version}");
+        let text = facts.engine.evidence.join("\n");
+        assert!(
+            text.contains("is a product version not shown to be an engine version"),
+            "{version}: {text}"
+        );
+        assert!(text.contains(version), "{version}: {text}");
+    }
+}
+
+#[test]
+fn the_same_version_with_an_unreal_product_name_is_a_claim() {
+    for name in ["Unreal Engine", "My unreal tool"] {
+        let facts = facts_of(&pe_with_context(
+            &[("ProductName", name), ("ProductVersion", "4.21.1")],
+            vec![0; 16],
+        ));
+        assert_eq!(facts.engine.claimed.as_deref(), Some("4.21.1"), "{name}");
+    }
+}
+
+#[test]
+fn a_fixed_version_alone_is_not_a_claim_without_context() {
+    let blob = version_blob_as_given(
+        Some(([5, 8, 1, 0], [5, 8, 1, 0])),
+        &[
+            ("ProductName", "Some Helper"),
+            ("ProductVersion", "1.0.0.0"),
+        ],
+    );
+    let rsrc = rsrc_with_versions(RSRC_RVA, &[(0x409, blob)]);
+    let bytes = standard_pe(vec![0; 16], vec![0; 16], Some(rsrc)).to_bytes();
+    assert_eq!(facts_of(&bytes).engine.claimed, None);
+}
+
+#[test]
+fn ue_text_in_the_version_string_is_context_by_itself() {
+    for text in [
+        "4.25.1-0+++UE4+Release-4.25",
+        "5.4.4-1+++UE5+Release-5.4",
+        "4.13.2-0+UE4",
+        "4.21.1-UE4-Main",
+    ] {
+        let facts = facts_of(&pe_with_context(
+            &[("ProductName", "Some Game"), ("ProductVersion", text)],
+            vec![0; 16],
+        ));
+        assert!(facts.engine.claimed.is_some(), "{text}");
+    }
+    // `UE4` inside a word is not the engine's tag.
+    let facts = facts_of(&pe_with_context(
+        &[
+            ("ProductName", "Some Game"),
+            ("ProductVersion", "4.2.1 GUE4X"),
+        ],
+        vec![0; 16],
+    ));
+    assert_eq!(facts.engine.claimed, None);
+}
+
+#[test]
+fn a_marker_in_the_image_is_context() {
+    let rdata = rdata_with(0x100, &[(0x10, b"\0FieldPathProperty\0".to_vec())]);
+    let facts = facts_of(&pe_with_context(
+        &[("ProductName", "Some Game"), ("ProductVersion", "4.26.0")],
+        rdata,
+    ));
+    assert_eq!(facts.engine.claimed.as_deref(), Some("4.26.0"));
+}
+
+#[test]
+fn an_engine_grade_build_string_is_context_but_a_bare_one_is_not() {
+    let strings = [("ProductName", "Some Game"), ("ProductVersion", "4.26.0")];
+    for (build, claimed) in [
+        ("++Game+Live-CL-123", true),
+        ("++UE5+Release-5.4-CL-1", true),
+        ("++Game+Live", false),
+    ] {
+        let rdata = rdata_with(0x100, &[(0x10, [build.as_bytes(), b"\0"].concat())]);
+        let facts = facts_of(&pe_with_context(&strings, rdata));
+        assert_eq!(facts.engine.claimed.is_some(), claimed, "{build}");
+        assert_eq!(facts.engine.build.as_deref(), Some(build), "{build}");
+    }
 }
