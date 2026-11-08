@@ -16,9 +16,10 @@
 
 mod common;
 
-use common::dumps::{CORE, ENGINE, field, path, script_struct, structure};
+use common::dumps::{CORE, ENGINE, field, function, param, path, script_struct, structure};
 use common::{generate_and_check, local_options, make_dump};
 use ufathom_codegen::{Degradation, DegradeReason, GenReport, generate};
+use ufathom_model::flags::{CPF_OUT_PARM, CPF_RETURN_PARM};
 use ufathom_model::{Dump, FieldDef, PropertyType, StructDef, StructKind};
 use ufathom_testkit::Profile;
 
@@ -337,4 +338,52 @@ fn generated_classes_are_padded_and_children_still_view_their_parent() {
     );
     assert!(text.contains("== 0x3c8);"));
     assert!(text.contains("The dump says 0x3b1 bytes"));
+}
+
+/// A function whose parameter block is 0x29 bytes: not a multiple of 4, so the
+/// `int32` at 0x18 and the object pointer at 0x20 cannot be typed fields of a
+/// Rust struct of that size.
+fn dump_with_unpadded_parameter_block() -> Dump {
+    let owner = path(ENGINE, "Caller");
+    let call = function(
+        &owner,
+        "Call",
+        0x29,
+        vec![
+            param("Enabled", 0, PropertyType::UInt8, 1, 0),
+            param("Count", 0x18, PropertyType::Int32, 4, 0),
+            param("Found", 0x1C, PropertyType::Int32, 4, CPF_OUT_PARM),
+            param("ReturnValue", 0x20, object_ptr(), 8, CPF_RETURN_PARM),
+        ],
+    );
+    let structs = vec![
+        unaligned_class("Object", None, 0x28, Vec::new()),
+        structure(
+            ENGINE,
+            "Caller",
+            StructKind::Class,
+            Some(&path(ENGINE, "Object")),
+            0x30,
+            8,
+            Vec::new(),
+            vec![call],
+        ),
+    ];
+    make_dump(Profile::ue4_21_measured().layout, structs, Vec::new())
+}
+
+#[test]
+fn a_parameter_degraded_to_bytes_keeps_a_wrapper_that_compiles() {
+    let (dir, report, _) =
+        generate_and_check(&dump_with_unpadded_parameter_block(), "align-params");
+    assert_eq!(report.functions, 1);
+    assert_eq!(report.functions_skipped, 0, "{:?}", report.degraded);
+    let text = all_sources(dir.path());
+    // The untyped parameters are passed and returned as raw bytes.
+    assert!(
+        text.contains("count: [u8; 4]"),
+        "an untyped input is a byte array:
+{text}"
+    );
+    assert!(text.contains("-> Result<([u8; 8], [u8; 4]), rt::CallError>"));
 }

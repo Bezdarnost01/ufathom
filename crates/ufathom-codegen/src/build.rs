@@ -956,13 +956,13 @@ fn plan_function(
     for (i, p) in params.iter().enumerate() {
         let Some(pf) = fields.get(i) else { continue };
         let binding = |arg: String| -> ParamBinding {
-            let is_ubool = pf
-                .resolved
-                .as_ref()
-                .is_some_and(|r| r.rust == "rt::UBool" && pf.count == 1);
+            // A parameter kept as raw bytes (it could not be typed in its
+            // block) is passed and returned as `[u8; N]`, like its field.
+            let typed = pf.resolved.as_ref().filter(|_| !pf.is_bytes);
+            let is_ubool = typed.is_some_and(|r| r.rust == "rt::UBool" && pf.count == 1);
             let api_type = if pf.is_bit || is_ubool {
                 "bool".to_owned()
-            } else if let Some(r) = pf.resolved.as_ref() {
+            } else if let Some(r) = typed {
                 if pf.count > 1 {
                     format!("[{}; {}]", r.rust, pf.count)
                 } else {
@@ -978,7 +978,7 @@ fn plan_function(
                 is_ubool,
             }
         };
-        if let Some(r) = &pf.resolved {
+        if let Some(r) = pf.resolved.as_ref().filter(|_| !pf.is_bytes) {
             refs.extend(r.refs.iter().cloned());
         }
         if p.flags & CPF_RETURN_PARM != 0 {
