@@ -286,6 +286,8 @@ impl Writer<'_> {
         let (children, child_props) = self.heads.get(path).copied().unwrap_or((0, 0));
         self.mem.put_u64(a + u64::from(st.super_struct), super_addr);
         self.mem.put_u64(a + u64::from(st.children), children);
+        let links = self.link_heads.get(path).copied().unwrap_or_default();
+        links.write(self, a);
         if let Some(offset) = st.child_properties {
             self.mem.put_u64(a + u64::from(offset), child_props);
         }
@@ -334,6 +336,8 @@ impl Writer<'_> {
         if let Some(offset) = st.child_properties {
             self.mem.put_u64(a + u64::from(offset), child_props);
         }
+        let links = self.link_heads.get(path).copied().unwrap_or_default();
+        links.write(self, a);
         self.mem
             .put_u32(a + u64::from(st.properties_size), function.params_size);
         if st.min_alignment_width == 2 {
