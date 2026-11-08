@@ -54,15 +54,11 @@ pub fn size(bytes: usize) -> String {
     }
 }
 
-/// The runtime dependency the user chose.
-///
-/// Nothing is published yet, so there is no default: neither flag is a usage
-/// error that says why.
+/// The runtime dependency the user chose, or the bundled default.
 ///
 /// # Errors
 ///
-/// [`CliError::Usage`] when neither flag is given, or the path does not hold
-/// a crate.
+/// [`CliError::Usage`] when the given path does not hold a crate.
 pub fn runtime_options(args: &RuntimeArgs) -> Result<GenOptions, CliError> {
     match (&args.runtime_path, &args.runtime_version) {
         (Some(path), None) => {
@@ -80,11 +76,7 @@ pub fn runtime_options(args: &RuntimeArgs) -> Result<GenOptions, CliError> {
             runtime: RuntimeDependency::Version(version.clone()),
             ..GenOptions::default()
         }),
-        (None, None) => Err(usage(
-            "the SDK needs a runtime dependency: pass --runtime-path <crates/ufathom-runtime folder> \
-             or --runtime-version <version>. There is no default because ufathom-runtime is not \
-             published yet",
-        )),
+        (None, None) => Ok(GenOptions::default()),
         (Some(_), Some(_)) => Err(usage(
             "--runtime-path and --runtime-version cannot be used together",
         )),
@@ -145,13 +137,9 @@ mod tests {
     }
 
     #[test]
-    fn neither_runtime_flag_is_a_usage_error_that_explains_why() {
-        let Err(CliError::Usage(message)) = runtime_options(&args(None, None)) else {
-            panic!("expected a usage error");
-        };
-        assert!(message.contains("--runtime-path"), "{message}");
-        assert!(message.contains("--runtime-version"), "{message}");
-        assert!(message.contains("not published"), "{message}");
+    fn no_runtime_flag_selects_the_bundled_sources() {
+        let options = runtime_options(&args(None, None)).unwrap();
+        assert_eq!(options.runtime, RuntimeDependency::Bundled);
     }
 
     #[test]

@@ -24,9 +24,12 @@ fn golden_dir() -> std::path::PathBuf {
         .join("golden")
 }
 
-/// Options without a local path, so the golden files do not hold one.
+/// Keep the golden files focused on generated types, not vendored sources.
 fn golden_options() -> GenOptions {
-    GenOptions::default()
+    GenOptions {
+        runtime: ufathom_codegen::RuntimeDependency::Version("0.1.0".to_owned()),
+        ..GenOptions::default()
+    }
 }
 
 #[test]

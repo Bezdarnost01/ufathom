@@ -657,7 +657,7 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
 name = "ufathom-agent"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "rayon",
  "serde",
@@ -678,7 +678,7 @@ dependencies = [
 
 [[package]]
 name = "ufathom-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -701,7 +701,7 @@ dependencies = [
 
 [[package]]
 name = "ufathom-codegen"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "heck",
  "tempfile",
@@ -713,7 +713,7 @@ dependencies = [
 
 [[package]]
 name = "ufathom-dll"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -728,7 +728,7 @@ dependencies = [
 
 [[package]]
 name = "ufathom-engine"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "rayon",
  "thiserror",
@@ -740,7 +740,7 @@ dependencies = [
 
 [[package]]
 name = "ufathom-mem"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "libc",
  "memmap2",
@@ -751,7 +751,7 @@ dependencies = [
 
 [[package]]
 name = "ufathom-model"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -760,7 +760,7 @@ dependencies = [
 
 [[package]]
 name = "ufathom-reflect"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "rayon",
  "serde_json",
@@ -776,7 +776,7 @@ dependencies = [
 
 [[package]]
 name = "ufathom-runtime"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "thiserror",
  "ufathom-mem",
@@ -784,7 +784,7 @@ dependencies = [
 
 [[package]]
 name = "ufathom-scan"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "memchr",
  "rayon",
@@ -800,7 +800,7 @@ dependencies = [
 
 [[package]]
 name = "ufathom-testkit"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde_json",
  "ufathom-mem",
@@ -810,7 +810,7 @@ dependencies = [
 
 [[package]]
 name = "ufathom-usmap"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ruzstd",
  "serde",

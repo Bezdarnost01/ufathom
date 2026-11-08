@@ -88,20 +88,6 @@ fn a_bad_hint_is_a_usage_error_and_no_process_is_touched() {
 }
 
 #[test]
-fn gen_needs_a_runtime_dependency_and_says_why() {
-    let dir = tempfile::tempdir().unwrap();
-    let dump = dir.path().join("d.json");
-    std::fs::write(&dump, "{}").unwrap();
-    let out = dir.path().join("sdk");
-    let result = run(&["gen", &arg(&dump), "-o", &arg(&out)]).expect_code(2);
-    result
-        .stderr_has("--runtime-path")
-        .stderr_has("--runtime-version")
-        .stderr_has("not published");
-    assert!(!out.exists(), "nothing is written after a usage error");
-}
-
-#[test]
 fn the_two_runtime_flags_exclude_each_other() {
     let dir = tempfile::tempdir().unwrap();
     let dump = arg(&dir.path().join("d.json"));
@@ -141,10 +127,6 @@ fn dump_checks_its_arguments_before_it_touches_the_target() {
         args.extend_from_slice(extra);
         run(&args)
     };
-    let sdk = arg(&dir.path().join("sdk"));
-    dump(&["--sdk", &sdk])
-        .expect_code(2)
-        .stderr_has("--runtime-path");
     dump(&["--runtime-version", "0.1"])
         .expect_code(2)
         .stderr_has("--sdk");

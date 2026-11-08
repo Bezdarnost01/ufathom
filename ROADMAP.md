@@ -45,8 +45,9 @@ Research, naming, architecture, workspace, memory reading.
 - [ ] `ufathom-codegen` with golden and compile tests
 - [ ] `ufathom-runtime`: containers, `Session`, `ObjectRef`, `Executor`, `inproc`
 - [ ] DLL and CLI: SDK output
+- [ ] Self-contained SDK output: matching runtime sources and licenses under `vendor/`, with no ufathom checkout or published runtime package required
 
-**Done when:** the SDK generated from each fixture passes `cargo check`, and a test reads a synthetic object through the generated types. In-process call mechanics are tested against a fake object with a fake vtable.
+**Done when:** the SDK generated from each fixture passes `cargo check`, including the default self-contained SDK in a directory independent of the ufathom checkout, and a test reads a synthetic object through the generated types. In-process call mechanics are tested against a fake object with a fake vtable.
 
 ## M5: Real game validation (stage 11)
 
