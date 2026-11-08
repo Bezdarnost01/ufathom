@@ -604,7 +604,8 @@ fn tricky() -> Vec<StructDef> {
                 field("C", 12, u32t(), 4),
             ],
         ),
-        // Declared alignment below the alignment of a field type.
+        // Declared alignment below the alignment of a field type: the field is
+        // aligned, so the generated type is raised to 8.
         script_struct(
             ENGINE,
             "LowAlign",
@@ -632,7 +633,8 @@ fn tricky() -> Vec<StructDef> {
             8,
             vec![field("A", 0, u32t(), 4), field("Q", 0x20, u64t(), 8)],
         ),
-        // A declared alignment that is not a power of two.
+        // A declared alignment that is not a power of two counts as 1, then the
+        // aligned field raises it to 4.
         script_struct(ENGINE, "WeirdAlign", 12, 12, vec![field("A", 0, u32t(), 4)]),
         script_struct(ENGINE, "EmptyStruct", 0, 1, Vec::new()),
         script_struct(ENGINE, "EmptyAligned", 0, 8, Vec::new()),

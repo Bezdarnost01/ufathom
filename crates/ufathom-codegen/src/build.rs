@@ -12,7 +12,7 @@ use ufathom_model::{
 use crate::header;
 use crate::names::{self, Namespace};
 use crate::planner::{BaseInfo, BaseMode, FieldKind, Item, Note, Plan, PlanField, PlanInput, plan};
-use crate::report::{Degradation, DegradeReason};
+use crate::report::{AlignmentRaise, Degradation, DegradeReason, SizePadding};
 use crate::types::{EntryKind, FNameShape, NameEntry, Resolved, TypeTable, enum_int, fname_shape};
 
 /// Alignment declared for a function parameter block.
@@ -124,8 +124,10 @@ pub(crate) struct PlannedStruct {
     pub rust_name: String,
     /// `true` for a class.
     pub is_class: bool,
-    /// Size.
+    /// Size of the Rust type: the dump size, or more when a class is padded.
     pub size: u32,
+    /// Size in the dump.
+    pub dump_size: u32,
     /// Layout.
     pub plan: Plan,
     /// The fields in the dump's order.
@@ -165,6 +167,8 @@ pub(crate) struct Built {
     pub enums: Vec<PlannedEnum>,
     pub fname: FNameShape,
     pub degraded: Vec<Degradation>,
+    pub alignments_raised: Vec<AlignmentRaise>,
+    pub sizes_padded: Vec<SizePadding>,
     pub fields: usize,
     pub functions: usize,
     pub functions_skipped: usize,
@@ -313,6 +317,8 @@ pub(crate) fn build(dump: &Dump) -> Built {
     let order = dependency_order(&defs, &by_path);
     let mut planned: Vec<Option<PlannedStruct>> = (0..defs.len()).map(|_| None).collect();
     let mut fields_total = 0usize;
+    let mut alignments_raised: Vec<AlignmentRaise> = Vec::new();
+    let mut sizes_padded: Vec<SizePadding> = Vec::new();
     for &i in &order {
         let Some(&def) = defs.get(i) else { continue };
         let rust_name = struct_names.get(i).cloned().unwrap_or_default();
@@ -334,6 +340,20 @@ pub(crate) fn build(dump: &Dump) -> Built {
             &mut degraded,
         );
         fields_total += def.fields.len();
+        if ps.size != def.size {
+            sizes_padded.push(SizePadding {
+                owner: def.path.clone(),
+                dump_size: def.size,
+                rust_size: ps.size,
+            });
+        }
+        if ps.plan.align > ps.plan.declared_align {
+            alignments_raised.push(AlignmentRaise {
+                owner: def.path.clone(),
+                declared: def.alignment,
+                used: ps.plan.align,
+            });
+        }
         if by_path.get(def.path.as_str()) == Some(&i) {
             table
                 .layouts
@@ -406,12 +426,16 @@ pub(crate) fn build(dump: &Dump) -> Built {
         }
     }
     degraded.sort();
+    alignments_raised.sort();
+    sizes_padded.sort();
     Built {
         modules,
         structs,
         enums,
         fname,
         degraded,
+        alignments_raised,
+        sizes_padded,
         fields: fields_total,
         functions,
         functions_skipped,
@@ -795,6 +819,7 @@ fn plan_struct(
     let input = PlanInput {
         size: def.size,
         align_hint: def.alignment,
+        pad_to_align: def.kind == StructKind::Class,
         base: parent.map(|(_, (size, align))| BaseInfo { size, align }),
         fields: classified.iter().map(|c| c.field.clone()).collect(),
     };
@@ -840,7 +865,9 @@ fn plan_struct(
         let Some(entry) = table.names.get(path) else {
             break;
         };
-        if anc.size <= def.size {
+        // Compared as Rust sizes, so a padded class is a prefix of its child.
+        let anc_size = table.layouts.get(path).map_or(anc.size, |l| l.0);
+        if anc_size <= planned.size {
             ancestors.push(entry.rust_path());
         }
         cur = anc.super_path.as_deref();
@@ -868,7 +895,8 @@ fn plan_struct(
         module,
         rust_name,
         is_class: def.kind == StructKind::Class,
-        size: def.size,
+        size: planned.size,
+        dump_size: def.size,
         plan: planned,
         fields,
         base_path,
@@ -891,6 +919,7 @@ fn plan_function(
     let input = PlanInput {
         size: f.params_size,
         align_hint: PARAM_ALIGN,
+        pad_to_align: false,
         base: None,
         fields: classified.iter().map(|c| c.field.clone()).collect(),
     };
@@ -927,13 +956,13 @@ fn plan_function(
     for (i, p) in params.iter().enumerate() {
         let Some(pf) = fields.get(i) else { continue };
         let binding = |arg: String| -> ParamBinding {
-            let is_ubool = pf
-                .resolved
-                .as_ref()
-                .is_some_and(|r| r.rust == "rt::UBool" && pf.count == 1);
+            // A parameter kept as raw bytes (it could not be typed in its
+            // block) is passed and returned as `[u8; N]`, like its field.
+            let typed = pf.resolved.as_ref().filter(|_| !pf.is_bytes);
+            let is_ubool = typed.is_some_and(|r| r.rust == "rt::UBool" && pf.count == 1);
             let api_type = if pf.is_bit || is_ubool {
                 "bool".to_owned()
-            } else if let Some(r) = pf.resolved.as_ref() {
+            } else if let Some(r) = typed {
                 if pf.count > 1 {
                     format!("[{}; {}]", r.rust, pf.count)
                 } else {
@@ -949,7 +978,7 @@ fn plan_function(
                 is_ubool,
             }
         };
-        if let Some(r) = &pf.resolved {
+        if let Some(r) = pf.resolved.as_ref().filter(|_| !pf.is_bytes) {
             refs.extend(r.refs.iter().cloned());
         }
         if p.flags & CPF_RETURN_PARM != 0 {

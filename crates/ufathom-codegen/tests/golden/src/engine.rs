@@ -795,8 +795,8 @@ impl FEmptyStruct {
 
 /// Class `/Script/Engine.Everything`.
 ///
-/// Size 0x300, alignment 8.
-#[repr(C, align(8))]
+/// Size 0x300, alignment 16.
+#[repr(C, align(16))]
 #[derive(Clone, Copy, Debug)]
 pub struct UEverything {
     /// The parent class.
@@ -861,8 +861,8 @@ pub struct UEverything {
     pub id: crate::core_uobject::FGuid,
     /// Padding at 0x164.
     pub _pad_0x0164: [u8; 12],
-    /// Offset 0x170, `Struct</Script/CoreUObject.Transform>`. Not exact: alignment-too-low: type needs alignment 16, the owner has 8.
-    pub pose: [u8; 32],
+    /// Offset 0x170, `Struct</Script/CoreUObject.Transform>`.
+    pub pose: crate::core_uobject::FTransform,
     /// Offset 0x190, `Array<int32>`.
     pub numbers: rt::TArray<i32>,
     /// Offset 0x1a0, `Array<Object</Script/Engine.Actor>>`.
@@ -917,7 +917,7 @@ unsafe impl rt::Pod for UEverything {}
 
 const _: () = {
     assert!(::core::mem::size_of::<UEverything>() == 0x300);
-    assert!(::core::mem::align_of::<UEverything>() == 8);
+    assert!(::core::mem::align_of::<UEverything>() == 16);
     assert!(::core::mem::offset_of!(UEverything, int8_value) == 0x30);
     assert!(::core::mem::offset_of!(UEverything, int16_value) == 0x32);
     assert!(::core::mem::offset_of!(UEverything, int32_value) == 0x34);
@@ -1056,8 +1056,8 @@ impl UEverything {
     /// Offset of `Id`: Offset 0x154, `Struct</Script/CoreUObject.Guid>`.
     pub const ID: rt::FieldRef<Self, crate::core_uobject::FGuid> = rt::FieldRef::new(0x154);
 
-    /// Offset of `Pose`: Offset 0x170, `Struct</Script/CoreUObject.Transform>`. Not exact: alignment-too-low: type needs alignment 16, the owner has 8.
-    pub const POSE: rt::FieldRef<Self, [u8; 32]> = rt::FieldRef::new(0x170);
+    /// Offset of `Pose`: Offset 0x170, `Struct</Script/CoreUObject.Transform>`.
+    pub const POSE: rt::FieldRef<Self, crate::core_uobject::FTransform> = rt::FieldRef::new(0x170);
 
     /// Offset of `Numbers`: Offset 0x190, `Array<int32>`.
     pub const NUMBERS: rt::FieldRef<Self, rt::TArray<i32>> = rt::FieldRef::new(0x190);
@@ -1410,12 +1410,12 @@ impl UKeywords_Type_Params {
 
 /// Struct `/Script/Engine.LowAlign`.
 ///
-/// Size 0x10, alignment 4.
-#[repr(C, align(4))]
+/// Size 0x10, alignment 8.
+#[repr(C, align(8))]
 #[derive(Clone, Copy, Debug)]
 pub struct FLowAlign {
-    /// Offset 0x0, `uint64`. Not exact: alignment-too-low: type needs alignment 8, the owner has 4.
-    pub wide: [u8; 8],
+    /// Offset 0x0, `uint64`.
+    pub wide: u64,
     /// Offset 0x8, `uint32`.
     pub n: u32,
     /// Padding at 0xc.
@@ -1428,7 +1428,7 @@ unsafe impl rt::Pod for FLowAlign {}
 
 const _: () = {
     assert!(::core::mem::size_of::<FLowAlign>() == 0x10);
-    assert!(::core::mem::align_of::<FLowAlign>() == 4);
+    assert!(::core::mem::align_of::<FLowAlign>() == 8);
     assert!(::core::mem::offset_of!(FLowAlign, wide) == 0x0);
     assert!(::core::mem::offset_of!(FLowAlign, n) == 0x8);
 };
@@ -1437,8 +1437,8 @@ const _: () = {
 unsafe impl rt::IsA<FLowAlign> for FLowAlign {}
 
 impl FLowAlign {
-    /// Offset of `Wide`: Offset 0x0, `uint64`. Not exact: alignment-too-low: type needs alignment 8, the owner has 4.
-    pub const WIDE: rt::FieldRef<Self, [u8; 8]> = rt::FieldRef::new(0x0);
+    /// Offset of `Wide`: Offset 0x0, `uint64`.
+    pub const WIDE: rt::FieldRef<Self, u64> = rt::FieldRef::new(0x0);
 
     /// Offset of `N`: Offset 0x8, `uint32`.
     pub const N: rt::FieldRef<Self, u32> = rt::FieldRef::new(0x8);
@@ -2015,12 +2015,12 @@ impl UType {
 
 /// Struct `/Script/Engine.WeirdAlign`.
 ///
-/// Size 0xc, alignment 1.
-#[repr(C, align(1))]
+/// Size 0xc, alignment 4.
+#[repr(C, align(4))]
 #[derive(Clone, Copy, Debug)]
 pub struct FWeirdAlign {
-    /// Offset 0x0, `uint32`. Not exact: alignment-too-low: type needs alignment 4, the owner has 1.
-    pub a: [u8; 4],
+    /// Offset 0x0, `uint32`.
+    pub a: u32,
     /// Padding at 0x4.
     pub _pad_0x0004: [u8; 8],
 }
@@ -2031,7 +2031,7 @@ unsafe impl rt::Pod for FWeirdAlign {}
 
 const _: () = {
     assert!(::core::mem::size_of::<FWeirdAlign>() == 0xc);
-    assert!(::core::mem::align_of::<FWeirdAlign>() == 1);
+    assert!(::core::mem::align_of::<FWeirdAlign>() == 4);
     assert!(::core::mem::offset_of!(FWeirdAlign, a) == 0x0);
 };
 
@@ -2039,6 +2039,6 @@ const _: () = {
 unsafe impl rt::IsA<FWeirdAlign> for FWeirdAlign {}
 
 impl FWeirdAlign {
-    /// Offset of `A`: Offset 0x0, `uint32`. Not exact: alignment-too-low: type needs alignment 4, the owner has 1.
-    pub const A: rt::FieldRef<Self, [u8; 4]> = rt::FieldRef::new(0x0);
+    /// Offset of `A`: Offset 0x0, `uint32`.
+    pub const A: rt::FieldRef<Self, u32> = rt::FieldRef::new(0x0);
 }

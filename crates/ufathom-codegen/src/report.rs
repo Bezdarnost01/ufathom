@@ -74,6 +74,40 @@ pub struct Degradation {
     pub detail: String,
 }
 
+/// A type whose alignment is higher than the dump declares.
+///
+/// This is information, not a degradation: some engine builds record an
+/// alignment of 1 for most native classes, while their members and parent
+/// need more. The generated type uses the larger alignment, which the native
+/// compiler must have used too. The size and the field offsets are unchanged
+/// and are still asserted at compile time.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct AlignmentRaise {
+    /// Path of the class or script struct.
+    pub owner: String,
+    /// The alignment in the dump.
+    pub declared: u32,
+    /// The alignment of the generated type.
+    pub used: u32,
+}
+
+/// A class whose generated type is larger than its size in the dump.
+///
+/// This is information, not a degradation: the engine computes the size of a
+/// generated (blueprint) class without rounding it to the class alignment,
+/// but every object is a separate heap allocation made with that alignment,
+/// so it occupies the rounded size. Script structs are never padded, because
+/// they are embedded in arrays and other structs.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SizePadding {
+    /// Path of the class.
+    pub owner: String,
+    /// The size in the dump.
+    pub dump_size: u32,
+    /// The size of the generated type, a multiple of its alignment.
+    pub rust_size: u32,
+}
+
 /// Counts and diagnostics of one [`generate`](crate::generate) call.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GenReport {
@@ -93,6 +127,12 @@ pub struct GenReport {
     pub functions_skipped: usize,
     /// Everything that was not represented exactly, sorted.
     pub degraded: Vec<Degradation>,
+    /// Types generated with a higher alignment than the dump declares, sorted
+    /// by path. Not a degradation.
+    pub alignments_raised: Vec<AlignmentRaise>,
+    /// Classes generated larger than the dump says, sorted by path. Not a
+    /// degradation.
+    pub sizes_padded: Vec<SizePadding>,
     /// Files written because they were new or their hash changed, sorted.
     pub files_written: Vec<String>,
     /// Files left untouched because their hash did not change, sorted.

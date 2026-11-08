@@ -15,7 +15,8 @@ const MAX_ALIGN: u32 = 4096;
 /// The parent type, as far as the planner needs to know.
 #[derive(Debug, Clone)]
 pub(crate) struct BaseInfo {
-    /// Size of the Rust type of the parent. Equal to its size in the dump.
+    /// Size of the Rust type of the parent: its dump size, or the padded size
+    /// when the parent was padded (see [`PlanInput::pad_to_align`]).
     pub size: u32,
     /// Alignment of the Rust type of the parent.
     pub align: u32,
@@ -63,10 +64,18 @@ pub(crate) enum FieldKind {
 /// What the planner is asked to place.
 #[derive(Debug, Clone)]
 pub(crate) struct PlanInput {
-    /// Exact size of the owner in bytes.
+    /// Size of the owner in the dump, in bytes.
     pub size: u32,
-    /// Declared alignment. Anything that is not a power of two is treated as 1.
+    /// Alignment the dump declares. Anything that is not a power of two is
+    /// treated as 1. This is evidence, not a promise: the planner raises it
+    /// from the parent and from the members (see [`plan`]).
     pub align_hint: u32,
+    /// Pad the Rust type at the end up to its alignment instead of lowering
+    /// the alignment to fit the size. Only for types that are never embedded
+    /// in arrays or other structs, where the exact size does not matter
+    /// (classes: each object is a heap allocation made with the class
+    /// alignment, so it really occupies the rounded size).
+    pub pad_to_align: bool,
     /// The parent, if there is one.
     pub base: Option<BaseInfo>,
     /// The fields. Any order: the planner sorts them by offset.
@@ -161,8 +170,13 @@ pub(crate) struct Note {
 /// The result of planning one type.
 #[derive(Debug, Clone)]
 pub(crate) struct Plan {
+    /// Size of the Rust type: the input size, or more when padded.
+    pub size: u32,
     /// The alignment of the Rust type: what `align(N)` is declared as.
     pub align: u32,
+    /// What the alignment would be from the declared hint alone, after the
+    /// size clamp. `align` is above it when the planner raised it.
+    pub declared_align: u32,
     /// How the parent is represented.
     pub base: BaseMode,
     /// What follows the base, in memory order, with explicit padding.
@@ -186,6 +200,45 @@ fn effective_align(size: u32, hint: u32) -> u32 {
         align /= 2;
     }
     align
+}
+
+/// The alignment the owner must have at least, as far as the evidence shows.
+///
+/// Some engine builds record no alignment for most native classes, and blueprint
+/// classes can record less than their pointer members need. The native compiler
+/// had to align every member and the parent anyway, so the hint is the largest
+/// of:
+///
+/// - the declared alignment,
+/// - the alignment of the parent as planned (the caller passes the Rust
+///   alignment of the generated parent, not the raw dump value),
+/// - the alignment of every typed field that sits inside the owner at an offset
+///   that is a multiple of its alignment.
+///
+/// A field at a misaligned offset is no evidence of anything: it degrades to
+/// bytes instead of raising the alignment. Raising never changes the size or
+/// an offset; [`effective_align`] still clamps the result to the size.
+fn alignment_hint(input: &PlanInput) -> u32 {
+    let mut hint = if is_pow2(input.align_hint) {
+        input.align_hint
+    } else {
+        1
+    };
+    if let Some(base) = &input.base {
+        if is_pow2(base.align) {
+            hint = hint.max(base.align);
+        }
+    }
+    for field in &input.fields {
+        let FieldKind::Typed { size, align, count } = field.kind else {
+            continue;
+        };
+        let end = u64::from(field.offset) + u64::from(size) * u64::from(count);
+        if is_pow2(align) && field.offset % align == 0 && end <= u64::from(input.size) {
+            hint = hint.max(align);
+        }
+    }
+    hint
 }
 
 enum Slot {
@@ -221,9 +274,36 @@ impl Placer {
 }
 
 /// Places the fields of one type. See the module documentation.
+///
+/// The alignment of the result is the declared one raised as described at
+/// [`alignment_hint`], then lowered while it does not divide the size. With
+/// [`PlanInput::pad_to_align`] it is not lowered: the size grows instead.
 pub(crate) fn plan(input: &PlanInput) -> Plan {
     let size = input.size;
-    let align = effective_align(size, input.align_hint);
+    let hint = alignment_hint(input);
+    // A padded type keeps the whole hint and grows to a multiple of it. If the
+    // rounded size does not fit in 32 bits, it falls back to the exact size.
+    let padded = if input.pad_to_align {
+        size.checked_next_multiple_of(hint)
+    } else {
+        None
+    };
+    let (declared_align, align, rust_size) = match padded {
+        Some(rounded) => (
+            if is_pow2(input.align_hint) {
+                input.align_hint
+            } else {
+                1
+            },
+            hint,
+            rounded,
+        ),
+        None => (
+            effective_align(size, input.align_hint),
+            effective_align(size, hint),
+            size,
+        ),
+    };
     let mut notes: Vec<Note> = Vec::new();
     let mut omitted: Vec<Omitted> = Vec::new();
 
@@ -277,14 +357,14 @@ pub(crate) fn plan(input: &PlanInput) -> Plan {
     slots.sort_by_key(|(start, _)| *start);
 
     // The parent.
-    let first_offset = slots.first().map_or(size, |(start, _)| *start);
+    let first_offset = slots.first().map_or(rust_size, |(start, _)| *start);
     let (base, cursor) = match &input.base {
         None => (BaseMode::None, 0),
-        Some(b) if b.size > size => (
+        Some(b) if b.size > rust_size => (
             BaseMode::Unavailable(
                 DegradeReason::BaseNotEmbedded,
                 format!(
-                    "parent is {:#x} bytes, larger than the type ({size:#x})",
+                    "parent is {:#x} bytes, larger than the type ({rust_size:#x})",
                     b.size
                 ),
             ),
@@ -341,16 +421,18 @@ pub(crate) fn plan(input: &PlanInput) -> Plan {
             }
         }
     }
-    if placer.cursor < size {
+    if placer.cursor < rust_size {
         let offset = placer.cursor;
         placer.items.push(Item::Pad {
             offset,
-            len: size - offset,
+            len: rust_size - offset,
         });
     }
 
     Plan {
+        size: rust_size,
         align,
+        declared_align,
         base,
         items: placer.items,
         omitted,
@@ -393,15 +475,17 @@ fn place_field(
             count,
         } => {
             let span = u64::from(size) * u64::from(count);
-            let problem = if field_align > align {
-                Some((
-                    DegradeReason::AlignmentTooLow,
-                    format!("type needs alignment {field_align}, the owner has {align}"),
-                ))
-            } else if field_align > 1 && offset % field_align != 0 {
+            // Misalignment first: such a field says nothing about the owner's
+            // alignment, so "the owner is too low" would be the wrong reason.
+            let problem = if field_align > 1 && offset % field_align != 0 {
                 Some((
                     DegradeReason::Misaligned,
                     format!("offset {offset:#x} is not a multiple of {field_align}"),
+                ))
+            } else if field_align > align {
+                Some((
+                    DegradeReason::AlignmentTooLow,
+                    format!("type needs alignment {field_align}, the owner has {align}"),
                 ))
             } else {
                 None
@@ -573,6 +657,7 @@ mod tests {
         PlanInput {
             size,
             align_hint: align,
+            pad_to_align: false,
             base: None,
             fields,
         }
@@ -630,19 +715,190 @@ mod tests {
     }
 
     #[test]
-    fn declared_alignment_below_the_field_becomes_bytes() {
-        let p = plan(&input(16, 4, vec![typed(0, 8, 8)]));
-        assert_eq!(p.align, 4);
-        assert_eq!(reasons(&p), vec![DegradeReason::AlignmentTooLow]);
-        assert!(p.items.contains(&Item::Bytes {
-            field: 0,
-            offset: 0,
-            len: 8
-        }));
+    fn declared_alignment_of_one_is_raised_by_pointer_fields() {
+        // A class that records alignment 1 but holds aligned pointers.
+        let p = plan(&input(24, 1, vec![typed(8, 8, 8), typed(16, 8, 8)]));
+        assert_eq!(p.declared_align, 1);
+        assert_eq!(p.align, 8);
+        assert!(p.notes.is_empty(), "{:?}", p.notes);
+        assert!(
+            p.items
+                .iter()
+                .filter(|i| matches!(i, Item::Typed { .. }))
+                .count()
+                == 2
+        );
+    }
+
+    fn padded(size: u32, align: u32, fields: Vec<PlanField>) -> PlanInput {
+        PlanInput {
+            pad_to_align: true,
+            ..input(size, align, fields)
+        }
     }
 
     #[test]
-    fn size_not_a_multiple_of_alignment_lowers_alignment() {
+    fn a_padded_type_grows_to_its_alignment_instead_of_lowering_it() {
+        // Size 0x3B1 with a pointer at 0x3A8: the exact-size rule would give 1.
+        let p = plan(&padded(0x3B1, 8, vec![typed(0x3A8, 8, 8)]));
+        assert_eq!(p.align, 8);
+        assert_eq!(p.size, 0x3B8);
+        assert!(p.notes.is_empty(), "{:?}", p.notes);
+        assert!(p.items.iter().any(|i| matches!(i, Item::Typed { .. })));
+        // The last item ends exactly at the padded size.
+        assert_eq!(
+            p.items.last(),
+            Some(&Item::Pad {
+                offset: 0x3B0,
+                len: 8
+            })
+        );
+        let raised = plan(&padded(0x35C, 1, vec![typed(0x350, 8, 8)]));
+        assert_eq!((raised.declared_align, raised.align), (1, 8));
+        assert_eq!(raised.size, 0x360);
+    }
+
+    #[test]
+    fn a_padded_type_keeps_the_exact_bound_for_fields() {
+        // The field fits the padded size but not the dump size: still left out.
+        let p = plan(&padded(0x3B1, 8, vec![typed(0x3B0, 8, 8)]));
+        assert_eq!(reasons(&p), vec![DegradeReason::OutOfBounds]);
+        assert_eq!(p.size, 0x3B8);
+    }
+
+    #[test]
+    fn an_exact_type_is_never_padded() {
+        let p = plan(&input(0x3B1, 8, vec![typed(0x3A8, 8, 8)]));
+        assert_eq!(p.size, 0x3B1);
+        assert_eq!(p.align, 1);
+        assert_eq!(reasons(&p), vec![DegradeReason::AlignmentTooLow]);
+    }
+
+    #[test]
+    fn a_padded_size_that_is_already_a_multiple_is_unchanged() {
+        let p = plan(&padded(0x40, 16, vec![typed(0, 16, 16)]));
+        assert_eq!((p.size, p.align), (0x40, 16));
+    }
+
+    #[test]
+    fn a_child_starting_at_the_unpadded_parent_end_uses_a_cast() {
+        // Parent dump size 0x3B1, padded to 0x3B8: the child's first field
+        // is at 0x3B1, inside the parent's tail padding.
+        let mut i = padded(0x3C1, 8, vec![typed(0x3B1, 1, 1)]);
+        i.base = Some(BaseInfo {
+            size: 0x3B8,
+            align: 8,
+        });
+        let p = plan(&i);
+        assert_eq!(p.size, 0x3C8);
+        assert_eq!(p.align, 8);
+        assert!(matches!(
+            p.base,
+            BaseMode::Cast(DegradeReason::BaseNotEmbedded, _)
+        ));
+    }
+
+    #[test]
+    fn the_padded_parent_embeds_when_the_child_has_no_members() {
+        let mut i = padded(0x3B1, 8, vec![]);
+        i.base = Some(BaseInfo {
+            size: 0x3B8,
+            align: 8,
+        });
+        let p = plan(&i);
+        assert_eq!(p.base, BaseMode::Embedded);
+        assert_eq!(p.size, 0x3B8);
+    }
+
+    #[test]
+    fn the_largest_aligned_field_decides() {
+        let p = plan(&input(
+            0x50,
+            1,
+            vec![typed(0x10, 8, 8), typed(0x20, 16, 16)],
+        ));
+        assert_eq!(p.align, 16);
+        assert!(p.notes.is_empty());
+    }
+
+    #[test]
+    fn parent_alignment_raises_the_child() {
+        let mut i = input(0x28, 1, vec![typed(0x20, 4, 4)]);
+        i.base = Some(BaseInfo {
+            size: 0x20,
+            align: 16,
+        });
+        let p = plan(&i);
+        // 0x28 is a multiple of 8, not 16: the clamp lowers the raised hint.
+        assert_eq!(p.align, 8);
+        assert!(matches!(p.base, BaseMode::Unavailable(..)));
+
+        let mut j = input(0x30, 1, vec![typed(0x20, 4, 4)]);
+        j.base = Some(BaseInfo {
+            size: 0x20,
+            align: 16,
+        });
+        let p = plan(&j);
+        assert_eq!(p.align, 16);
+        assert_eq!(p.declared_align, 1);
+        assert_eq!(p.base, BaseMode::Embedded);
+    }
+
+    #[test]
+    fn misaligned_field_does_not_raise_the_alignment() {
+        let p = plan(&input(16, 1, vec![typed(2, 4, 4), typed(8, 2, 2)]));
+        // The 4-byte field at offset 2 is no evidence. The 2-byte one is.
+        assert_eq!(p.align, 2);
+        assert_eq!(reasons(&p), vec![DegradeReason::Misaligned]);
+        assert!(p.items.contains(&Item::Bytes {
+            field: 0,
+            offset: 2,
+            len: 4
+        }));
+        let only = plan(&input(16, 1, vec![typed(4, 8, 8)]));
+        assert_eq!(only.align, 1);
+        assert_eq!(reasons(&only), vec![DegradeReason::Misaligned]);
+    }
+
+    #[test]
+    fn field_outside_the_type_does_not_raise_the_alignment() {
+        let outside = plan(&input(16, 1, vec![typed(16, 8, 8)]));
+        assert_eq!(outside.align, 1);
+        let overhang = plan(&input(16, 1, vec![typed(0, 32, 16)]));
+        assert_eq!(overhang.align, 1);
+        assert!(reasons(&overhang).contains(&DegradeReason::OutOfBounds));
+    }
+
+    #[test]
+    fn opaque_and_bit_fields_do_not_raise_the_alignment() {
+        let opaque = PlanField {
+            offset: 0,
+            kind: FieldKind::Opaque {
+                span: 8,
+                reason: DegradeReason::UnknownType,
+            },
+        };
+        let p = plan(&input(16, 1, vec![opaque, bit(8, 0, 0x01)]));
+        assert_eq!(p.align, 1);
+    }
+
+    #[test]
+    fn a_larger_declared_alignment_is_kept() {
+        let p = plan(&input(32, 16, vec![typed(0, 8, 8)]));
+        assert_eq!(p.align, 16);
+        assert_eq!(p.declared_align, 16);
+    }
+
+    #[test]
+    fn declared_alignment_below_the_field_is_raised_not_degraded() {
+        let p = plan(&input(16, 4, vec![typed(0, 8, 8)]));
+        assert_eq!(p.declared_align, 4);
+        assert_eq!(p.align, 8);
+        assert!(p.notes.is_empty());
+    }
+
+    #[test]
+    fn size_clamp_wins_over_the_evidence() {
         let p = plan(&input(0x2C, 8, vec![typed(0, 4, 4), typed(8, 8, 8)]));
         // 0x2C is a multiple of 4 only.
         assert_eq!(p.align, 4);
@@ -777,9 +1033,12 @@ mod tests {
         let mut i = input(4, 4, vec![]);
         i.base = Some(BaseInfo { size: 8, align: 4 });
         assert!(matches!(plan(&i).base, BaseMode::Unavailable(..)));
-        let mut j = input(8, 4, vec![]);
+        // The size clamp lowers the alignment below the parent's.
+        let mut j = input(12, 4, vec![]);
         j.base = Some(BaseInfo { size: 8, align: 8 });
-        assert!(matches!(plan(&j).base, BaseMode::Unavailable(..)));
+        let p = plan(&j);
+        assert_eq!(p.align, 4);
+        assert!(matches!(p.base, BaseMode::Unavailable(..)));
     }
 
     #[test]
