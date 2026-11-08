@@ -22,6 +22,8 @@ use ufathom_codegen::{Degradation, DegradeReason, GenReport, generate};
 use ufathom_model::{Dump, FieldDef, PropertyType, StructDef, StructKind};
 use ufathom_testkit::Profile;
 
+const GAME: &str = "/Game/Blueprints";
+
 fn object_ptr() -> PropertyType {
     PropertyType::Object {
         class: path(ENGINE, "Object"),
@@ -126,6 +128,37 @@ fn unaligned_dump() -> Dump {
             0x10,
             1,
             vec![field("Inner", 4, struct_of(ENGINE, "Zeta"), 8)],
+        ),
+        // A generated class: its size is not a multiple of its alignment, but
+        // the object is a heap allocation, so the Rust type is padded to 0x3B8.
+        structure(
+            GAME,
+            "Generated_C",
+            StructKind::Class,
+            Some(&path(ENGINE, "Object")),
+            0x3B1,
+            8,
+            vec![
+                field("Target", 0x3A8, object_ptr(), 8),
+                field("Flag", 0x3B0, PropertyType::UInt8, 1),
+            ],
+            Vec::new(),
+        ),
+        // The first member of the child starts at the unpadded end of the
+        // parent, inside the parent's new tail padding. Its own size is
+        // unpadded too.
+        structure(
+            GAME,
+            "Derived_C",
+            StructKind::Class,
+            Some(&path(GAME, "Generated_C")),
+            0x3C1,
+            8,
+            vec![
+                field("Extra", 0x3B1, PropertyType::UInt8, 1),
+                field("Other", 0x3B8, object_ptr(), 8),
+            ],
+            Vec::new(),
         ),
         // The size is a multiple of 4 only, so the clamp wins.
         script_struct(
@@ -248,4 +281,60 @@ fn the_result_does_not_depend_on_the_input_order() {
     assert_eq!(first.alignments_raised, second.alignments_raised);
     assert_eq!(first.degraded, second.degraded);
     assert_eq!(engine_source(a.path()), engine_source(b.path()));
+}
+
+fn all_sources(dir: &std::path::Path) -> String {
+    let mut files: Vec<_> = std::fs::read_dir(dir.join("src"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    files.sort();
+    files
+        .iter()
+        .map(|p| std::fs::read_to_string(p).unwrap())
+        .collect()
+}
+
+#[test]
+fn generated_classes_are_padded_and_children_still_view_their_parent() {
+    let (dir, report, _) = generate_and_check(&unaligned_dump(), "align-padded");
+
+    let padded: Vec<_> = report
+        .sizes_padded
+        .iter()
+        .map(|p| (p.owner.as_str(), p.dump_size, p.rust_size))
+        .collect();
+    // Only the two classes. The script struct of size 0x2C stays exact.
+    assert_eq!(
+        padded,
+        vec![
+            ("/Game/Blueprints.Derived_C", 0x3C1, 0x3C8),
+            ("/Game/Blueprints.Generated_C", 0x3B1, 0x3B8),
+        ]
+    );
+
+    // No alignment degradation for the classes.
+    assert!(
+        report
+            .degraded
+            .iter()
+            .all(|d| !d.owner.starts_with(GAME) || d.reason == DegradeReason::BaseNotEmbedded),
+        "{:?}",
+        report.degraded
+    );
+    let base = report
+        .degraded
+        .iter()
+        .filter(|d| d.owner == format!("{GAME}.Derived_C"))
+        .collect::<Vec<_>>();
+    assert_eq!(base.len(), 1, "{base:?}");
+    assert_eq!(base[0].member, "<base>");
+
+    let text = all_sources(dir.path());
+    assert!(
+        text.contains("assert!(::core::mem::size_of::<AGenerated_C>() == 0x3b8);")
+            || text.contains("assert!(::core::mem::size_of::<UGenerated_C>() == 0x3b8);")
+    );
+    assert!(text.contains("== 0x3c8);"));
+    assert!(text.contains("The dump says 0x3b1 bytes"));
 }

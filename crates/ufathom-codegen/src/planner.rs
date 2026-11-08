@@ -15,7 +15,8 @@ const MAX_ALIGN: u32 = 4096;
 /// The parent type, as far as the planner needs to know.
 #[derive(Debug, Clone)]
 pub(crate) struct BaseInfo {
-    /// Size of the Rust type of the parent. Equal to its size in the dump.
+    /// Size of the Rust type of the parent: its dump size, or the padded size
+    /// when the parent was padded (see [`PlanInput::pad_to_align`]).
     pub size: u32,
     /// Alignment of the Rust type of the parent.
     pub align: u32,
@@ -63,12 +64,18 @@ pub(crate) enum FieldKind {
 /// What the planner is asked to place.
 #[derive(Debug, Clone)]
 pub(crate) struct PlanInput {
-    /// Exact size of the owner in bytes.
+    /// Size of the owner in the dump, in bytes.
     pub size: u32,
     /// Alignment the dump declares. Anything that is not a power of two is
     /// treated as 1. This is evidence, not a promise: the planner raises it
     /// from the parent and from the members (see [`plan`]).
     pub align_hint: u32,
+    /// Pad the Rust type at the end up to its alignment instead of lowering
+    /// the alignment to fit the size. Only for types that are never embedded
+    /// in arrays or other structs, where the exact size does not matter
+    /// (classes: each object is a heap allocation made with the class
+    /// alignment, so it really occupies the rounded size).
+    pub pad_to_align: bool,
     /// The parent, if there is one.
     pub base: Option<BaseInfo>,
     /// The fields. Any order: the planner sorts them by offset.
@@ -163,6 +170,8 @@ pub(crate) struct Note {
 /// The result of planning one type.
 #[derive(Debug, Clone)]
 pub(crate) struct Plan {
+    /// Size of the Rust type: the input size, or more when padded.
+    pub size: u32,
     /// The alignment of the Rust type: what `align(N)` is declared as.
     pub align: u32,
     /// What the alignment would be from the declared hint alone, after the
@@ -267,11 +276,34 @@ impl Placer {
 /// Places the fields of one type. See the module documentation.
 ///
 /// The alignment of the result is the declared one raised as described at
-/// [`alignment_hint`], then lowered while it does not divide the size.
+/// [`alignment_hint`], then lowered while it does not divide the size. With
+/// [`PlanInput::pad_to_align`] it is not lowered: the size grows instead.
 pub(crate) fn plan(input: &PlanInput) -> Plan {
     let size = input.size;
-    let declared_align = effective_align(size, input.align_hint);
-    let align = effective_align(size, alignment_hint(input));
+    let hint = alignment_hint(input);
+    // A padded type keeps the whole hint and grows to a multiple of it. If the
+    // rounded size does not fit in 32 bits, it falls back to the exact size.
+    let padded = if input.pad_to_align {
+        size.checked_next_multiple_of(hint)
+    } else {
+        None
+    };
+    let (declared_align, align, rust_size) = match padded {
+        Some(rounded) => (
+            if is_pow2(input.align_hint) {
+                input.align_hint
+            } else {
+                1
+            },
+            hint,
+            rounded,
+        ),
+        None => (
+            effective_align(size, input.align_hint),
+            effective_align(size, hint),
+            size,
+        ),
+    };
     let mut notes: Vec<Note> = Vec::new();
     let mut omitted: Vec<Omitted> = Vec::new();
 
@@ -325,14 +357,14 @@ pub(crate) fn plan(input: &PlanInput) -> Plan {
     slots.sort_by_key(|(start, _)| *start);
 
     // The parent.
-    let first_offset = slots.first().map_or(size, |(start, _)| *start);
+    let first_offset = slots.first().map_or(rust_size, |(start, _)| *start);
     let (base, cursor) = match &input.base {
         None => (BaseMode::None, 0),
-        Some(b) if b.size > size => (
+        Some(b) if b.size > rust_size => (
             BaseMode::Unavailable(
                 DegradeReason::BaseNotEmbedded,
                 format!(
-                    "parent is {:#x} bytes, larger than the type ({size:#x})",
+                    "parent is {:#x} bytes, larger than the type ({rust_size:#x})",
                     b.size
                 ),
             ),
@@ -389,15 +421,16 @@ pub(crate) fn plan(input: &PlanInput) -> Plan {
             }
         }
     }
-    if placer.cursor < size {
+    if placer.cursor < rust_size {
         let offset = placer.cursor;
         placer.items.push(Item::Pad {
             offset,
-            len: size - offset,
+            len: rust_size - offset,
         });
     }
 
     Plan {
+        size: rust_size,
         align,
         declared_align,
         base,
@@ -624,6 +657,7 @@ mod tests {
         PlanInput {
             size,
             align_hint: align,
+            pad_to_align: false,
             base: None,
             fields,
         }
@@ -694,6 +728,86 @@ mod tests {
                 .count()
                 == 2
         );
+    }
+
+    fn padded(size: u32, align: u32, fields: Vec<PlanField>) -> PlanInput {
+        PlanInput {
+            pad_to_align: true,
+            ..input(size, align, fields)
+        }
+    }
+
+    #[test]
+    fn a_padded_type_grows_to_its_alignment_instead_of_lowering_it() {
+        // Size 0x3B1 with a pointer at 0x3A8: the exact-size rule would give 1.
+        let p = plan(&padded(0x3B1, 8, vec![typed(0x3A8, 8, 8)]));
+        assert_eq!(p.align, 8);
+        assert_eq!(p.size, 0x3B8);
+        assert!(p.notes.is_empty(), "{:?}", p.notes);
+        assert!(p.items.iter().any(|i| matches!(i, Item::Typed { .. })));
+        // The last item ends exactly at the padded size.
+        assert_eq!(
+            p.items.last(),
+            Some(&Item::Pad {
+                offset: 0x3B0,
+                len: 8
+            })
+        );
+        let raised = plan(&padded(0x35C, 1, vec![typed(0x350, 8, 8)]));
+        assert_eq!((raised.declared_align, raised.align), (1, 8));
+        assert_eq!(raised.size, 0x360);
+    }
+
+    #[test]
+    fn a_padded_type_keeps_the_exact_bound_for_fields() {
+        // The field fits the padded size but not the dump size: still left out.
+        let p = plan(&padded(0x3B1, 8, vec![typed(0x3B0, 8, 8)]));
+        assert_eq!(reasons(&p), vec![DegradeReason::OutOfBounds]);
+        assert_eq!(p.size, 0x3B8);
+    }
+
+    #[test]
+    fn an_exact_type_is_never_padded() {
+        let p = plan(&input(0x3B1, 8, vec![typed(0x3A8, 8, 8)]));
+        assert_eq!(p.size, 0x3B1);
+        assert_eq!(p.align, 1);
+        assert_eq!(reasons(&p), vec![DegradeReason::AlignmentTooLow]);
+    }
+
+    #[test]
+    fn a_padded_size_that_is_already_a_multiple_is_unchanged() {
+        let p = plan(&padded(0x40, 16, vec![typed(0, 16, 16)]));
+        assert_eq!((p.size, p.align), (0x40, 16));
+    }
+
+    #[test]
+    fn a_child_starting_at_the_unpadded_parent_end_uses_a_cast() {
+        // Parent dump size 0x3B1, padded to 0x3B8: the child's first field
+        // is at 0x3B1, inside the parent's tail padding.
+        let mut i = padded(0x3C1, 8, vec![typed(0x3B1, 1, 1)]);
+        i.base = Some(BaseInfo {
+            size: 0x3B8,
+            align: 8,
+        });
+        let p = plan(&i);
+        assert_eq!(p.size, 0x3C8);
+        assert_eq!(p.align, 8);
+        assert!(matches!(
+            p.base,
+            BaseMode::Cast(DegradeReason::BaseNotEmbedded, _)
+        ));
+    }
+
+    #[test]
+    fn the_padded_parent_embeds_when_the_child_has_no_members() {
+        let mut i = padded(0x3B1, 8, vec![]);
+        i.base = Some(BaseInfo {
+            size: 0x3B8,
+            align: 8,
+        });
+        let p = plan(&i);
+        assert_eq!(p.base, BaseMode::Embedded);
+        assert_eq!(p.size, 0x3B8);
     }
 
     #[test]
