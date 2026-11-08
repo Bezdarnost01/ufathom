@@ -21,6 +21,7 @@ fn help_lists_every_subcommand_and_documents_the_exit_codes() {
         "probe",
         "doctor",
         "dump",
+        "quick",
         "gen",
         "usmap",
         "check-oracle",

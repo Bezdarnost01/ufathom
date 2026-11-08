@@ -57,6 +57,8 @@ pub enum Command {
     Doctor(DoctorArgs),
     /// Dump a target's types to a JSON file, and optionally a usmap and a Rust SDK.
     Dump(DumpArgs),
+    /// Pick a running process and write a JSON dump, a usmap and a Rust SDK.
+    Quick(QuickArgs),
     /// Generate a Rust SDK crate from a dump file.
     Gen(GenArgs),
     /// Write a usmap file from a dump file.
@@ -155,6 +157,17 @@ pub struct RuntimeArgs {
     /// Use `ufathom-runtime` at this registry version instead of the bundled sources.
     #[arg(long, value_name = "VERSION")]
     pub runtime_version: Option<String>,
+}
+
+/// `ufathom quick`.
+#[derive(Debug, Args)]
+pub struct QuickArgs {
+    /// Parent folder for the new timestamped dump folder.
+    #[arg(short, long, value_name = "DIR", default_value = "ufathom-dumps")]
+    pub output: PathBuf,
+    /// Offer every running process, not only probable Unreal Engine targets.
+    #[arg(long)]
+    pub all: bool,
 }
 
 /// `ufathom dump`.

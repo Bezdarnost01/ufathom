@@ -359,6 +359,7 @@ ufathom command <output dir> <cmd>  Send status, dump or stop to a running DLL
 ufathom probe <target>              Discovery with evidence
 ufathom doctor <target>             Probe plus invariant report
 ufathom dump <target> -o dump.json
+ufathom quick [--all] [-o ufathom-dumps/]
 ufathom gen <dump.json> -o sdk/
 ufathom usmap <dump.json> -o out.usmap
 ufathom check-oracle <dump.json> <file.usmap>
@@ -366,6 +367,8 @@ ufathom diff <old.json> <new.json> [--json]
 ```
 
 `<target>` is `--pid N`, `--process NAME` or `--minidump PATH`, for external and offline use. Also `--module NAME` and `--layout FILE`.
+
+`quick` is the guided external workflow. It uses the same executable hints as `ps`, accepts a one-based list number or a listed PID, and then calls the ordinary `dump` pipeline with JSON, usmap and bundled-runtime SDK outputs enabled. `--all` bypasses only the probable-target filter, not discovery or validation. Output goes to an exclusively created `<output>/<timestamp>-p<PID>/` folder; an empty selection cancels before the folder is created, and EOF is an error.
 
 ## Testing
 

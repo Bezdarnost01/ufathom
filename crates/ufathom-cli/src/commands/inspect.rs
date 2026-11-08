@@ -198,8 +198,7 @@ fn is_system_path(path: &str) -> bool {
         })
 }
 
-/// `ufathom ps`.
-pub fn ps(args: &PsArgs) -> Outcome {
+fn sorted_processes() -> anyhow::Result<Vec<ProcessInfo>> {
     let mut processes = list_processes().context("cannot list the running processes")?;
     processes.sort_by(|a, b| {
         a.name
@@ -207,12 +206,12 @@ pub fn ps(args: &PsArgs) -> Outcome {
             .cmp(&b.name.to_ascii_lowercase())
             .then(a.pid.cmp(&b.pid))
     });
+    Ok(processes)
+}
 
-    // Each distinct file is read once, in parallel; a game's helper processes
-    // share one path.
-    // This process is never hinted: its own binary carries the marker strings
-    // the solver searches for.
-    let own_pid = std::process::id();
+/// Reads each distinct executable once, in parallel. The current process is
+/// excluded because its own binary carries the marker strings the solver uses.
+fn hint_map(processes: &[ProcessInfo], own_pid: u32) -> HashMap<&str, Option<Hint>> {
     let mut paths: Vec<&str> = processes
         .iter()
         .filter(|process| process.pid != own_pid)
@@ -221,11 +220,43 @@ pub fn ps(args: &PsArgs) -> Outcome {
         .collect();
     paths.sort_unstable();
     paths.dedup();
-    let hints: HashMap<&str, Option<Hint>> = paths
+    paths
         .par_iter()
         .map(|path| (*path, hint_of(path)))
-        .collect();
+        .collect()
+}
 
+/// Processes offered by the interactive workflow, filtered unless `all` is set.
+pub(crate) fn process_candidates(all: bool) -> anyhow::Result<Vec<ProcessInfo>> {
+    let own_pid = std::process::id();
+    let processes = sorted_processes()?;
+    if all {
+        return Ok(processes
+            .into_iter()
+            .filter(|process| process.pid != own_pid)
+            .collect());
+    }
+    let hints = hint_map(&processes, own_pid);
+    Ok(processes
+        .iter()
+        .filter(|process| {
+            process.pid != own_pid
+                && process
+                    .path
+                    .as_deref()
+                    .and_then(|path| hints.get(path))
+                    .and_then(Option::as_ref)
+                    .is_some_and(Hint::probable)
+        })
+        .cloned()
+        .collect())
+}
+
+/// `ufathom ps`.
+pub fn ps(args: &PsArgs) -> Outcome {
+    let processes = sorted_processes()?;
+    let own_pid = std::process::id();
+    let hints = hint_map(&processes, own_pid);
     let rows = table(&processes, &hints, args.all, own_pid);
     for row in &rows {
         println!("{row}");

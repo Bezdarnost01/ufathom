@@ -55,7 +55,7 @@ pub use hotkey::{Hotkey, HotkeyTracker, is_own_process_foreground};
 pub use identity::{DiscoveryRecord, EvidenceRecord, GlobalsRecord, Identity, TimingsMs};
 pub use output::{
     CONTROL_FOLDER, DUMP_JSON, DUMP_LOG, IDENTITY_JSON, LOG_FOLDER, MAPPINGS_USMAP, SDK_FOLDER,
-    build_id, control_folder, create_dump_folder, dump_label, session_name,
+    build_id, control_folder, create_dump_folder, create_session_folder, dump_label, session_name,
 };
 pub use service::{AUTO_DUMP_LABEL, DumpTrigger, SHUTDOWN_TIMEOUT, Service};
 pub use session::{

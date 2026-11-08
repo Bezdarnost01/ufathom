@@ -4,6 +4,12 @@ All notable changes are recorded here, in the [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-08
+
+### Added
+
+- **`ufathom quick`.** An interactive external-dump workflow lists probable Unreal Engine processes and accepts a list number or PID. It then runs the same discovery and reflection pipeline as `dump` and writes `dump.json`, `Mappings.usmap` and a self-contained Rust SDK. Each run gets a new timestamped folder, so existing results are not overwritten. `--all` offers every running process when the UE heuristic misses a target, and `--output` changes the parent folder.
+
 ## [0.1.1] - 2026-11-08
 
 ### Changed
@@ -59,6 +65,7 @@ First pre-release. Windows x86-64 only for the DLL. Expect breaking changes in t
   - the generated SDK compiles.
 - **Other engine versions:** tested on synthetic images only. See `COMPATIBILITY.md`.
 
-[Unreleased]: https://github.com/Bezdarnost01/ufathom/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Bezdarnost01/ufathom/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Bezdarnost01/ufathom/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Bezdarnost01/ufathom/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Bezdarnost01/ufathom/releases/tag/v0.1.0

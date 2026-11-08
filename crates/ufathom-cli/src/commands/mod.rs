@@ -6,6 +6,7 @@ mod files;
 mod inspect;
 mod io;
 mod probe;
+mod quick;
 
 use crate::args::Command;
 use crate::error::Outcome;
@@ -18,6 +19,7 @@ pub fn run(command: &Command) -> Outcome {
         Command::Probe(args) => probe::probe(args),
         Command::Doctor(args) => probe::doctor(args),
         Command::Dump(args) => dump::dump(args),
+        Command::Quick(args) => quick::quick(args),
         Command::Gen(args) => files::generate(args),
         Command::Usmap(args) => files::usmap(args),
         Command::CheckOracle(args) => files::check_oracle(args),
