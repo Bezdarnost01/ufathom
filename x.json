@@ -1,0 +1,1778 @@
+{
+  "format_version": 1,
+  "tool": {
+    "name": "ufathom",
+    "version": "0.1.0"
+  },
+  "target": {
+    "module": "fake-host.exe",
+    "build_id": "++Game+Live"
+  },
+  "engine": {
+    "claimed": null,
+    "build": "++Game+Live",
+    "min_version": {
+      "major": 4,
+      "minor": 25,
+      "patch": 0
+    },
+    "max_version": null,
+    "evidence": [
+      "at least 4.23: names are an FNamePool",
+      "at least 4.25: properties are FField",
+      "at least 4.21: the object array is chunked",
+      "at least 4.22: FName has a display index",
+      "no version resource",
+      "no source states an engine version",
+      "build string `++Game+Live` (ASCII) in .rdata at RVA 0x15e040, no changelist",
+      "other build string `++Shuffled+Test` (ASCII) in .rdata at RVA 0x15d728, no changelist"
+    ]
+  },
+  "layout": {
+    "pointer_size": 8,
+    "names": {
+      "Pool": {
+        "location": {
+          "Rva": {
+            "module": "fake-host.exe",
+            "rva": 1755208
+          }
+        },
+        "blocks": 8,
+        "current_block": 0,
+        "cursor": 4,
+        "stride": 4,
+        "block_offset_bits": 16,
+        "entry": {
+          "header_offset": 4,
+          "string_offset": 6,
+          "len_shift": 1,
+          "wide_mask": 1
+        }
+      }
+    },
+    "objects": {
+      "location": {
+        "Rva": {
+          "module": "fake-host.exe",
+          "rva": 1754304
+        }
+      },
+      "kind": {
+        "Chunked": {
+          "elements_per_chunk": 65536
+        }
+      },
+      "objects": 0,
+      "max_elements": 16,
+      "num_elements": 20,
+      "max_chunks": 24,
+      "num_chunks": 28,
+      "item_size": 24,
+      "item_object": 0,
+      "item_serial": 16,
+      "pointer_transform": []
+    },
+    "fname": {
+      "size": 12,
+      "comparison_index": 0,
+      "display_index": 4,
+      "number": 8
+    },
+    "uobject": {
+      "flags": 8,
+      "index": 12,
+      "class": 16,
+      "name": 24,
+      "outer": 40,
+      "size": 48
+    },
+    "ufield": {
+      "next": 48
+    },
+    "ustruct": {
+      "super_struct": 72,
+      "children": 80,
+      "child_properties": 88,
+      "properties_size": 96,
+      "min_alignment": 100,
+      "min_alignment_width": 4
+    },
+    "uclass": {
+      "cast_flags": 216,
+      "default_object": 296
+    },
+    "ufunction": {
+      "flags": 184,
+      "native_func": 224
+    },
+    "uenum": {
+      "PairArray": {
+        "offset": 72,
+        "stride": 24,
+        "value_offset": 16,
+        "value_width": 8
+      }
+    },
+    "properties": {
+      "system": {
+        "Modern": {
+          "ffield": {
+            "class": 8,
+            "next": 32,
+            "name": 40,
+            "flags": 52
+          },
+          "field_class": {
+            "name": 0,
+            "cast_flags": 24
+          }
+        }
+      },
+      "array_dim": 56,
+      "element_size": 60,
+      "flags": 64,
+      "offset_internal": 76,
+      "size": 128,
+      "typed": {
+        "bool_property": {
+          "field_size": 128,
+          "byte_offset": 129,
+          "byte_mask": 130,
+          "field_mask": 131
+        },
+        "object_class": 128,
+        "class_meta": 136,
+        "script_struct": 128,
+        "array_inner": 128,
+        "set_element": 128,
+        "map_key": 128,
+        "map_value": 136,
+        "enum_underlying": 128,
+        "enum_type": 136,
+        "byte_enum": 128,
+        "delegate_signature": 128,
+        "interface_class": null,
+        "optional_value": null
+      }
+    }
+  },
+  "packages": [
+    "/Engine/Transient",
+    "/Game/Content/Alpha/Pkg00008",
+    "/Game/Content/Cluster/Pkg00003",
+    "/Game/Content/Cluster/Pkg00005",
+    "/Game/Content/Core/Pkg00012",
+    "/Game/Content/Cube/Pkg00006",
+    "/Game/Content/Edge/Pkg00002",
+    "/Game/Content/Field/Pkg00001",
+    "/Game/Content/Grid/Pkg00009",
+    "/Game/Content/Index/Pkg00011",
+    "/Game/Content/Lane/Pkg00007",
+    "/Game/Content/Region/Pkg00004",
+    "/Game/Content/Unit/Pkg00010",
+    "/Game/Maps/Main",
+    "/Game/Maps/MainPrevious",
+    "/Script/CoreUObject",
+    "/Script/Engine"
+  ],
+  "structs": [
+    {
+      "path": "/Script/CoreUObject.Class",
+      "name": "Class",
+      "package": "/Script/CoreUObject",
+      "kind": "Class",
+      "super_path": "/Script/CoreUObject.Struct",
+      "size": 576,
+      "alignment": 8,
+      "fields": [],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/CoreUObject.Color",
+      "name": "Color",
+      "package": "/Script/CoreUObject",
+      "kind": "ScriptStruct",
+      "super_path": null,
+      "size": 4,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "B",
+          "offset": 0,
+          "ty": "UInt8",
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "G",
+          "offset": 1,
+          "ty": "UInt8",
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "R",
+          "offset": 2,
+          "ty": "UInt8",
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "A",
+          "offset": 3,
+          "ty": "UInt8",
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        }
+      ],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/CoreUObject.Enum",
+      "name": "Enum",
+      "package": "/Script/CoreUObject",
+      "kind": "Class",
+      "super_path": "/Script/CoreUObject.Field",
+      "size": 104,
+      "alignment": 8,
+      "fields": [],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/CoreUObject.Field",
+      "name": "Field",
+      "package": "/Script/CoreUObject",
+      "kind": "Class",
+      "super_path": "/Script/CoreUObject.Object",
+      "size": 56,
+      "alignment": 8,
+      "fields": [],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/CoreUObject.Function",
+      "name": "Function",
+      "package": "/Script/CoreUObject",
+      "kind": "Class",
+      "super_path": "/Script/CoreUObject.Struct",
+      "size": 232,
+      "alignment": 8,
+      "fields": [],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/CoreUObject.Guid",
+      "name": "Guid",
+      "package": "/Script/CoreUObject",
+      "kind": "ScriptStruct",
+      "super_path": null,
+      "size": 16,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "A",
+          "offset": 0,
+          "ty": "Int32",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "B",
+          "offset": 4,
+          "ty": "Int32",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "C",
+          "offset": 8,
+          "ty": "Int32",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "D",
+          "offset": 12,
+          "ty": "Int32",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        }
+      ],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/CoreUObject.LinearColor",
+      "name": "LinearColor",
+      "package": "/Script/CoreUObject",
+      "kind": "ScriptStruct",
+      "super_path": null,
+      "size": 16,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "R",
+          "offset": 0,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "G",
+          "offset": 4,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "B",
+          "offset": 8,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "A",
+          "offset": 12,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        }
+      ],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/CoreUObject.Object",
+      "name": "Object",
+      "package": "/Script/CoreUObject",
+      "kind": "Class",
+      "super_path": null,
+      "size": 48,
+      "alignment": 8,
+      "fields": [],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/CoreUObject.Package",
+      "name": "Package",
+      "package": "/Script/CoreUObject",
+      "kind": "Class",
+      "super_path": "/Script/CoreUObject.Object",
+      "size": 176,
+      "alignment": 8,
+      "fields": [],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/CoreUObject.Quat",
+      "name": "Quat",
+      "package": "/Script/CoreUObject",
+      "kind": "ScriptStruct",
+      "super_path": null,
+      "size": 16,
+      "alignment": 16,
+      "fields": [
+        {
+          "name": "X",
+          "offset": 0,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "Y",
+          "offset": 4,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "Z",
+          "offset": 8,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "W",
+          "offset": 12,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        }
+      ],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/CoreUObject.Rotator",
+      "name": "Rotator",
+      "package": "/Script/CoreUObject",
+      "kind": "ScriptStruct",
+      "super_path": null,
+      "size": 12,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "Pitch",
+          "offset": 0,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "Yaw",
+          "offset": 4,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "Roll",
+          "offset": 8,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        }
+      ],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/CoreUObject.ScriptStruct",
+      "name": "ScriptStruct",
+      "package": "/Script/CoreUObject",
+      "kind": "Class",
+      "super_path": "/Script/CoreUObject.Struct",
+      "size": 200,
+      "alignment": 8,
+      "fields": [],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/CoreUObject.Struct",
+      "name": "Struct",
+      "package": "/Script/CoreUObject",
+      "kind": "Class",
+      "super_path": "/Script/CoreUObject.Field",
+      "size": 184,
+      "alignment": 8,
+      "fields": [],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/CoreUObject.Transform",
+      "name": "Transform",
+      "package": "/Script/CoreUObject",
+      "kind": "ScriptStruct",
+      "super_path": null,
+      "size": 48,
+      "alignment": 16,
+      "fields": [
+        {
+          "name": "Rotation",
+          "offset": 0,
+          "ty": {
+            "Struct": {
+              "path": "/Script/CoreUObject.Quat"
+            }
+          },
+          "element_size": 16,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "Translation",
+          "offset": 16,
+          "ty": {
+            "Struct": {
+              "path": "/Script/CoreUObject.Vector"
+            }
+          },
+          "element_size": 12,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "Scale3D",
+          "offset": 32,
+          "ty": {
+            "Struct": {
+              "path": "/Script/CoreUObject.Vector"
+            }
+          },
+          "element_size": 12,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        }
+      ],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/CoreUObject.Vector",
+      "name": "Vector",
+      "package": "/Script/CoreUObject",
+      "kind": "ScriptStruct",
+      "super_path": null,
+      "size": 12,
+      "alignment": 4,
+      "fields": [
+        {
+          "name": "X",
+          "offset": 0,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "Y",
+          "offset": 4,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "Z",
+          "offset": 8,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        }
+      ],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/Engine.Actor",
+      "name": "Actor",
+      "package": "/Script/Engine",
+      "kind": "Class",
+      "super_path": "/Script/CoreUObject.Object",
+      "size": 624,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "bCanBeDamaged",
+          "offset": 48,
+          "ty": {
+            "Bool": {
+              "byte_offset": 0,
+              "byte_mask": 2,
+              "field_mask": 2,
+              "field_size": 1
+            }
+          },
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 5
+        },
+        {
+          "name": "bHidden",
+          "offset": 48,
+          "ty": {
+            "Bool": {
+              "byte_offset": 0,
+              "byte_mask": 1,
+              "field_mask": 1,
+              "field_size": 1
+            }
+          },
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 5
+        },
+        {
+          "name": "bReplicateMovement",
+          "offset": 48,
+          "ty": {
+            "Bool": {
+              "byte_offset": 0,
+              "byte_mask": 4,
+              "field_mask": 4,
+              "field_size": 1
+            }
+          },
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 37
+        },
+        {
+          "name": "Role",
+          "offset": 49,
+          "ty": {
+            "Byte": {
+              "path": "/Script/Engine.ENetRole"
+            }
+          },
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 1073742373
+        },
+        {
+          "name": "RemoteRole",
+          "offset": 50,
+          "ty": {
+            "Byte": {
+              "path": "/Script/Engine.ENetRole"
+            }
+          },
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 1073742373
+        },
+        {
+          "name": "PreviousRole",
+          "offset": 51,
+          "ty": {
+            "Enum": {
+              "path": "/Script/Engine.ENetRole",
+              "underlying": "UInt8"
+            }
+          },
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "NetTag",
+          "offset": 52,
+          "ty": "Int32",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "NetUpdateFrequency",
+          "offset": 56,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "MinNetUpdateFrequency",
+          "offset": 60,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "ReplicatedCounter",
+          "offset": 64,
+          "ty": "Int64",
+          "element_size": 8,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "InitialLifeSpan",
+          "offset": 72,
+          "ty": "Double",
+          "element_size": 8,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "Tags",
+          "offset": 80,
+          "ty": {
+            "Array": {
+              "inner": "Name"
+            }
+          },
+          "element_size": 16,
+          "array_dim": 1,
+          "flags": 5
+        },
+        {
+          "name": "Owner",
+          "offset": 96,
+          "ty": {
+            "Object": {
+              "class": "/Script/Engine.Actor"
+            }
+          },
+          "element_size": 8,
+          "array_dim": 1,
+          "flags": 1073742341
+        },
+        {
+          "name": "Instigator",
+          "offset": 104,
+          "ty": {
+            "Object": {
+              "class": "/Script/Engine.Pawn"
+            }
+          },
+          "element_size": 8,
+          "array_dim": 1,
+          "flags": 1073742341
+        },
+        {
+          "name": "ActorClassRef",
+          "offset": 112,
+          "ty": {
+            "Class": {
+              "class": "/Script/CoreUObject.Class",
+              "meta": "/Script/Engine.Actor"
+            }
+          },
+          "element_size": 8,
+          "array_dim": 1,
+          "flags": 517
+        },
+        {
+          "name": "SoftActor",
+          "offset": 120,
+          "ty": {
+            "SoftObject": {
+              "class": "/Script/Engine.Actor"
+            }
+          },
+          "element_size": 40,
+          "array_dim": 1,
+          "flags": 5
+        },
+        {
+          "name": "SoftClassRef",
+          "offset": 160,
+          "ty": {
+            "SoftClass": {
+              "meta": "/Script/Engine.Actor"
+            }
+          },
+          "element_size": 40,
+          "array_dim": 1,
+          "flags": 5
+        },
+        {
+          "name": "WeakOwner",
+          "offset": 200,
+          "ty": {
+            "WeakObject": {
+              "class": "/Script/Engine.Actor"
+            }
+          },
+          "element_size": 8,
+          "array_dim": 1,
+          "flags": 1073742341
+        },
+        {
+          "name": "LazyOwner",
+          "offset": 208,
+          "ty": {
+            "LazyObject": {
+              "class": "/Script/Engine.Actor"
+            }
+          },
+          "element_size": 24,
+          "array_dim": 1,
+          "flags": 5
+        },
+        {
+          "name": "NamedActors",
+          "offset": 232,
+          "ty": {
+            "Map": {
+              "key": "Name",
+              "value": {
+                "Object": {
+                  "class": "/Script/Engine.Actor"
+                }
+              }
+            }
+          },
+          "element_size": 80,
+          "array_dim": 1,
+          "flags": 5
+        },
+        {
+          "name": "UniqueTags",
+          "offset": 312,
+          "ty": {
+            "Set": {
+              "element": "Name"
+            }
+          },
+          "element_size": 80,
+          "array_dim": 1,
+          "flags": 5
+        },
+        {
+          "name": "OnActorDestroyed",
+          "offset": 392,
+          "ty": {
+            "MulticastInlineDelegate": {
+              "signature": "/Script/Engine.Actor:OnActorDestroyed__DelegateSignature"
+            }
+          },
+          "element_size": 16,
+          "array_dim": 1,
+          "flags": 268435461
+        },
+        {
+          "name": "OnTakeHit",
+          "offset": 408,
+          "ty": {
+            "Delegate": {
+              "signature": "/Script/Engine.Actor:OnTakeHit__DelegateSignature"
+            }
+          },
+          "element_size": 20,
+          "array_dim": 1,
+          "flags": 5
+        },
+        {
+          "name": "ActorLabel",
+          "offset": 428,
+          "ty": "Name",
+          "element_size": 12,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "DebugName",
+          "offset": 440,
+          "ty": "Str",
+          "element_size": 16,
+          "array_dim": 1,
+          "flags": 5
+        },
+        {
+          "name": "DisplayText",
+          "offset": 456,
+          "ty": "Text",
+          "element_size": 24,
+          "array_dim": 1,
+          "flags": 5
+        },
+        {
+          "name": "ActorGuid",
+          "offset": 480,
+          "ty": {
+            "Struct": {
+              "path": "/Script/CoreUObject.Guid"
+            }
+          },
+          "element_size": 16,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "ActorColor",
+          "offset": 496,
+          "ty": {
+            "Struct": {
+              "path": "/Script/CoreUObject.Color"
+            }
+          },
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "Tint",
+          "offset": 500,
+          "ty": {
+            "Struct": {
+              "path": "/Script/CoreUObject.LinearColor"
+            }
+          },
+          "element_size": 16,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "RelativeLocation",
+          "offset": 516,
+          "ty": {
+            "Struct": {
+              "path": "/Script/CoreUObject.Vector"
+            }
+          },
+          "element_size": 12,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "RelativeTransform",
+          "offset": 528,
+          "ty": {
+            "Struct": {
+              "path": "/Script/CoreUObject.Transform"
+            }
+          },
+          "element_size": 48,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "SmallTable",
+          "offset": 576,
+          "ty": "Int32",
+          "element_size": 4,
+          "array_dim": 3,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "ShortValue",
+          "offset": 588,
+          "ty": "Int16",
+          "element_size": 2,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "SignedByte",
+          "offset": 590,
+          "ty": "Int8",
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "WideValue",
+          "offset": 592,
+          "ty": "UInt16",
+          "element_size": 2,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "Flags",
+          "offset": 596,
+          "ty": "UInt32",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "BigValue",
+          "offset": 600,
+          "ty": "UInt64",
+          "element_size": 8,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "TrailingByte",
+          "offset": 608,
+          "ty": "UInt8",
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        }
+      ],
+      "functions": [
+        {
+          "path": "/Script/Engine.Actor:GetActorLocation",
+          "name": "GetActorLocation",
+          "flags": 1413612545,
+          "params_size": 12,
+          "params": [
+            {
+              "name": "ReturnValue",
+              "offset": 0,
+              "ty": {
+                "Struct": {
+                  "path": "/Script/CoreUObject.Vector"
+                }
+              },
+              "element_size": 12,
+              "array_dim": 1,
+              "flags": 1073743744
+            }
+          ],
+          "native_rva": 2022976
+        },
+        {
+          "path": "/Script/Engine.Actor:K2_DestroyActor",
+          "name": "K2_DestroyActor",
+          "flags": 67240961,
+          "params_size": 0,
+          "params": [],
+          "native_rva": 2022928
+        },
+        {
+          "path": "/Script/Engine.Actor:K2_SetActorLocation",
+          "name": "K2_SetActorLocation",
+          "flags": 71435265,
+          "params_size": 16,
+          "params": [
+            {
+              "name": "NewLocation",
+              "offset": 0,
+              "ty": {
+                "Struct": {
+                  "path": "/Script/CoreUObject.Vector"
+                }
+              },
+              "element_size": 12,
+              "array_dim": 1,
+              "flags": 134218626
+            },
+            {
+              "name": "bSweep",
+              "offset": 12,
+              "ty": {
+                "Bool": {
+                  "byte_offset": 0,
+                  "byte_mask": 255,
+                  "field_mask": 255,
+                  "field_size": 1
+                }
+              },
+              "element_size": 1,
+              "array_dim": 1,
+              "flags": 69793219200
+            },
+            {
+              "name": "bTeleport",
+              "offset": 13,
+              "ty": {
+                "Bool": {
+                  "byte_offset": 0,
+                  "byte_mask": 255,
+                  "field_mask": 255,
+                  "field_size": 1
+                }
+              },
+              "element_size": 1,
+              "array_dim": 1,
+              "flags": 69793219200
+            },
+            {
+              "name": "ReturnValue",
+              "offset": 14,
+              "ty": {
+                "Bool": {
+                  "byte_offset": 0,
+                  "byte_mask": 255,
+                  "field_mask": 255,
+                  "field_size": 1
+                }
+              },
+              "element_size": 1,
+              "array_dim": 1,
+              "flags": 69793220480
+            }
+          ],
+          "native_rva": 2023104
+        },
+        {
+          "path": "/Script/Engine.Actor:OnActorDestroyed__DelegateSignature",
+          "name": "OnActorDestroyed__DelegateSignature",
+          "flags": 1245184,
+          "params_size": 0,
+          "params": [],
+          "native_rva": null
+        },
+        {
+          "path": "/Script/Engine.Actor:OnTakeHit__DelegateSignature",
+          "name": "OnTakeHit__DelegateSignature",
+          "flags": 1179648,
+          "params_size": 8,
+          "params": [
+            {
+              "name": "HitActor",
+              "offset": 0,
+              "ty": {
+                "Object": {
+                  "class": "/Script/Engine.Actor"
+                }
+              },
+              "element_size": 8,
+              "array_dim": 1,
+              "flags": 1073742464
+            }
+          ],
+          "native_rva": null
+        },
+        {
+          "path": "/Script/Engine.Actor:ReceiveBeginPlay",
+          "name": "ReceiveBeginPlay",
+          "flags": 134350848,
+          "params_size": 0,
+          "params": [],
+          "native_rva": null
+        },
+        {
+          "path": "/Script/Engine.Actor:SetActorHiddenInGame",
+          "name": "SetActorHiddenInGame",
+          "flags": 67240961,
+          "params_size": 1,
+          "params": [
+            {
+              "name": "bNewHidden",
+              "offset": 0,
+              "ty": {
+                "Bool": {
+                  "byte_offset": 0,
+                  "byte_mask": 255,
+                  "field_mask": 255,
+                  "field_size": 1
+                }
+              },
+              "element_size": 1,
+              "array_dim": 1,
+              "flags": 69793219200
+            }
+          ],
+          "native_rva": 2023056
+        }
+      ],
+      "flags": 0
+    },
+    {
+      "path": "/Script/Engine.BlueprintFunctionLibrary",
+      "name": "BlueprintFunctionLibrary",
+      "package": "/Script/Engine",
+      "kind": "Class",
+      "super_path": "/Script/CoreUObject.Object",
+      "size": 48,
+      "alignment": 8,
+      "fields": [],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/Engine.Controller",
+      "name": "Controller",
+      "package": "/Script/Engine",
+      "kind": "Class",
+      "super_path": "/Script/Engine.Actor",
+      "size": 648,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "Pawn",
+          "offset": 624,
+          "ty": {
+            "Object": {
+              "class": "/Script/Engine.Pawn"
+            }
+          },
+          "element_size": 8,
+          "array_dim": 1,
+          "flags": 1073742341
+        },
+        {
+          "name": "ControlRotation",
+          "offset": 632,
+          "ty": {
+            "Struct": {
+              "path": "/Script/CoreUObject.Rotator"
+            }
+          },
+          "element_size": 12,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "bAttachToPawn",
+          "offset": 644,
+          "ty": {
+            "Bool": {
+              "byte_offset": 0,
+              "byte_mask": 1,
+              "field_mask": 1,
+              "field_size": 1
+            }
+          },
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 5
+        }
+      ],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/Engine.Engine",
+      "name": "Engine",
+      "package": "/Script/Engine",
+      "kind": "Class",
+      "super_path": "/Script/CoreUObject.Object",
+      "size": 88,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "DefaultWorldName",
+          "offset": 48,
+          "ty": "Str",
+          "element_size": 16,
+          "array_dim": 1,
+          "flags": 5
+        },
+        {
+          "name": "NearClipPlane",
+          "offset": 64,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "MaxFPS",
+          "offset": 68,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "GameViewportName",
+          "offset": 72,
+          "ty": "Name",
+          "element_size": 12,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "bSmoothFrameRate",
+          "offset": 84,
+          "ty": {
+            "Bool": {
+              "byte_offset": 0,
+              "byte_mask": 1,
+              "field_mask": 1,
+              "field_size": 1
+            }
+          },
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 5
+        }
+      ],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/Engine.GameEngine",
+      "name": "GameEngine",
+      "package": "/Script/Engine",
+      "kind": "Class",
+      "super_path": "/Script/Engine.Engine",
+      "size": 96,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "MaxIdleTime",
+          "offset": 88,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "MaxDeltaTime",
+          "offset": 92,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        }
+      ],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/Engine.KismetSystemLibrary",
+      "name": "KismetSystemLibrary",
+      "package": "/Script/Engine",
+      "kind": "Class",
+      "super_path": "/Script/Engine.BlueprintFunctionLibrary",
+      "size": 48,
+      "alignment": 8,
+      "fields": [],
+      "functions": [
+        {
+          "path": "/Script/Engine.KismetSystemLibrary:GetGameName",
+          "name": "GetGameName",
+          "flags": 339878913,
+          "params_size": 16,
+          "params": [
+            {
+              "name": "ReturnValue",
+              "offset": 0,
+              "ty": "Str",
+              "element_size": 16,
+              "array_dim": 1,
+              "flags": 1073743744
+            }
+          ],
+          "native_rva": 2023328
+        },
+        {
+          "path": "/Script/Engine.KismetSystemLibrary:IsValid",
+          "name": "IsValid",
+          "flags": 339878913,
+          "params_size": 16,
+          "params": [
+            {
+              "name": "Object",
+              "offset": 0,
+              "ty": {
+                "Object": {
+                  "class": "/Script/CoreUObject.Object"
+                }
+              },
+              "element_size": 8,
+              "array_dim": 1,
+              "flags": 1073742464
+            },
+            {
+              "name": "ReturnValue",
+              "offset": 8,
+              "ty": {
+                "Bool": {
+                  "byte_offset": 0,
+                  "byte_mask": 255,
+                  "field_mask": 255,
+                  "field_size": 1
+                }
+              },
+              "element_size": 1,
+              "array_dim": 1,
+              "flags": 69793220480
+            }
+          ],
+          "native_rva": 2023440
+        },
+        {
+          "path": "/Script/Engine.KismetSystemLibrary:PrintString",
+          "name": "PrintString",
+          "flags": 67249153,
+          "params_size": 32,
+          "params": [
+            {
+              "name": "WorldContextObject",
+              "offset": 0,
+              "ty": {
+                "Object": {
+                  "class": "/Script/CoreUObject.Object"
+                }
+              },
+              "element_size": 8,
+              "array_dim": 1,
+              "flags": 1073742466
+            },
+            {
+              "name": "InString",
+              "offset": 8,
+              "ty": "Str",
+              "element_size": 16,
+              "array_dim": 1,
+              "flags": 128
+            },
+            {
+              "name": "bPrintToScreen",
+              "offset": 24,
+              "ty": {
+                "Bool": {
+                  "byte_offset": 0,
+                  "byte_mask": 255,
+                  "field_mask": 255,
+                  "field_size": 1
+                }
+              },
+              "element_size": 1,
+              "array_dim": 1,
+              "flags": 69793219200
+            },
+            {
+              "name": "bPrintToLog",
+              "offset": 25,
+              "ty": {
+                "Bool": {
+                  "byte_offset": 0,
+                  "byte_mask": 255,
+                  "field_mask": 255,
+                  "field_size": 1
+                }
+              },
+              "element_size": 1,
+              "array_dim": 1,
+              "flags": 69793219200
+            }
+          ],
+          "native_rva": 2023392
+        }
+      ],
+      "flags": 0
+    },
+    {
+      "path": "/Script/Engine.Level",
+      "name": "Level",
+      "package": "/Script/Engine",
+      "kind": "Class",
+      "super_path": "/Script/CoreUObject.Object",
+      "size": 80,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "OwningWorld",
+          "offset": 48,
+          "ty": {
+            "Object": {
+              "class": "/Script/Engine.World"
+            }
+          },
+          "element_size": 8,
+          "array_dim": 1,
+          "flags": 1073742341
+        },
+        {
+          "name": "Actors",
+          "offset": 56,
+          "ty": {
+            "Array": {
+              "inner": {
+                "Object": {
+                  "class": "/Script/Engine.Actor"
+                }
+              }
+            }
+          },
+          "element_size": 16,
+          "array_dim": 1,
+          "flags": 5
+        },
+        {
+          "name": "LevelScale",
+          "offset": 72,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        }
+      ],
+      "functions": [],
+      "flags": 0
+    },
+    {
+      "path": "/Script/Engine.Pawn",
+      "name": "Pawn",
+      "package": "/Script/Engine",
+      "kind": "Class",
+      "super_path": "/Script/Engine.Actor",
+      "size": 640,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "bUseControllerRotationYaw",
+          "offset": 624,
+          "ty": {
+            "Bool": {
+              "byte_offset": 0,
+              "byte_mask": 1,
+              "field_mask": 1,
+              "field_size": 1
+            }
+          },
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 5
+        },
+        {
+          "name": "AutoPossessAI",
+          "offset": 625,
+          "ty": {
+            "Byte": {
+              "path": "/Script/Engine.EAutoPossessAI"
+            }
+          },
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 1073742341
+        },
+        {
+          "name": "BaseEyeHeight",
+          "offset": 628,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "Controller",
+          "offset": 632,
+          "ty": {
+            "Object": {
+              "class": "/Script/Engine.Controller"
+            }
+          },
+          "element_size": 8,
+          "array_dim": 1,
+          "flags": 1073742341
+        }
+      ],
+      "functions": [
+        {
+          "path": "/Script/Engine.Pawn:IsPawnControlled",
+          "name": "IsPawnControlled",
+          "flags": 1413612545,
+          "params_size": 1,
+          "params": [
+            {
+              "name": "ReturnValue",
+              "offset": 0,
+              "ty": {
+                "Bool": {
+                  "byte_offset": 0,
+                  "byte_mask": 255,
+                  "field_mask": 255,
+                  "field_size": 1
+                }
+              },
+              "element_size": 1,
+              "array_dim": 1,
+              "flags": 69793220480
+            }
+          ],
+          "native_rva": 2023168
+        }
+      ],
+      "flags": 0
+    },
+    {
+      "path": "/Script/Engine.PlayerController",
+      "name": "PlayerController",
+      "package": "/Script/Engine",
+      "kind": "Class",
+      "super_path": "/Script/Engine.Controller",
+      "size": 672,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "AcknowledgedPawn",
+          "offset": 648,
+          "ty": {
+            "Object": {
+              "class": "/Script/Engine.Pawn"
+            }
+          },
+          "element_size": 8,
+          "array_dim": 1,
+          "flags": 1073742341
+        },
+        {
+          "name": "NetPlayerIndex",
+          "offset": 656,
+          "ty": "UInt8",
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "CheatClass",
+          "offset": 664,
+          "ty": {
+            "Class": {
+              "class": "/Script/CoreUObject.Class",
+              "meta": "/Script/Engine.Actor"
+            }
+          },
+          "element_size": 8,
+          "array_dim": 1,
+          "flags": 517
+        }
+      ],
+      "functions": [
+        {
+          "path": "/Script/Engine.PlayerController:ClientRestart",
+          "name": "ClientRestart",
+          "flags": 16911552,
+          "params_size": 8,
+          "params": [
+            {
+              "name": "NewPawn",
+              "offset": 0,
+              "ty": {
+                "Object": {
+                  "class": "/Script/Engine.Pawn"
+                }
+              },
+              "element_size": 8,
+              "array_dim": 1,
+              "flags": 1073742464
+            }
+          ],
+          "native_rva": 2023232
+        },
+        {
+          "path": "/Script/Engine.PlayerController:ServerAcknowledgePossession",
+          "name": "ServerAcknowledgePossession",
+          "flags": 2231488,
+          "params_size": 8,
+          "params": [
+            {
+              "name": "P",
+              "offset": 0,
+              "ty": {
+                "Object": {
+                  "class": "/Script/Engine.Pawn"
+                }
+              },
+              "element_size": 8,
+              "array_dim": 1,
+              "flags": 1073742464
+            }
+          ],
+          "native_rva": 2023296
+        }
+      ],
+      "flags": 0
+    },
+    {
+      "path": "/Script/Engine.World",
+      "name": "World",
+      "package": "/Script/Engine",
+      "kind": "Class",
+      "super_path": "/Script/CoreUObject.Object",
+      "size": 80,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "PersistentLevel",
+          "offset": 48,
+          "ty": {
+            "Object": {
+              "class": "/Script/Engine.Level"
+            }
+          },
+          "element_size": 8,
+          "array_dim": 1,
+          "flags": 1073742341
+        },
+        {
+          "name": "NetDriverName",
+          "offset": 56,
+          "ty": "Name",
+          "element_size": 12,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "TimeSeconds",
+          "offset": 68,
+          "ty": "Float",
+          "element_size": 4,
+          "array_dim": 1,
+          "flags": 2251869606904325
+        },
+        {
+          "name": "bIsPaused",
+          "offset": 72,
+          "ty": {
+            "Bool": {
+              "byte_offset": 0,
+              "byte_mask": 1,
+              "field_mask": 1,
+              "field_size": 1
+            }
+          },
+          "element_size": 1,
+          "array_dim": 1,
+          "flags": 5
+        }
+      ],
+      "functions": [],
+      "flags": 0
+    }
+  ],
+  "enums": [
+    {
+      "path": "/Script/Engine.EAutoPossessAI",
+      "name": "EAutoPossessAI",
+      "package": "/Script/Engine",
+      "underlying_size": 1,
+      "values": [
+        {
+          "name": "Disabled",
+          "value": 0
+        },
+        {
+          "name": "PlacedInWorld",
+          "value": 1
+        },
+        {
+          "name": "Spawned",
+          "value": 2
+        },
+        {
+          "name": "PlacedInWorldOrSpawned",
+          "value": 3
+        },
+        {
+          "name": "EAutoPossessAI_MAX",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "path": "/Script/Engine.ENetRole",
+      "name": "ENetRole",
+      "package": "/Script/Engine",
+      "underlying_size": 1,
+      "values": [
+        {
+          "name": "ROLE_None",
+          "value": 0
+        },
+        {
+          "name": "ROLE_SimulatedProxy",
+          "value": 1
+        },
+        {
+          "name": "ROLE_AutonomousProxy",
+          "value": 2
+        },
+        {
+          "name": "ROLE_Authority",
+          "value": 3
+        },
+        {
+          "name": "ROLE_MAX",
+          "value": 4
+        }
+      ]
+    }
+  ],
+  "diagnostics": []
+}

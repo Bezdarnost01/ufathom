@@ -39,7 +39,7 @@ pub fn dump(args: &DumpArgs) -> Outcome {
         "layout solved in {discovered:.1?}"
     );
     for warning in &discovery.warnings {
-        tracing::warn!("discovery: {warning}");
+        tracing::info!("discovery warning: {warning}");
     }
 
     let options = ReflectOptions {
@@ -66,7 +66,7 @@ pub fn dump(args: &DumpArgs) -> Outcome {
         stats.classes, stats.structs, stats.enums, stats.functions
     );
     println!(
-        "problems:      {} objects failed, {} diagnostics, {} discovery warnings",
+        "problems:      {} objects failed, {} diagnostics, {} discovery warnings (`ufathom probe` lists them)",
         stats.failures,
         output.dump.diagnostics.len(),
         discovery.warnings.len()

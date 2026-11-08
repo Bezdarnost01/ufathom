@@ -27,10 +27,10 @@ read access and nothing is written to it.";
     arg_required_else_help = true
 )]
 pub struct Cli {
-    /// More log output on stderr: -v for progress, -vv for detail, -vvv for everything.
+    /// More log output on stderr: -v for progress and warnings, -vv for detail, -vvv for everything.
     #[arg(short, long, action = ArgAction::Count, global = true)]
     pub verbose: u8,
-    /// Less log output on stderr: -q for errors only, -qq for none.
+    /// No log output on stderr; errors are still reported. (By default only errors are logged.)
     #[arg(short, long, action = ArgAction::Count, global = true)]
     pub quiet: u8,
     /// What to do.

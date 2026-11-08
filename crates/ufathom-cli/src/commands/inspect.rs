@@ -6,7 +6,7 @@ use std::path::Path;
 use anyhow::{Context, anyhow};
 use rayon::prelude::*;
 use serde::Serialize;
-use ufathom_mem::list_processes;
+use ufathom_mem::{ProcessInfo, list_processes};
 use ufathom_model::EngineInfo;
 use ufathom_scan::{ExeFacts, inspect_exe};
 
@@ -211,31 +211,11 @@ pub fn ps(args: &PsArgs) -> Outcome {
         .map(|path| (*path, hint_of(path)))
         .collect();
 
-    let mut shown = 0_usize;
-    println!(
-        "{:>7}  {:<4}  {:<10}  {:<28}  path",
-        "pid", "UE?", "engine", "name"
-    );
-    for process in &processes {
-        let hint = process
-            .path
-            .as_deref()
-            .and_then(|path| hints.get(path))
-            .and_then(Option::as_ref);
-        let probable = hint.is_some_and(Hint::probable);
-        if !probable && !args.all {
-            continue;
-        }
-        shown += 1;
-        println!(
-            "{:>7}  {:<4}  {:<10}  {:<28}  {}",
-            process.pid,
-            if probable { "yes" } else { "" },
-            hint.and_then(|hint| hint.claimed.as_deref()).unwrap_or(""),
-            process.name,
-            process.path.as_deref().unwrap_or("(path hidden)")
-        );
+    let rows = table(&processes, &hints, args.all);
+    for row in &rows {
+        println!("{row}");
     }
+    let shown = rows.len().saturating_sub(1);
     let hidden = processes.len().saturating_sub(shown);
     if hidden > 0 {
         eprintln!("{hidden} other processes not shown; --all lists every process");
@@ -244,4 +224,126 @@ pub fn ps(args: &PsArgs) -> Outcome {
         eprintln!("no probable Unreal Engine process found");
     }
     Ok(())
+}
+
+/// The header and the rows to print: every probable target, and with `all`
+/// every process.
+fn table(processes: &[ProcessInfo], hints: &HashMap<&str, Option<Hint>>, all: bool) -> Vec<String> {
+    let mut rows = vec![format!(
+        "{:>7}  {:<4}  {:<10}  {:<28}  path",
+        "pid", "UE?", "engine", "name"
+    )];
+    for process in processes {
+        let hint = process
+            .path
+            .as_deref()
+            .and_then(|path| hints.get(path))
+            .and_then(Option::as_ref);
+        let probable = hint.is_some_and(Hint::probable);
+        if !probable && !all {
+            continue;
+        }
+        rows.push(format!(
+            "{:>7}  {:<4}  {:<10}  {:<28}  {}",
+            process.pid,
+            if probable { "yes" } else { "" },
+            hint.and_then(|hint| hint.claimed.as_deref()).unwrap_or(""),
+            process.name,
+            process.path.as_deref().unwrap_or("(path hidden)")
+        ));
+    }
+    rows
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    reason = "test code may panic on failure"
+)]
+mod tests {
+    use super::*;
+
+    fn process(pid: u32, name: &str, path: Option<&str>) -> ProcessInfo {
+        ProcessInfo {
+            pid,
+            name: name.to_owned(),
+            path: path.map(str::to_owned),
+        }
+    }
+
+    fn engine_hint() -> Option<Hint> {
+        Some(Hint {
+            claimed: Some("4.25.1".to_owned()),
+            has_build_string: true,
+            has_marker: false,
+        })
+    }
+
+    #[test]
+    fn probable_means_a_claim_a_build_string_or_a_marker() {
+        let none = Hint {
+            claimed: None,
+            has_build_string: false,
+            has_marker: false,
+        };
+        assert!(!none.probable());
+        for hint in [
+            Hint {
+                claimed: Some("5.4".to_owned()),
+                ..none.clone()
+            },
+            Hint {
+                has_build_string: true,
+                ..none.clone()
+            },
+            Hint {
+                has_marker: true,
+                ..none
+            },
+        ] {
+            assert!(hint.probable());
+        }
+    }
+
+    #[test]
+    fn only_probable_targets_are_listed_unless_all_is_asked_for() {
+        let processes = vec![
+            process(1, "editor.exe", Some("/apps/editor.exe")),
+            process(2, "game.exe", Some("/games/game.exe")),
+            process(3, "hidden.exe", None),
+            process(4, "unreadable.exe", Some("/other/unreadable.exe")),
+        ];
+        let mut hints: HashMap<&str, Option<Hint>> = HashMap::new();
+        hints.insert("/apps/editor.exe", None);
+        hints.insert("/games/game.exe", engine_hint());
+
+        let rows = table(&processes, &hints, false);
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert!(rows[1].contains("game.exe"), "{rows:?}");
+        assert!(rows[1].contains("yes"), "{rows:?}");
+        assert!(rows[1].contains("4.25.1"), "{rows:?}");
+
+        let rows = table(&processes, &hints, true);
+        assert_eq!(rows.len(), 5, "{rows:?}");
+        assert!(rows[3].contains("(path hidden)"), "{rows:?}");
+        assert!(
+            !rows[1].contains("yes") && !rows[4].contains("yes"),
+            "{rows:?}"
+        );
+    }
+
+    #[test]
+    fn the_windows_folder_is_never_read() {
+        if let Ok(root) = std::env::var("SystemRoot") {
+            assert!(is_system_path(&format!(r"{root}\System32\cmd.exe")));
+            assert!(is_system_path(&format!(
+                r"{}\notepad.exe",
+                root.to_uppercase()
+            )));
+            assert!(!is_system_path(r"D:\games\game.exe"));
+        }
+    }
 }

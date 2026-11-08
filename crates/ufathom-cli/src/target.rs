@@ -14,6 +14,7 @@ use ufathom_scan::version::engine_version_from_text;
 use ufathom_scan::{DiscoverOptions, Discovery, LayoutOverrides, discover};
 
 use crate::args::{Selector, TargetArgs};
+use crate::error::{CliError, usage};
 use crate::layout_file;
 
 /// A target that is open for reading.
@@ -39,9 +40,10 @@ impl Target {
     ///
     /// # Errors
     ///
-    /// The process is gone, access is denied, no or several processes match a
-    /// name, the minidump cannot be read, or a settings file or value is bad.
-    pub fn open(args: &TargetArgs) -> Result<Self> {
+    /// A usage error for a bad `--hint`; a failure when the process is gone,
+    /// access is denied, no or several processes match a name, the minidump
+    /// cannot be read, or the layout file is bad.
+    pub fn open(args: &TargetArgs) -> Result<Self, CliError> {
         let mut settings = Settings {
             module: args.module.clone(),
             ..Settings::default()
@@ -52,7 +54,8 @@ impl Target {
             settings.pointer_transform = file.pointer_transform;
         }
         if let Some(text) = &args.hint {
-            settings.hint_version = Some(parse_hint(text)?);
+            settings.hint_version =
+                Some(parse_hint(text).map_err(|error| usage(error.to_string()))?);
         }
         let (reader, description) = open_reader(&args.selector)?;
         Ok(Self {
