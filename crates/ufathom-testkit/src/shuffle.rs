@@ -394,6 +394,13 @@ impl Profile {
         if st.child_properties.is_some() {
             struct_fields.push(("child_properties", child_properties, 8));
         }
+        let links = &shape.struct_links;
+        struct_fields.extend([
+            ("property_link", links.property_link, 8),
+            ("ref_link", links.ref_link, 8),
+            ("destructor_link", links.destructor_link, 8),
+            ("post_construct_link", links.post_construct_link, 8),
+        ]);
         if st.super_struct < shape.sizeof_ufield {
             return Err("UStruct::SuperStruct overlaps UField".to_owned());
         }
@@ -491,6 +498,7 @@ impl Profile {
                 fs.size
             }
         };
+        let next = &shape.property_links;
         check_fields(
             "FProperty",
             props.size,
@@ -499,6 +507,10 @@ impl Profile {
                 ("element_size", props.element_size, 4),
                 ("flags", props.flags, 8),
                 ("offset_internal", props.offset_internal, 4),
+                ("property_next", next.property_next, 8),
+                ("ref_next", next.ref_next, 8),
+                ("destructor_next", next.destructor_next, 8),
+                ("post_construct_next", next.post_construct_next, 8),
             ],
         )?;
         if props.array_dim < base_size {

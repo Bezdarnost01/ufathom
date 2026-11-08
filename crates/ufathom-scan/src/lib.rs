@@ -10,6 +10,7 @@ mod error;
 mod globals;
 mod inspect;
 pub mod limits;
+mod member_lists;
 mod members;
 mod names;
 mod objects;

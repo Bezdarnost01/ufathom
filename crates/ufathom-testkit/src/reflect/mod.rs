@@ -7,6 +7,7 @@
 
 mod bodies;
 mod fillers;
+mod links;
 mod props;
 
 use std::collections::BTreeMap;
@@ -196,6 +197,8 @@ pub(crate) struct Writer<'a> {
     /// Per owner path: head of the `Children` list and of the child
     /// properties list.
     pub heads: BTreeMap<String, (u64, u64)>,
+    /// Per owner path: heads of the four property link chains.
+    pub link_heads: BTreeMap<String, links::LinkHeads>,
     pub native_rvas: BTreeMap<String, u64>,
     pub fillers: Vec<u32>,
     pub special: Option<SpecialNames>,
@@ -251,6 +254,7 @@ pub fn write(
         super_of,
         vt_cache: BTreeMap::new(),
         heads: BTreeMap::new(),
+        link_heads: BTreeMap::new(),
         native_rvas: BTreeMap::new(),
         fillers: Vec::new(),
         special: None,
@@ -477,6 +481,7 @@ impl Writer<'_> {
             self.write_header(i);
         }
         self.compute_chains();
+        self.compute_links();
         for i in 0..self.objs.len() {
             self.write_body(i);
         }
