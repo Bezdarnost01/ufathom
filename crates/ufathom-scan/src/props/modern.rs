@@ -7,7 +7,7 @@
 //! leading to a structure that names the expected property class.
 
 use crate::error::ScanError;
-use crate::limits::{MAX_FFIELD_OFFSET, MAX_REFLECTION_OFFSET};
+use crate::limits::{MAX_CHAIN_STEPS, MAX_FFIELD_OFFSET, MAX_REFLECTION_OFFSET};
 
 use super::{Env, Prop, System};
 
@@ -41,6 +41,10 @@ const EXPECTED: [(&str, &[&str], &[&str]); 7] = [
 
 /// Smallest number of core structs that must agree.
 const MIN_AGREEING_STRUCTS: usize = 3;
+
+/// Most structs with a parent examined when telling a member list from a
+/// link chain.
+const MAX_DERIVED_SAMPLES: usize = 2000;
 
 /// The offsets of the modern property system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +106,46 @@ struct Candidate {
     name: u32,
     agreeing: usize,
     structs: Vec<(usize, Vec<u64>)>,
+}
+
+/// Structs that have a parent, as `(struct, parent)`.
+fn derived_structs(env: &Env<'_, '_>) -> Vec<(u64, u64)> {
+    env.universe
+        .objs
+        .iter()
+        .filter(|o| o.class == env.anchors.class || o.class == env.anchors.script_struct)
+        .filter_map(|o| {
+            let parent = env
+                .ctx
+                .u64(o.addr + u64::from(env.fields.ustruct.super_struct))?;
+            (parent != 0).then_some((o.addr, parent))
+        })
+        .take(MAX_DERIVED_SAMPLES)
+        .collect()
+}
+
+/// How many structs have a list through `candidate` that runs on into the
+/// list of their parent.
+///
+/// The child properties of a struct are its own and end with the last of
+/// them. `PropertyLink` and `RefLink` also lead through the members of its
+/// parents, so a list that reaches the head of the parent's list is a link
+/// chain and not the child properties.
+fn leaks_into_parent(env: &Env<'_, '_>, derived: &[(u64, u64)], candidate: &Candidate) -> usize {
+    let head_of = |owner: u64| {
+        env.ctx
+            .u64(owner + u64::from(candidate.child_properties))
+            .filter(|&head| head != 0)
+    };
+    derived
+        .iter()
+        .filter(|&&(owner, parent)| {
+            let (Some(head), Some(parent_head)) = (head_of(owner), head_of(parent)) else {
+                return false;
+            };
+            walk(env, head, candidate.next, MAX_CHAIN_STEPS).contains(&parent_head)
+        })
+        .count()
 }
 
 fn find_chain(env: &Env<'_, '_>, core: &[(u64, &[&str], &[&str])]) -> Result<Candidate, ScanError> {
@@ -177,9 +221,25 @@ fn find_chain(env: &Env<'_, '_>, core: &[(u64, &[&str], &[&str])]) -> Result<Can
     // Several chains can satisfy the names. A struct also lists its members
     // through `PropertyLink`, whose head is the first member and whose
     // members' own `Next` leads on the same way, and the editor build keeps
-    // both. They are told apart by where the engine puts the fields: the
-    // child properties follow `Children`, and a member's name follows its
-    // `Next`.
+    // both. For a struct without a parent the lists are identical, so the
+    // first step looks at structs that have one: only the link chains run on
+    // into the parent's members. What remains is told apart by where the
+    // engine puts the fields: the child properties follow `Children`, and a
+    // member's name follows its `Next`.
+    if best.len() > 1 {
+        let derived = derived_structs(env);
+        let leaks: Vec<usize> = best
+            .iter()
+            .map(|c| leaks_into_parent(env, &derived, c))
+            .collect();
+        if let Some(&fewest) = leaks.iter().min() {
+            best = best
+                .into_iter()
+                .zip(leaks)
+                .filter_map(|(candidate, count)| (count == fewest).then_some(candidate))
+                .collect();
+        }
+    }
     if best.len() > 1 {
         let after_children = ustruct.children + 8;
         let adjacent: Vec<usize> = best

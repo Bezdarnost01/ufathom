@@ -8,26 +8,24 @@
 //! - `PropertiesSize` and `MinAlignment`: `Guid` is 0x10 bytes with alignment
 //!   4, `Color` is 4 with alignment 4, `Vector` is 0xC or 0x18, and
 //!   `Transform` is aligned to 16.
-//! - `Children`: the pointer whose target's outer is the owner.
-//! - `Next`: walks the member list while the outer stays the owner.
+//! - `Children` and `Next`: see [`crate::member_lists`].
 //! - `ObjectFlags`: `Default__` objects carry the class-default-object bit,
 //!   other objects do not.
-
-use std::collections::HashSet;
 
 use ufathom_model::flags::RF_CLASS_DEFAULT_OBJECT;
 use ufathom_model::layout::{UFieldLayout, UStructLayout};
 
 use crate::ctx::Ctx;
 use crate::error::ScanError;
-use crate::limits::{MAX_CHAIN_STEPS, MAX_REFLECTION_OFFSET, MAX_UOBJECT_OFFSET};
+use crate::limits::{MAX_REFLECTION_OFFSET, MAX_UOBJECT_OFFSET};
+use crate::member_lists::solve_children_and_next;
 use crate::universe::{Anchors, Obj, Universe};
 use crate::uobject::ObjectFields;
 
 use ufathom_engine::NameTable;
 
 /// First offset searched in a reflection class, past the `UObject` header.
-const FIRST_REFLECTION_OFFSET: u32 = 0x18;
+pub(crate) const FIRST_REFLECTION_OFFSET: u32 = 0x18;
 
 /// Most structs examined when looking for fields common to all of them.
 const MAX_STRUCT_SAMPLES: usize = 3000;
@@ -57,7 +55,7 @@ pub(crate) fn structs_of(universe: &Universe, table: &NameTable, anchors: &Ancho
         .collect()
 }
 
-fn offsets_8(from: u32, to: u32) -> impl Iterator<Item = u32> {
+pub(crate) fn offsets_8(from: u32, to: u32) -> impl Iterator<Item = u32> {
     (from.next_multiple_of(8)..to).step_by(8)
 }
 
@@ -253,143 +251,6 @@ fn solve_min_alignment(
     Ok((offset, width))
 }
 
-/// `Children`: the pointer whose target's outer is the owner.
-fn solve_children(
-    ctx: &Ctx<'_>,
-    universe: &Universe,
-    structs: &[Obj],
-    anchors: &Anchors,
-    sizes: Sizes,
-    super_offset: u32,
-) -> Result<u32, ScanError> {
-    let mut found: Vec<(u32, usize, usize)> = Vec::new();
-    for offset in offsets_8(FIRST_REFLECTION_OFFSET, MAX_REFLECTION_OFFSET) {
-        if offset == super_offset {
-            continue;
-        }
-        let mut non_null = 0usize;
-        let mut matched = 0usize;
-        for owner in structs {
-            if offset + 8 > sizes.of(owner, anchors) {
-                continue;
-            }
-            let Some(value) = ctx.u64(owner.addr + u64::from(offset)) else {
-                continue;
-            };
-            if value == 0 {
-                continue;
-            }
-            non_null += 1;
-            if universe
-                .get(value)
-                .is_some_and(|member| member.outer == owner.addr)
-            {
-                matched += 1;
-            }
-        }
-        // Two owners suffice when every one of them agrees: a modern image
-        // whose classes with functions are few still shows the pointer.
-        let enough = non_null >= 3 && matched * 10 >= non_null * 9 || non_null == 2 && matched == 2;
-        if enough {
-            found.push((offset, matched, non_null));
-        }
-    }
-    let offsets: Vec<u32> = found.iter().map(|&(o, _, _)| o).collect();
-    let offset = ctx.resolve_among("ustruct.children", &offsets)?;
-    let (matched, total) = found
-        .iter()
-        .find(|&&(o, _, _)| o == offset)
-        .map_or((0, 0), |&(_, m, t)| (m, t));
-    ctx.evidence(
-        "ustruct.children",
-        u64::from(offset),
-        "pointer whose target's outer is the owning struct",
-        total,
-        matched,
-    );
-    Ok(offset)
-}
-
-/// Walks the member list from `head` through `next` while the outer stays
-/// `owner`. Returns the number of members and whether the list ended at null.
-fn walk_members(
-    ctx: &Ctx<'_>,
-    universe: &Universe,
-    owner: u64,
-    head: u64,
-    next: u32,
-) -> (usize, bool) {
-    let mut seen = HashSet::new();
-    let mut current = head;
-    while current != 0 && seen.len() < MAX_CHAIN_STEPS {
-        let belongs = universe.get(current).is_some_and(|o| o.outer == owner);
-        if !belongs || !seen.insert(current) {
-            return (seen.len(), false);
-        }
-        match ctx.u64(current + u64::from(next)) {
-            Some(link) => current = link,
-            None => return (seen.len(), false),
-        }
-    }
-    (seen.len(), current == 0)
-}
-
-/// `UField::Next`: the offset that walks the longest member lists.
-fn solve_next(
-    ctx: &Ctx<'_>,
-    universe: &Universe,
-    structs: &[Obj],
-    children: u32,
-) -> Result<u32, ScanError> {
-    let heads: Vec<(u64, u64)> = structs
-        .iter()
-        .filter_map(|owner| {
-            let head = ctx.u64(owner.addr + u64::from(children))?;
-            (head != 0).then_some((owner.addr, head))
-        })
-        .collect();
-    let mut scored: Vec<(u32, usize, usize)> = Vec::new();
-    for offset in offsets_8(8, MAX_UOBJECT_OFFSET + 0x40) {
-        let mut members = 0usize;
-        let mut ended = 0usize;
-        for &(owner, head) in &heads {
-            let (count, at_null) = walk_members(ctx, universe, owner, head, offset);
-            members += count;
-            ended += usize::from(at_null);
-        }
-        scored.push((offset, members, ended));
-    }
-    scored.sort_by_key(|&(offset, members, ended)| (std::cmp::Reverse((members, ended)), offset));
-    let solved = match scored.as_slice() {
-        [(offset, members, ended), rest @ ..]
-            if *members > heads.len() * 2
-                && *ended * 10 >= heads.len() * 9
-                && rest.first().is_none_or(|r| (r.1, r.2) < (*members, *ended)) =>
-        {
-            Some(*offset)
-        }
-        _ => None,
-    };
-    let offset = ctx.resolve("ufield.next", solved, || {
-        format!("no offset walks the member lists of {} owners", heads.len())
-    })?;
-    let (members, ended) = scored
-        .iter()
-        .find(|&&(o, _, _)| o == offset)
-        .map_or((0, 0), |&(_, m, e)| (m, e));
-    ctx.evidence(
-        "ufield.next",
-        u64::from(offset),
-        format!(
-            "walks {members} members of {} lists, {ended} ending at null, all sharing the owner as outer",
-            heads.len()
-        ),
-        heads.len(),
-        ended,
-    );
-    Ok(offset)
-}
-
 /// `ObjectFlags`: the 32-bit field whose bit 0x10 is set on every `Default__`
 /// object and on almost no other.
 pub(crate) fn solve_flags(
@@ -488,8 +349,8 @@ pub(crate) fn solve_structs(
             .u32(anchors.script_struct + u64::from(properties_size))
             .unwrap_or(0),
     };
-    let children = solve_children(ctx, universe, &structs, anchors, sizes, super_struct)?;
-    let next = solve_next(ctx, universe, &structs, children)?;
+    let (children, next) =
+        solve_children_and_next(ctx, universe, &structs, anchors, sizes, super_struct)?;
     let uobject_flags = solve_flags(ctx, universe, table, fields, index_offset)?;
     let size_solved = ctx.u32(anchors.object + u64::from(properties_size));
     let uobject_size = ctx.resolve("uobject.size", size_solved, || {
