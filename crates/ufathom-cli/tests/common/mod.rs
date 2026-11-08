@@ -68,6 +68,26 @@ pub fn run<S: AsRef<std::ffi::OsStr>>(args: &[S]) -> Run {
     }
 }
 
+/// Runs the built binary with `args` and one string of standard input.
+pub fn run_with_input<S: AsRef<std::ffi::OsStr>>(args: &[S], input: &str) -> Run {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_ufathom"))
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn ufathom");
+    let mut stdin = child.stdin.take().expect("stdin is piped");
+    std::io::Write::write_all(&mut stdin, input.as_bytes()).expect("write the selection");
+    drop(stdin);
+    let output = child.wait_with_output().expect("wait for ufathom");
+    Run {
+        code: output.status.code().expect("ufathom exited normally"),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    }
+}
+
 /// A path as the text a command line carries.
 pub fn arg(path: &Path) -> String {
     path.to_str().expect("test paths are UTF-8").to_owned()

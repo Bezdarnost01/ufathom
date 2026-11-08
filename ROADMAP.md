@@ -36,7 +36,7 @@ Research, naming, architecture, workspace, memory reading.
 - [ ] `ufathom-usmap` with `compare`
 - [ ] `ufathom-agent`: config, sessions, identity, commands, long paths
 - [ ] `ufathom-dll`: lifecycle, containment, hotkeys, double-load guard
-- [ ] CLI: `ps`, `inspect-exe`, `probe`, `doctor`, `dump`, `status`, `command`, `check-oracle`, `usmap`
+- [ ] CLI: `ps`, `inspect-exe`, `probe`, `doctor`, `dump`, interactive `quick`, `status`, `command`, `check-oracle`, `usmap`
 
 **Done when:** on `fake-host`, the real DLL dumps a synthetic image matching ground truth, dumps again, unloads with no threads left, survives corrupted images with the host still running, and works from a path over 260 characters. Host stall during a dump is measured and reported. The usmap reader parses real files locally.
 

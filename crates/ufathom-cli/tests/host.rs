@@ -176,6 +176,43 @@ fn dump_can_write_a_usmap_and_an_sdk_beside_the_json() {
 }
 
 #[test]
+fn quick_selects_a_process_and_writes_every_output_into_a_new_folder() {
+    let mut host = Host::spawn("ue4.25-cp", 5, 300);
+    let dir = tempfile::tempdir().unwrap();
+    let selection = format!("{}\n", host.pid());
+    // The synthetic host does not claim to be UE in its own executable, so
+    // exercise the fallback that also works for unrecognized real targets.
+    let result = common::run_with_input(
+        &["quick", "--all", "--output", &arg(dir.path())],
+        &selection,
+    )
+    .expect_code(0);
+    result
+        .stdout_has("Running processes:")
+        .stdout_has("selected:")
+        .stdout_has("output folder:")
+        .stdout_has("SDK:");
+
+    let folders = std::fs::read_dir(dir.path())
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(folders.len(), 1, "{folders:?}");
+    let folder = folders[0].path();
+    let dump = read_dump(&folder.join("dump.json"));
+    assert_is_truth(&dump, &host);
+    let usmap = Usmap::parse(&std::fs::read(folder.join("Mappings.usmap")).unwrap()).unwrap();
+    assert!(compare(&dump, &usmap).is_clean());
+    assert!(folder.join("sdk/src/lib.rs").is_file());
+    assert!(
+        folder
+            .join("sdk/vendor/ufathom-runtime/src/lib.rs")
+            .is_file()
+    );
+    assert!(host.close_and_wait());
+}
+
+#[test]
 fn two_dumps_of_one_host_are_byte_identical() {
     let mut host = Host::spawn("ue4.25-cp", 5, 300);
     let dir = tempfile::tempdir().unwrap();

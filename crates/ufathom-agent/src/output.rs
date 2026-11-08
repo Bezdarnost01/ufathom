@@ -65,6 +65,16 @@ pub fn session_name(started: SystemTime, pid: u32) -> String {
     format!("{}-p{pid}", clock::compact(started))
 }
 
+/// Creates a new `<output>/<session>` folder without reusing an existing one.
+///
+/// # Errors
+///
+/// The operating system's error from creating the output or session folder.
+pub fn create_session_folder(output: &Path, started: SystemTime, pid: u32) -> io::Result<PathBuf> {
+    fsio::create_dir_all(output)?;
+    fsio::create_unique_dir(output, &session_name(started, pid))
+}
+
 /// The label of a dump: the sanitized request, or `dump-NNN` for the
 /// `sequence`-th dump of the session.
 #[must_use]
@@ -145,6 +155,17 @@ mod tests {
         let late = session_name(UNIX_EPOCH + Duration::from_secs(1_794_046_531), 7);
         assert_eq!(early, "20261107-101530-p4321");
         assert!(early < late);
+    }
+
+    #[test]
+    fn standalone_session_folders_never_reuse_an_existing_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let started = UNIX_EPOCH + Duration::from_secs(1_794_046_530);
+        let first = create_session_folder(&dir.path().join("nested"), started, 42).unwrap();
+        let second = create_session_folder(&dir.path().join("nested"), started, 42).unwrap();
+        assert_eq!(first.file_name().unwrap(), "20261107-101530-p42");
+        assert_eq!(second.file_name().unwrap(), "20261107-101530-p42-2");
+        assert_ne!(first, second);
     }
 
     #[test]
