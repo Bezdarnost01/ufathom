@@ -18,11 +18,14 @@ use ufathom_model::{Dump, EngineLayout};
 use ufathom_testkit::Corruption;
 use ufathom_usmap::{Usmap, compare};
 
-/// An image size at which `ZeroedObjectHeaders` is degraded (27 of 535
-/// objects, above 5%) yet discovery still solves the layout (its name sample
-/// needs 95%). The window is narrow: a bigger image is not degraded and a
-/// smaller one cannot be solved.
-const DEGRADED_FILLERS: usize = 470;
+/// An image so small that the damage of `SuperChainCycle` (8 of 80 objects
+/// fail) is far above the 5% that makes a dump degraded.
+///
+/// `ZeroedObjectHeaders` cannot be used for this. The objects it zeroes are
+/// also the objects the solver counts against its 95% name bar, so an image
+/// is either solved and below 5% damage, or refused. The window between the
+/// two is one object wide and moves whenever the testkit changes the image.
+const DEGRADED_FILLERS: usize = 0;
 
 fn read_dump(path: &std::path::Path) -> Dump {
     Dump::from_json(&std::fs::read_to_string(path).unwrap()).unwrap()
@@ -193,7 +196,7 @@ fn a_degraded_dump_exits_3_but_still_writes_its_files() {
         "ue4.25-cp",
         5,
         DEGRADED_FILLERS,
-        &[Corruption::ZeroedObjectHeaders],
+        &[Corruption::SuperChainCycle],
     );
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("dump.json");
@@ -208,7 +211,7 @@ fn a_degraded_dump_exits_3_but_still_writes_its_files() {
     assert!(
         dump.diagnostics
             .iter()
-            .any(|d| d.message.contains("index 0")),
+            .any(|d| d.message.contains("forms a cycle")),
         "the damage is recorded in the dump"
     );
 
@@ -229,6 +232,26 @@ fn a_degraded_dump_exits_3_but_still_writes_its_files() {
         std::fs::read(&accepted).unwrap()
     );
     assert!(host.close_and_wait());
+}
+
+#[test]
+fn zeroed_headers_above_the_solvers_bar_are_refused_at_every_image_size() {
+    // The testkit zeroes 31 headers. Up to about 600 objects that is more than
+    // the 5% of names the solver tolerates, so discovery refuses the image
+    // instead of producing a degraded dump. CI once ran a dump of 547 objects
+    // (31 bad) that an older testkit (26 bad of 535) had solved.
+    for fillers in [40, 300, 470] {
+        let mut host =
+            Host::spawn_with("ue4.25-cp", 5, fillers, &[Corruption::ZeroedObjectHeaders]);
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("dump.json");
+        run(&["dump", "--pid", &host.pid().to_string(), "-o", &arg(&out)])
+            .expect_code(1)
+            .stderr_has("no evidence for uobject.name")
+            .stderr_has("95%");
+        assert!(!out.exists(), "{fillers}: a refused image writes nothing");
+        assert!(host.close_and_wait());
+    }
 }
 
 #[test]
