@@ -320,6 +320,7 @@ Layout rules:
 
 - Every type is `#[repr(C, align(N))]` with explicit padding, and asserts size and each field offset with `core::mem::offset_of!` at compile time.
 - A planning pass produces fields in offset order. Anything that cannot be represented exactly (overlap, misalignment, unknown type, base larger than the first field offset) degrades to `[u8; N]` plus a doc comment and a diagnostic. The generated SDK must always compile.
+- The alignment of a type is not taken from the dump alone. `UStruct::MinAlignment` is 1 for most native classes in some engine versions (UE 4.21), so the planner uses the largest of the dump value, the planned alignment of the parent, and the alignment of every typed field whose offset is a multiple of that alignment, then lowers it while it does not divide the size. A misaligned field never raises it. The dump keeps the raw value; `GenReport::alignments_raised` lists types generated with more, as information and not as a degradation.
 - Generated types must be `Pod`: enums are `#[repr(transparent)]` newtypes with associated consts, because reading an unknown discriminant into a Rust `enum` is undefined behaviour. Booleans and bitfields are accessor methods over raw storage.
 - Pointers are `Ptr<T>`, a transparent `u64` newtype. References are never stored in generated types.
 - Inheritance: base embedded as `base` with `Deref`, plus `unsafe impl IsA<Base>` for every ancestor.

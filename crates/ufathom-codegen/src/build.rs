@@ -12,7 +12,7 @@ use ufathom_model::{
 use crate::header;
 use crate::names::{self, Namespace};
 use crate::planner::{BaseInfo, BaseMode, FieldKind, Item, Note, Plan, PlanField, PlanInput, plan};
-use crate::report::{Degradation, DegradeReason};
+use crate::report::{AlignmentRaise, Degradation, DegradeReason};
 use crate::types::{EntryKind, FNameShape, NameEntry, Resolved, TypeTable, enum_int, fname_shape};
 
 /// Alignment declared for a function parameter block.
@@ -165,6 +165,7 @@ pub(crate) struct Built {
     pub enums: Vec<PlannedEnum>,
     pub fname: FNameShape,
     pub degraded: Vec<Degradation>,
+    pub alignments_raised: Vec<AlignmentRaise>,
     pub fields: usize,
     pub functions: usize,
     pub functions_skipped: usize,
@@ -313,6 +314,7 @@ pub(crate) fn build(dump: &Dump) -> Built {
     let order = dependency_order(&defs, &by_path);
     let mut planned: Vec<Option<PlannedStruct>> = (0..defs.len()).map(|_| None).collect();
     let mut fields_total = 0usize;
+    let mut alignments_raised: Vec<AlignmentRaise> = Vec::new();
     for &i in &order {
         let Some(&def) = defs.get(i) else { continue };
         let rust_name = struct_names.get(i).cloned().unwrap_or_default();
@@ -334,6 +336,13 @@ pub(crate) fn build(dump: &Dump) -> Built {
             &mut degraded,
         );
         fields_total += def.fields.len();
+        if ps.plan.align > ps.plan.declared_align {
+            alignments_raised.push(AlignmentRaise {
+                owner: def.path.clone(),
+                declared: def.alignment,
+                used: ps.plan.align,
+            });
+        }
         if by_path.get(def.path.as_str()) == Some(&i) {
             table
                 .layouts
@@ -406,12 +415,14 @@ pub(crate) fn build(dump: &Dump) -> Built {
         }
     }
     degraded.sort();
+    alignments_raised.sort();
     Built {
         modules,
         structs,
         enums,
         fname,
         degraded,
+        alignments_raised,
         fields: fields_total,
         functions,
         functions_skipped,

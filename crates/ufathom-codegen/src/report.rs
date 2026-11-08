@@ -74,6 +74,23 @@ pub struct Degradation {
     pub detail: String,
 }
 
+/// A type whose alignment is higher than the dump declares.
+///
+/// This is information, not a degradation: some engine builds record an
+/// alignment of 1 for most native classes, while their members and parent
+/// need more. The generated type uses the larger alignment, which the native
+/// compiler must have used too. The size and the field offsets are unchanged
+/// and are still asserted at compile time.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct AlignmentRaise {
+    /// Path of the class or script struct.
+    pub owner: String,
+    /// The alignment in the dump.
+    pub declared: u32,
+    /// The alignment of the generated type.
+    pub used: u32,
+}
+
 /// Counts and diagnostics of one [`generate`](crate::generate) call.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GenReport {
@@ -93,6 +110,9 @@ pub struct GenReport {
     pub functions_skipped: usize,
     /// Everything that was not represented exactly, sorted.
     pub degraded: Vec<Degradation>,
+    /// Types generated with a higher alignment than the dump declares, sorted
+    /// by path. Not a degradation.
+    pub alignments_raised: Vec<AlignmentRaise>,
     /// Files written because they were new or their hash changed, sorted.
     pub files_written: Vec<String>,
     /// Files left untouched because their hash did not change, sorted.

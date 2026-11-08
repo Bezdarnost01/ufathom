@@ -31,7 +31,7 @@ use ufathom_model::Dump;
 
 pub use error::CodegenError;
 pub use output::MANIFEST_NAME;
-pub use report::{Degradation, DegradeReason, GenReport};
+pub use report::{AlignmentRaise, Degradation, DegradeReason, GenReport};
 
 /// Where the generated crate finds `ufathom-runtime`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -160,6 +160,7 @@ pub fn generate(
         functions: built.functions,
         functions_skipped: built.functions_skipped,
         degraded: built.degraded,
+        alignments_raised: built.alignments_raised,
         files_written: written.written,
         files_unchanged: written.unchanged,
         files_removed: written.removed,
