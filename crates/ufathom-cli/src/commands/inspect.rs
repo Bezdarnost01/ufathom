@@ -210,8 +210,12 @@ pub fn ps(args: &PsArgs) -> Outcome {
 
     // Each distinct file is read once, in parallel; a game's helper processes
     // share one path.
+    // This process is never hinted: its own binary carries the marker strings
+    // the solver searches for.
+    let own_pid = std::process::id();
     let mut paths: Vec<&str> = processes
         .iter()
+        .filter(|process| process.pid != own_pid)
         .filter_map(|process| process.path.as_deref())
         .filter(|path| !is_system_path(path))
         .collect();
@@ -222,7 +226,7 @@ pub fn ps(args: &PsArgs) -> Outcome {
         .map(|path| (*path, hint_of(path)))
         .collect();
 
-    let rows = table(&processes, &hints, args.all);
+    let rows = table(&processes, &hints, args.all, own_pid);
     for row in &rows {
         println!("{row}");
     }
@@ -238,8 +242,14 @@ pub fn ps(args: &PsArgs) -> Outcome {
 }
 
 /// The header and the rows to print: every probable target, and with `all`
-/// every process.
-fn table(processes: &[ProcessInfo], hints: &HashMap<&str, Option<Hint>>, all: bool) -> Vec<String> {
+/// every process. The process `own_pid` is never a target, whatever its file
+/// says; with `all` it is listed without a flag.
+fn table(
+    processes: &[ProcessInfo],
+    hints: &HashMap<&str, Option<Hint>>,
+    all: bool,
+    own_pid: u32,
+) -> Vec<String> {
     let mut rows = vec![format!(
         "{:>7}  {:<4}  {:<10}  {:<28}  path",
         "pid", "UE?", "engine", "name"
@@ -248,6 +258,7 @@ fn table(processes: &[ProcessInfo], hints: &HashMap<&str, Option<Hint>>, all: bo
         let hint = process
             .path
             .as_deref()
+            .filter(|_| process.pid != own_pid)
             .and_then(|path| hints.get(path))
             .and_then(Option::as_ref);
         let probable = hint.is_some_and(Hint::probable);
@@ -409,19 +420,46 @@ mod tests {
         hints.insert("/apps/editor.exe", None);
         hints.insert("/games/game.exe", engine_hint());
 
-        let rows = table(&processes, &hints, false);
+        let rows = table(&processes, &hints, false, 0);
         assert_eq!(rows.len(), 2, "{rows:?}");
         assert!(rows[1].contains("game.exe"), "{rows:?}");
         assert!(rows[1].contains("yes"), "{rows:?}");
         assert!(rows[1].contains("4.25.1"), "{rows:?}");
 
-        let rows = table(&processes, &hints, true);
+        let rows = table(&processes, &hints, true, 0);
         assert_eq!(rows.len(), 5, "{rows:?}");
         assert!(rows[3].contains("(path hidden)"), "{rows:?}");
         assert!(
             !rows[1].contains("yes") && !rows[4].contains("yes"),
             "{rows:?}"
         );
+    }
+
+    #[test]
+    fn this_process_is_never_flagged_even_when_its_file_has_an_engine_hint() {
+        // The own binary and another process share a path, and the hint says
+        // "engine": only the other process is a target.
+        let processes = vec![
+            process(10, "ufathom.exe", Some("/tools/ufathom.exe")),
+            process(11, "ufathom.exe", Some("/tools/ufathom.exe")),
+        ];
+        let mut hints: HashMap<&str, Option<Hint>> = HashMap::new();
+        hints.insert("/tools/ufathom.exe", engine_hint());
+
+        let rows = table(&processes, &hints, false, 10);
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert!(rows[1].trim_start().starts_with("11"), "{rows:?}");
+        assert!(rows[1].contains("yes"), "{rows:?}");
+
+        let rows = table(&processes, &hints, true, 10);
+        assert_eq!(rows.len(), 3, "{rows:?}");
+        assert!(rows[1].trim_start().starts_with("10"), "{rows:?}");
+        assert!(!rows[1].contains("yes"), "{rows:?}");
+        assert!(!rows[1].contains("4.25.1"), "{rows:?}");
+
+        // Alone, it is not shown without --all.
+        let alone = vec![process(10, "ufathom.exe", Some("/tools/ufathom.exe"))];
+        assert_eq!(table(&alone, &hints, false, 10).len(), 1);
     }
 
     #[test]
