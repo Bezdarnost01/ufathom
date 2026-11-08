@@ -12,14 +12,25 @@ name = "ufathom"
 path = "src/main.rs"
 
 [dependencies]
+anyhow.workspace = true
+clap.workspace = true
+rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+ufathom-agent.workspace = true
+ufathom-codegen.workspace = true
 ufathom-mem.workspace = true
 ufathom-model.workspace = true
-ufathom-engine.workspace = true
-ufathom-scan.workspace = true
 ufathom-reflect.workspace = true
+ufathom-scan.workspace = true
 ufathom-usmap.workspace = true
-ufathom-codegen.workspace = true
-ufathom-agent.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+ufathom-testkit.workspace = true
 
 [lints]
 workspace = true
