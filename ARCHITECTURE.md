@@ -314,6 +314,10 @@ Parallel work uses a `rayon::ThreadPool` passed in through options, never the gl
 
 `generate(dump, options, out_dir)`. Output is one crate with one module per package, and Cargo features per package.
 
+By default the output is self-contained: the generator embeds the matching `ufathom-runtime` and `ufathom-mem` sources, manifests and licenses, and writes them under `vendor/`. A small workspace in the generated `Cargo.toml` supplies the workspace metadata inherited by the vendored manifests. The SDK therefore builds without an ufathom source checkout or a published runtime package. An explicit runtime path or registry version remains available for development and custom runtimes.
+
+The incremental output manifest covers the vendored files as well as the generated types. Unchanged sources are not rewritten, and switching to an explicit runtime removes only the stale files managed by the previous generation.
+
 Why one crate: Rust modules may reference each other cyclically, so no package cycle elimination is needed. Cargo features may also be cyclic. By-value struct containment is acyclic by construction.
 
 Layout rules:

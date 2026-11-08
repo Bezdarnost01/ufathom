@@ -145,16 +145,14 @@ pub struct DoctorArgs {
     pub target: TargetArgs,
 }
 
-/// Where the generated crate finds `ufathom-runtime`. Nothing is published
-/// yet, so one of the two must be given.
+/// Overrides for the runtime bundled into the generated SDK by default.
 #[derive(Debug, Args)]
 #[group(multiple = false)]
 pub struct RuntimeArgs {
-    /// Depend on `ufathom-runtime` at this path (the `crates/ufathom-runtime`
-    /// folder of a checkout).
+    /// Use `ufathom-runtime` at this path instead of the bundled sources.
     #[arg(long, value_name = "PATH")]
     pub runtime_path: Option<PathBuf>,
-    /// Depend on `ufathom-runtime` at this version requirement from a registry.
+    /// Use `ufathom-runtime` at this registry version instead of the bundled sources.
     #[arg(long, value_name = "VERSION")]
     pub runtime_version: Option<String>,
 }
@@ -172,8 +170,7 @@ pub struct DumpArgs {
     /// Also write a usmap file.
     #[arg(long, value_name = "FILE")]
     pub usmap: Option<PathBuf>,
-    /// Also generate a Rust SDK crate into this folder. Needs --runtime-path
-    /// or --runtime-version.
+    /// Also generate a self-contained Rust SDK crate into this folder.
     #[arg(long, value_name = "DIR")]
     pub sdk: Option<PathBuf>,
     /// The runtime dependency of the SDK.

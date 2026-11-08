@@ -2,7 +2,7 @@
 
 An Unreal Engine dumper DLL and Rust SDK generator, built to survive what breaks Dumper-7's DLL. Load it in a game and it writes a reflection dump, a usmap and a Rust SDK. If your offsets are wrong, you get an error message, not a crashed game.
 
-**Status: early development.** Nothing is released and no game is verified yet. See [COMPATIBILITY.md](COMPATIBILITY.md) for what has actually been tested. The target range is UE 4.11 to 5.8, and support is claimed version by version as real builds are verified.
+**Status: pre-release.** `v0.1.1` is available, with real-build results for the UE 4.25 editor and a UE 4.21 shipping build. See [COMPATIBILITY.md](COMPATIBILITY.md) for exactly what has been tested. The target range is UE 4.11 to 5.8, and support is claimed version by version as real builds are verified.
 
 ## Goals
 
@@ -15,9 +15,7 @@ An Unreal Engine dumper DLL and Rust SDK generator, built to survive what breaks
 
 The same pipeline also runs **without a DLL**, reading a running process from outside or a minidump offline.
 
-## Planned usage
-
-Being implemented. See [ROADMAP.md](ROADMAP.md).
+## Usage
 
 **As a DLL.** Put `ufathom.toml` next to the game executable, load `ufathom.dll` with your loader of choice, press F8 to dump and F6 to unload.
 
@@ -36,12 +34,20 @@ ufathom ps                                         # probable Unreal Engine proc
 ufathom inspect-exe Game-Win64-Shipping.exe        # static facts, nothing is run
 ufathom doctor --process Game-Win64-Shipping.exe   # how well the layout was solved
 ufathom dump --process Game-Win64-Shipping.exe -o dump.json --usmap Mappings.usmap
-ufathom gen dump.json -o my_sdk/ --runtime-path path/to/crates/ufathom-runtime
+ufathom gen dump.json -o my_sdk/
 ufathom diff old.json new.json
 ufathom command <output dir> dump --label menu --wait 120   # drive a loaded DLL
 ```
 
-A target is `--pid N`, `--process NAME` or `--minidump PATH`, with optional `--module`, `--layout FILE` and `--hint VERSION`. Exit codes: 0 success, 1 failure, 2 usage error, 3 degraded dump. `ufathom --help` has the rest. `gen` needs `--runtime-path` or `--runtime-version` because `ufathom-runtime` is not published yet.
+A target is `--pid N`, `--process NAME` or `--minidump PATH`, with optional `--module`, `--layout FILE` and `--hint VERSION`. Exit codes: 0 success, 1 failure, 2 usage error, 3 degraded dump. `ufathom --help` has the rest.
+
+By default, `gen` and `dump --sdk` include the matching `ufathom-runtime` and `ufathom-mem` sources and licenses under `vendor/`. The generated folder is self-contained: copy it anywhere and build it without an ufathom checkout or manual manifest edits.
+
+```
+cargo check --manifest-path my_sdk/Cargo.toml
+```
+
+Use `--runtime-path PATH` or `--runtime-version VERSION` only when you want to override the bundled runtime with a local crate or a registry dependency.
 
 ## Documents
 

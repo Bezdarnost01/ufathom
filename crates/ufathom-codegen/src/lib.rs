@@ -23,6 +23,7 @@ mod names;
 mod output;
 mod planner;
 mod report;
+mod runtime_bundle;
 mod types;
 
 use std::path::{Path, PathBuf};
@@ -36,6 +37,8 @@ pub use report::{AlignmentRaise, Degradation, DegradeReason, GenReport, SizePadd
 /// Where the generated crate finds `ufathom-runtime`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeDependency {
+    /// Matching runtime sources embedded in ufathom and written under `vendor/`.
+    Bundled,
     /// A path to the runtime crate.
     Path(PathBuf),
     /// A version requirement from a registry.
@@ -66,13 +69,12 @@ impl GenOptions {
 }
 
 impl Default for GenOptions {
-    /// A crate named `ufathom-sdk` that depends on this release of the runtime
-    /// from a registry.
+    /// A crate named `ufathom-sdk` with the matching runtime sources included.
     fn default() -> Self {
         Self {
             crate_name: "ufathom-sdk".to_owned(),
             crate_version: "0.1.0".to_owned(),
-            runtime: RuntimeDependency::Version(env!("CARGO_PKG_VERSION").to_owned()),
+            runtime: RuntimeDependency::Bundled,
         }
     }
 }
@@ -118,12 +120,19 @@ pub fn generate(
             options.crate_version
         )));
     }
+    let bundled = matches!(&options.runtime, RuntimeDependency::Bundled);
     let runtime = match &options.runtime {
+        RuntimeDependency::Bundled => r#"{ path = "vendor/ufathom-runtime" }"#.to_owned(),
         RuntimeDependency::Path(path) => format!(
             "{{ path = {} }}",
             emit::toml_string(&path.to_string_lossy().replace('\\', "/"))
         ),
         RuntimeDependency::Version(v) => format!("{{ version = {} }}", emit::toml_string(v)),
+    };
+    let workspace = if bundled {
+        runtime_bundle::workspace_manifest()
+    } else {
+        String::new()
     };
 
     let built = build::build(dump);
@@ -136,6 +145,7 @@ pub fn generate(
                 &options.crate_name,
                 &options.crate_version,
                 &runtime,
+                &workspace,
             ),
         },
         output::OutFile {
@@ -148,6 +158,9 @@ pub fn generate(
             path: format!("src/{}.rs", module.name),
             content: emit::module_source(&built, module),
         });
+    }
+    if bundled {
+        files.extend(runtime_bundle::files());
     }
     let written = output::write_files(out_dir, &files)?;
 

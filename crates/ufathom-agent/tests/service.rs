@@ -440,21 +440,16 @@ fn the_rust_sdk_format_writes_the_crate_and_counts_it_in_the_result() -> TestRes
         .collect();
     assert!(listed.contains(&"sdk/"), "{listed:?}");
 
-    // A version requirement, with a comment that shows the path form.
+    // The default SDK carries its own matching runtime.
     let manifest = std::fs::read_to_string(sdk.join("Cargo.toml"))?;
-    let lines: Vec<_> = manifest.lines().collect();
-    let dependency = lines
-        .iter()
-        .position(|line| line.starts_with("ufathom-runtime = "))
-        .expect("the manifest names the runtime");
-    assert!(lines[dependency].contains("version = "), "{manifest}");
-    assert!(!lines[dependency].contains("path"), "{manifest}");
     assert!(
-        lines[dependency - 1].contains("ufathom-runtime = { path = "),
-        "the hint comes right above the dependency: {manifest}"
+        manifest.contains(r#"ufathom-runtime = { path = "vendor/ufathom-runtime" }"#),
+        "{manifest}"
     );
-    assert!(lines[dependency - 1].starts_with('#'));
-    assert!(lines[dependency - 2].starts_with('#'));
+    assert!(sdk.join("vendor/ufathom-runtime/src/lib.rs").is_file());
+    assert!(sdk.join("vendor/ufathom-mem/src/lib.rs").is_file());
+    assert!(sdk.join("LICENSE-MIT").is_file());
+    assert!(sdk.join("LICENSE-APACHE").is_file());
 
     let identity = read_json(&folder.join("identity.json"));
     assert!(

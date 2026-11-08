@@ -4,6 +4,12 @@ All notable changes are recorded here, in the [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-08
+
+### Changed
+
+- The CLI and DLL now generate a self-contained Rust SDK by default. The matching `ufathom-runtime` and `ufathom-mem` sources and licenses are written under `vendor/`, so the SDK builds without an ufathom checkout or a published runtime package. `--runtime-path` and `--runtime-version` remain available as explicit overrides.
+
 ## [0.1.0] - 2026-11-08
 
 First pre-release. Windows x86-64 only for the DLL. Expect breaking changes in the API, the dump format and the generated SDK before 1.0.
@@ -53,5 +59,6 @@ First pre-release. Windows x86-64 only for the DLL. Expect breaking changes in t
   - the generated SDK compiles.
 - **Other engine versions:** tested on synthetic images only. See `COMPATIBILITY.md`.
 
-[Unreleased]: https://github.com/Bezdarnost01/ufathom/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Bezdarnost01/ufathom/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Bezdarnost01/ufathom/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Bezdarnost01/ufathom/releases/tag/v0.1.0

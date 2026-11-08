@@ -18,7 +18,10 @@ use ufathom_codegen::{GenOptions, MANIFEST_NAME, generate};
 use ufathom_model::{FieldDef, PropertyType};
 
 fn options() -> GenOptions {
-    GenOptions::default()
+    GenOptions {
+        runtime: ufathom_codegen::RuntimeDependency::Version("0.1.0".to_owned()),
+        ..GenOptions::default()
+    }
 }
 
 fn modified(dir: &std::path::Path, files: &[String]) -> Vec<std::time::SystemTime> {

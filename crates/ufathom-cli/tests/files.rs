@@ -33,6 +33,21 @@ impl Dumps {
 }
 
 #[test]
+fn gen_without_runtime_options_writes_a_self_contained_crate() {
+    let dumps = Dumps::new();
+    let sdk = dumps.path("sdk");
+    run(&["gen", &arg(&dumps.path("old.json")), "-o", &arg(&sdk)]).expect_code(0);
+
+    let manifest = std::fs::read_to_string(sdk.join("Cargo.toml")).unwrap();
+    assert!(
+        manifest.contains(r#"ufathom-runtime = { path = "vendor/ufathom-runtime" }"#),
+        "{manifest}"
+    );
+    assert!(sdk.join("vendor/ufathom-runtime/src/lib.rs").is_file());
+    assert!(sdk.join("vendor/ufathom-mem/src/lib.rs").is_file());
+}
+
+#[test]
 fn gen_with_a_runtime_path_writes_a_crate_that_points_at_it() {
     let dumps = Dumps::new();
     let sdk = dumps.path("sdk");

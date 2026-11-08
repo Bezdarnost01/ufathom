@@ -98,6 +98,7 @@ pub(crate) fn cargo_source(
     crate_name: &str,
     crate_version: &str,
     runtime: &str,
+    workspace: &str,
 ) -> String {
     let mut out = String::new();
     wl!(out, "[package]");
@@ -127,6 +128,7 @@ pub(crate) fn cargo_source(
         "# This crate is its own workspace, so it builds from any directory."
     );
     wl!(out, "[workspace]");
+    out.push_str(workspace);
     out
 }
 
