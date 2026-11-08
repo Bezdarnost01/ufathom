@@ -71,6 +71,12 @@ pub struct VersionFacts {
 /// the evidence. If sources state different versions, the first wins and the
 /// others are listed as disagreeing.
 ///
+/// A number from the version resource counts only with Unreal context (see
+/// `claim_sources`): a `ProductName` with "Unreal", UE text in the string, a
+/// marker string, or an engine grade build string. Any other program may
+/// have a product version whose major is 4 or 5, so without context the
+/// number is listed in the evidence and `claimed` stays empty.
+///
 /// # Build
 ///
 /// [`EngineInfo::build`] is the best build string: one with a changelist
@@ -107,7 +113,7 @@ pub fn detect_version(mem: &dyn MemoryReader, image: &PeImage) -> VersionFacts {
     });
 
     let mut evidence = Vec::new();
-    let sources = claim_sources(resource.as_ref(), &builds, &mut evidence);
+    let sources = claim_sources(resource.as_ref(), &builds, !hits.is_empty(), &mut evidence);
     let claimed = sources.first().map(|source| source.version);
     describe_claims(&sources, &mut evidence);
     describe_builds(&builds, &mut evidence);
@@ -168,11 +174,24 @@ struct ClaimSource {
 
 /// Lists every place that states an engine version, best source first, and
 /// adds a line to `evidence` for each resource string that does not.
+///
+/// A number in the version resource is a claim only with Unreal context,
+/// because any program may have a product version whose major is 4 or 5. The
+/// context is one of: a `ProductName` that contains "Unreal", a marker string
+/// in the image (`has_marker`), an engine grade build string, or, for a
+/// resource string, UE text in the string itself (`+UE4`, `UE5-`, ...).
+/// Without it the number is only listed in the evidence.
 fn claim_sources(
     resource: Option<&VersionResource>,
     builds: &[BuildString],
+    has_marker: bool,
     evidence: &mut Vec<String>,
 ) -> Vec<ClaimSource> {
+    let unreal_context = has_marker
+        || builds.iter().any(BuildString::is_engine_grade)
+        || resource
+            .and_then(|resource| resource.string("ProductName"))
+            .is_some_and(|name| name.to_ascii_lowercase().contains("unreal"));
     let mut sources = Vec::new();
     match resource {
         None => evidence.push("no version resource".to_owned()),
@@ -188,6 +207,11 @@ fn claim_sources(
                     continue;
                 };
                 match engine_version_from_text(value) {
+                    Some(_) if !unreal_context && !carries_ue_text(value) => {
+                        evidence.push(format!(
+                            "version resource {key} \"{value}\" is a product version not shown to be an engine version"
+                        ));
+                    }
                     Some(version) => sources.push(ClaimSource {
                         label: format!("version resource {key} \"{value}\""),
                         version,
@@ -203,6 +227,9 @@ fn claim_sources(
                     ("file", fixed.file_version_text()),
                 ] {
                     match engine_version_from_text(&text) {
+                        Some(_) if !unreal_context => evidence.push(format!(
+                            "fixed {label} version {text} is a product version not shown to be an engine version"
+                        )),
                         Some(version) => sources.push(ClaimSource {
                             label: format!("fixed {label} version {text}"),
                             version,
@@ -224,6 +251,14 @@ fn claim_sources(
         }
     }
     sources
+}
+
+/// Whether version text carries the engine's own tag, such as
+/// `4.25.1-0+++UE4+Release-4.25` or `++UE5+Release-5.4`.
+fn carries_ue_text(text: &str) -> bool {
+    ["+UE4", "+UE5", "UE4-", "UE5-", "UE4+", "UE5+"]
+        .iter()
+        .any(|tag| text.contains(tag))
 }
 
 /// Adds the lines that say which source was used and where others disagree.
