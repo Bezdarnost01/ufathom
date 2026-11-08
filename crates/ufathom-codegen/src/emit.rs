@@ -420,6 +420,13 @@ fn emit_struct(out: &mut String, s: &PlannedStruct) {
         String::new(),
         format!("Size {:#x}, alignment {}.", s.size, s.plan.align),
     ];
+    if s.dump_size != s.size {
+        doc.push(String::new());
+        doc.push(format!(
+            "The dump says {:#x} bytes; the type is padded at the end to a multiple of its alignment.",
+            s.dump_size
+        ));
+    }
     match &s.plan.base {
         BaseMode::Cast(_, why) => {
             doc.push(String::new());

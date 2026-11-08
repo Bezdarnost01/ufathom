@@ -545,6 +545,12 @@ fn enum_def(name: &str, max_name: &str, prefix_values: &[(&str, i64)]) -> EnumDe
     }
 }
 
+/// The engine version (`major * 100 + minor`) whose classes record a
+/// `MinAlignment` of 1. MEASURED on a real UE 4.21 shipping build, where about
+/// 2,300 native classes report 1 and script structs report 4, 8 or 16. UE 4.25
+/// reports 8 or 16 for every class, so other versions keep 8.
+const NATIVE_CLASS_MIN_ALIGNMENT_ONE_VERSION: u32 = 421;
+
 /// Builds the schema for a profile.
 #[must_use]
 #[allow(
@@ -1279,6 +1285,16 @@ pub fn build_schema(profile: &Profile) -> Schema {
         Vec::new(),
         kismet_functions,
     ));
+
+    // Native class registration passed no alignment in this build, so every
+    // class reports 1. Script structs do not: they keep their real one.
+    if profile.shape.version == NATIVE_CLASS_MIN_ALIGNMENT_ONE_VERSION {
+        for def in &mut structs {
+            if def.kind == StructKind::Class {
+                def.alignment = 1;
+            }
+        }
+    }
 
     Schema { structs, enums }
 }
