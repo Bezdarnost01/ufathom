@@ -547,6 +547,7 @@ dependencies = [
  "thiserror",
  "toml",
  "tracing",
+ "ufathom-codegen",
  "ufathom-mem",
  "ufathom-model",
  "ufathom-reflect",

@@ -10,7 +10,7 @@
 //!   failure to start.
 //! - [`Session`] owns the thread pool and runs dumps: discovery on a page
 //!   cache, reflection on the session's pool, then atomic writes of
-//!   `dump.json`, `Mappings.usmap`, `identity.json` and `ufathom.log` into
+//!   `dump.json`, `Mappings.usmap`, `sdk/`, `identity.json` and `ufathom.log` into
 //!   `<output>/<build id>/<session>/<label>/`.
 //! - [`Service`] is the state machine (`ready`, `dumping`, `idle`,
 //!   `stopping`, `stopped`) that accepts triggers, serves the command files
@@ -38,6 +38,7 @@ mod identity;
 mod output;
 pub mod paths;
 pub mod protocol;
+mod sdk;
 mod service;
 mod session;
 
@@ -51,10 +52,10 @@ pub use control::{ControlDir, SETTLE_TIME, is_settled};
 pub use error::{ConfigError, DumpError, HotkeyError, ServiceError, SessionError};
 pub use hashing::{HashError, sha256_file};
 pub use hotkey::{Hotkey, HotkeyTracker, is_own_process_foreground};
-pub use identity::{Identity, TimingsMs};
+pub use identity::{DiscoveryRecord, EvidenceRecord, GlobalsRecord, Identity, TimingsMs};
 pub use output::{
-    CONTROL_FOLDER, DUMP_JSON, DUMP_LOG, IDENTITY_JSON, LOG_FOLDER, MAPPINGS_USMAP, build_id,
-    control_folder, create_dump_folder, dump_label, session_name,
+    CONTROL_FOLDER, DUMP_JSON, DUMP_LOG, IDENTITY_JSON, LOG_FOLDER, MAPPINGS_USMAP, SDK_FOLDER,
+    build_id, control_folder, create_dump_folder, dump_label, session_name,
 };
 pub use service::{AUTO_DUMP_LABEL, DumpTrigger, SHUTDOWN_TIMEOUT, Service};
 pub use session::{

@@ -13,8 +13,8 @@
 //!   starting with a dot. It names the result file.
 //! - `command`: `status`, `dump` or `stop`, in any letter case.
 //! - `label` (`dump` only): the name of the dump folder. Sanitized.
-//! - `formats` (`dump` only): a list of `json` and `usmap`. Defaults to the
-//!   config's formats.
+//! - `formats` (`dump` only): a list of `json`, `usmap` and `rust-sdk`.
+//!   Defaults to the config's formats.
 //!
 //! Unknown extra fields are ignored so a newer client can talk to an older
 //! DLL. The client should write the file under a temporary name and rename
@@ -27,7 +27,7 @@
 //! result is published when the dump ends, not when it starts; a client
 //! waits for the file. `status` and `stop` are answered at once.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::config::Format;
@@ -167,10 +167,10 @@ fn parse_dump(object: &serde_json::Map<String, Value>) -> Result<Command, String
         Some(Value::Array(items)) => {
             let mut formats = Vec::new();
             for item in items {
-                let format = match item.as_str().map(str::to_ascii_lowercase).as_deref() {
-                    Some("json") => Format::Json,
-                    Some("usmap") => Format::Usmap,
-                    _ => return Err(format!("unknown format {item}: use json or usmap")),
+                let Some(format) = item.as_str().and_then(Format::from_name) else {
+                    return Err(format!(
+                        "unknown format {item}: use json, usmap or rust-sdk"
+                    ));
                 };
                 if !formats.contains(&format) {
                     formats.push(format);
@@ -198,7 +198,7 @@ pub fn is_valid_id(id: &str) -> bool {
 }
 
 /// Where the DLL is in its life.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum State {
     /// Started and waiting, no dump yet.
@@ -214,7 +214,7 @@ pub enum State {
 }
 
 /// The outcome class of a command.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ResultStatus {
     /// The command did what was asked.
@@ -228,7 +228,7 @@ pub enum ResultStatus {
 }
 
 /// What a finished dump produced.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DumpSummary {
     /// The folder, in the form a user can open.
     pub folder: String,
@@ -250,12 +250,39 @@ pub struct DumpSummary {
     pub diagnostics: u64,
     /// More than the allowed share of the objects failed.
     pub degraded: bool,
-    /// Wall time of the whole dump.
+    /// What the Rust SDK holds, when the `rust-sdk` format was asked for.
+    #[serde(default)]
+    pub sdk: Option<SdkSummary>,
+    /// Wall time of the whole dump, SDK generation included.
     pub elapsed_ms: u64,
 }
 
+/// What the generated Rust SDK holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SdkSummary {
+    /// The folder of the SDK crate, in the form a user can open.
+    pub folder: String,
+    /// Packages, each a module of the crate.
+    pub packages: u64,
+    /// Classes generated.
+    pub classes: u64,
+    /// Script structs generated.
+    pub script_structs: u64,
+    /// Enums generated.
+    pub enums: u64,
+    /// Functions with a generated wrapper.
+    pub functions: u64,
+    /// Functions without a wrapper.
+    pub functions_skipped: u64,
+    /// Fields, enumerators and functions that could not be represented
+    /// exactly and were degraded or left out.
+    pub degraded: u64,
+    /// Files written into the SDK folder.
+    pub files: u64,
+}
+
 /// How a dump failed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DumpFailure {
     /// A short stable name, see [`DumpError::kind`](crate::DumpError::kind).
     pub kind: String,
@@ -266,7 +293,7 @@ pub struct DumpFailure {
 }
 
 /// The document written to `outbox/<id>.json`.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CommandResult {
     /// The client's id. `None` when the command file had no usable id.
     pub id: Option<String>,
@@ -289,7 +316,7 @@ pub struct CommandResult {
 }
 
 /// The last dump that ended, for the status document.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LastDump {
     /// The label it was asked for or given.
     pub label: String,
@@ -302,7 +329,7 @@ pub struct LastDump {
 }
 
 /// The dump that is running, for the status document.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CurrentDump {
     /// The label it was asked for or given.
     pub label: String,
@@ -311,7 +338,7 @@ pub struct CurrentDump {
 }
 
 /// The document kept up to date in `<output>/control/status.json`.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StatusDocument {
     /// Where the DLL is in its life.
     pub state: State,
@@ -382,6 +409,73 @@ mod tests {
                 formats: Some(vec![Format::Usmap, Format::Json]),
             }
         );
+    }
+
+    #[test]
+    fn a_dump_can_ask_for_the_rust_sdk() {
+        let request =
+            parse_request(r#"{"id":"d","command":"dump","formats":["Rust-SDK"]}"#).unwrap();
+        assert_eq!(
+            request.command,
+            Command::Dump {
+                label: None,
+                formats: Some(vec![Format::RustSdk]),
+            }
+        );
+        let error =
+            parse_request(r#"{"id":"d","command":"dump","formats":["rust_sdk"]}"#).unwrap_err();
+        assert!(error.message.contains("rust-sdk"), "{}", error.message);
+    }
+
+    #[test]
+    fn a_result_survives_a_round_trip_through_json() {
+        let result = CommandResult {
+            id: Some("r".to_owned()),
+            command: Some("dump".to_owned()),
+            status: ResultStatus::Ok,
+            message: None,
+            state: State::Idle,
+            dump: Some(DumpSummary {
+                folder: "f".to_owned(),
+                files: vec!["dump.json".to_owned(), "sdk/".to_owned()],
+                engine: Some("4.25.1".to_owned()),
+                structs: 3,
+                enums: 2,
+                functions: 1,
+                objects: 9,
+                failures: 0,
+                diagnostics: 0,
+                degraded: false,
+                sdk: Some(SdkSummary {
+                    folder: "f/sdk".to_owned(),
+                    packages: 1,
+                    classes: 2,
+                    script_structs: 1,
+                    enums: 2,
+                    functions: 1,
+                    functions_skipped: 0,
+                    degraded: 4,
+                    files: 5,
+                }),
+                elapsed_ms: 7,
+            }),
+            failure: None,
+            status_document: None,
+            finished: "2026-01-01T00:00:00Z".to_owned(),
+        };
+        let text = serde_json::to_string(&result).unwrap();
+        let back: CommandResult = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, result);
+    }
+
+    #[test]
+    fn a_result_from_a_dll_without_the_sdk_field_still_reads() {
+        let text = r#"{"id":"r","command":"dump","status":"ok","message":null,"state":"idle",
+            "dump":{"folder":"f","files":[],"engine":null,"structs":0,"enums":0,"functions":0,
+            "objects":0,"failures":0,"diagnostics":0,"degraded":false,"elapsed_ms":1},
+            "failure":null,"status_document":null,"finished":"x"}"#;
+        let result: CommandResult = serde_json::from_str(text).unwrap();
+        assert!(result.dump.unwrap().sdk.is_none());
     }
 
     #[test]

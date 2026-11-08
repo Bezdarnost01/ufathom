@@ -396,6 +396,115 @@ fn formats_can_be_chosen_per_dump() -> TestResult {
 }
 
 #[test]
+fn the_rust_sdk_format_writes_the_crate_and_counts_it_in_the_result() -> TestResult {
+    let rig = Rig::new();
+    let mut service = rig.start(rig.config(), rig.image());
+    send_command(
+        &service,
+        "s",
+        r#""command":"dump","formats":["json","rust-sdk"]"#,
+    );
+    let result = wait_result(&mut service, "s");
+    assert_eq!(result["status"], "ok", "{result}");
+    let folder = PathBuf::from(result["dump"]["folder"].as_str().unwrap());
+
+    let sdk = folder.join("sdk");
+    for file in ["Cargo.toml", "src/lib.rs", "ufathom-sdk.manifest"] {
+        assert!(sdk.join(file).is_file(), "{file}");
+    }
+    assert!(!folder.join("Mappings.usmap").exists());
+
+    let summary = &result["dump"]["sdk"];
+    assert_eq!(
+        summary["folder"].as_str().unwrap(),
+        sdk.display().to_string()
+    );
+    let classes = summary["classes"].as_u64().unwrap();
+    let structs = summary["script_structs"].as_u64().unwrap();
+    assert_eq!(
+        classes + structs,
+        result["dump"]["structs"].as_u64().unwrap(),
+        "the SDK holds the dump's classes and script structs"
+    );
+    assert_eq!(
+        summary["enums"].as_u64().unwrap(),
+        result["dump"]["enums"].as_u64().unwrap()
+    );
+    assert!(summary["packages"].as_u64().unwrap() > 0);
+    assert!(summary["files"].as_u64().unwrap() >= 3);
+    let listed: Vec<_> = result["dump"]["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|file| file.as_str().unwrap())
+        .collect();
+    assert!(listed.contains(&"sdk/"), "{listed:?}");
+
+    // A version requirement, with a comment that shows the path form.
+    let manifest = std::fs::read_to_string(sdk.join("Cargo.toml"))?;
+    let lines: Vec<_> = manifest.lines().collect();
+    let dependency = lines
+        .iter()
+        .position(|line| line.starts_with("ufathom-runtime = "))
+        .expect("the manifest names the runtime");
+    assert!(lines[dependency].contains("version = "), "{manifest}");
+    assert!(!lines[dependency].contains("path"), "{manifest}");
+    assert!(
+        lines[dependency - 1].contains("ufathom-runtime = { path = "),
+        "the hint comes right above the dependency: {manifest}"
+    );
+    assert!(lines[dependency - 1].starts_with('#'));
+    assert!(lines[dependency - 2].starts_with('#'));
+
+    let identity = read_json(&folder.join("identity.json"));
+    assert!(
+        identity["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|file| file == "sdk/")
+    );
+    assert!(service.shutdown().is_clean());
+    Ok(())
+}
+
+#[test]
+fn the_default_formats_write_no_sdk() -> TestResult {
+    let rig = Rig::new();
+    let mut service = rig.start(rig.config(), rig.image());
+    send_command(&service, "d", r#""command":"dump""#);
+    let result = wait_result(&mut service, "d");
+    let folder = PathBuf::from(result["dump"]["folder"].as_str().unwrap());
+    assert!(!folder.join("sdk").exists());
+    assert!(result["dump"]["sdk"].is_null());
+    assert!(service.shutdown().is_clean());
+    Ok(())
+}
+
+#[test]
+fn the_rust_sdk_of_a_repeated_dump_is_identical() -> TestResult {
+    let rig = Rig::new();
+    let mut config = rig.config();
+    config.formats = vec![Format::RustSdk];
+    let mut service = rig.start(config, rig.image());
+    let mut manifests = Vec::new();
+    for id in ["a", "b"] {
+        send_command(&service, id, r#""command":"dump""#);
+        let result = wait_result(&mut service, id);
+        assert_eq!(result["status"], "ok", "{result}");
+        let folder = PathBuf::from(result["dump"]["folder"].as_str().unwrap());
+        assert!(!folder.join("dump.json").exists());
+        manifests.push((
+            std::fs::read(folder.join("sdk/Cargo.toml"))?,
+            std::fs::read(folder.join("sdk/src/lib.rs"))?,
+        ));
+    }
+    assert_eq!(manifests[0], manifests[1]);
+    assert!(service.shutdown().is_clean());
+    Ok(())
+}
+
+#[test]
 fn a_dump_while_dumping_is_busy_and_does_not_disturb_the_first() -> TestResult {
     let rig = Rig::new();
     let gate = GatedReader::new(rig.image(), false);
@@ -805,13 +914,19 @@ fn an_output_path_over_260_characters_works() -> TestResult {
     }
     config.output = output.clone();
     let mut service = rig.start(config, rig.image());
-    send_command(&service, "d", r#""command":"dump""#);
+    send_command(
+        &service,
+        "d",
+        r#""command":"dump","formats":["json","rust-sdk"]"#,
+    );
     let result = wait_result(&mut service, "d");
     assert_eq!(result["status"], "ok", "{result}");
     let folder = PathBuf::from(result["dump"]["folder"].as_str().unwrap());
     assert!(folder.as_os_str().len() > 260);
     let dump = fsio::read_text_limited(&folder.join("dump.json"), 1 << 28)?;
     assert!(Dump::from_json(&dump).is_ok());
+    let manifest = fsio::read_text_limited(&folder.join("sdk").join("Cargo.toml"), 1 << 20)?;
+    assert!(manifest.contains("ufathom-runtime"), "{manifest}");
     assert!(service.shutdown().is_clean());
     Ok(())
 }

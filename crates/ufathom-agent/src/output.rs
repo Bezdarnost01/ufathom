@@ -23,6 +23,8 @@ use crate::paths::sanitize_component;
 pub const DUMP_JSON: &str = "dump.json";
 /// File name of the mappings file.
 pub const MAPPINGS_USMAP: &str = "Mappings.usmap";
+/// Name of the folder that holds the generated Rust SDK, inside a dump folder.
+pub const SDK_FOLDER: &str = "sdk";
 /// File name of the record that describes the run.
 pub const IDENTITY_JSON: &str = "identity.json";
 /// File name of the log of one dump.
