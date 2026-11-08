@@ -2,7 +2,8 @@
 //! space, so readers can be tested through real operating system calls and a
 //! DLL can later be loaded next to it.
 //!
-//! Usage: `fake-host --profile <name> [--seed N] [--filler N] [--corrupt <Name>]...`
+//! Usage: `fake-host --profile <name> [--seed N] [--filler N] [--corrupt <Name>]...
+//! [--load <dll>]... [--report-stall]`
 //!
 //! The globals and the image-range data (vtables, fake code, strings) are
 //! copied into large statics in this executable's own `.data`, so a scan of the
@@ -11,6 +12,35 @@
 //! JSON line with the addresses and the expected layout is printed to stdout,
 //! then the process stays alive, ticking a counter on a thread to simulate a
 //! running game, until stdin is closed.
+//!
+//! # Hosting a DLL
+//!
+//! `--load <dll>` (repeatable) calls `LoadLibraryW` on the path once the image
+//! is hosted and the first line is printed, and prints one line
+//! `{"loaded": {"path", "ok", "error"}}` for each. While the process runs,
+//! stdin lines are commands: `load <path>` loads one more DLL and answers
+//! with the same kind of line, and `report` prints a report line and starts a
+//! new stall measurement window. Closing stdin ends the process.
+//!
+//! # Measuring the host
+//!
+//! The ticker thread notes the gap between its consecutive ticks. A host that
+//! a DLL slows down shows a larger worst gap. `--report-stall` prints one
+//! last report line when stdin is closed; the `report` command prints one at
+//! any time. A report is
+//! `{"report": {"worst_gap_ms", "ticks", "threads", "threads_before_load",
+//! "new_threads": [{"id", "module"}], "dlls": [{"path", "loaded"}]}}`: the
+//! worst gap since the previous report (or the start), the thread count of the
+//! whole process now and before the first load, the threads that did not exist
+//! before the first load, and whether each DLL is still mapped
+//! (`GetModuleHandleW` by file name).
+//!
+//! `module` is the file name of the module that holds the thread's start
+//! address, or `null` when that address is in no mapped module, which for a
+//! thread that outlives its DLL means it runs unmapped code. The system's own
+//! loader starts worker threads of its own on a `LoadLibrary` (they start in
+//! `ntdll.dll`), so the raw thread count can exceed the count before the load
+//! without any thread of the loaded DLL being left; `module` tells them apart.
 //!
 //! Only Windows is supported. On other systems the program says so and exits
 //! with status 2, because hosting needs address space reservation with gaps
@@ -36,19 +66,33 @@ fn main() {
 #[cfg(windows)]
 mod host {
     use std::cell::UnsafeCell;
-    use std::io::Read;
+    use std::ffi::OsStr;
+    use std::io::BufRead;
+    use std::os::windows::ffi::OsStrExt;
+    use std::path::Path;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::time::Duration;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::time::{Duration, Instant};
 
     use ufathom_testkit::{
         Corruption, DATA_CAP, FixtureBuilder, HostedPlacement, PartKind, Placement, Profile,
         RDATA_CAP, TEXT_CAP,
     };
-    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Wdk::System::Threading::NtQueryInformationThread;
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, GetLastError, HMODULE, INVALID_HANDLE_VALUE,
+    };
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next,
+    };
+    use windows_sys::Win32::System::LibraryLoader::{
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        GetModuleFileNameW, GetModuleHandleExW, GetModuleHandleW, LoadLibraryW,
+    };
     use windows_sys::Win32::System::Memory::{
         MEM_COMMIT, MEM_RESERVE, PAGE_NOACCESS, PAGE_READWRITE, VirtualAlloc,
     };
+    use windows_sys::Win32::System::Threading::{OpenThread, THREAD_QUERY_INFORMATION};
 
     /// A page-aligned block of mutable static memory. It is initialised with a
     /// non-zero pattern so the linker keeps it in the file-backed `.data`.
@@ -68,6 +112,8 @@ mod host {
         seed: u64,
         filler: Option<usize>,
         corruptions: Vec<Corruption>,
+        loads: Vec<String>,
+        report_stall: bool,
     }
 
     fn fail(message: &str) -> ! {
@@ -81,9 +127,15 @@ mod host {
             seed: 0,
             filler: None,
             corruptions: Vec::new(),
+            loads: Vec::new(),
+            report_stall: false,
         };
         let mut it = std::env::args().skip(1);
         while let Some(flag) = it.next() {
+            if flag == "--report-stall" {
+                args.report_stall = true;
+                continue;
+            }
             let value = it
                 .next()
                 .unwrap_or_else(|| fail(&format!("{flag} needs a value")));
@@ -93,6 +145,7 @@ mod host {
                 "--filler" => {
                     args.filler = Some(value.parse().unwrap_or_else(|_| fail("bad --filler")));
                 }
+                "--load" => args.loads.push(value),
                 "--corrupt" => {
                     let found = Corruption::ALL.iter().find(|c| format!("{c:?}") == value);
                     args.corruptions.push(
@@ -103,7 +156,9 @@ mod host {
             }
         }
         if args.profile.is_empty() {
-            fail("usage: fake-host --profile <name> [--seed N] [--filler N] [--corrupt <Name>]...");
+            fail(
+                "usage: fake-host --profile <name> [--seed N] [--filler N] [--corrupt <Name>]... [--load <dll>]... [--report-stall]",
+            );
         }
         args
     }
@@ -257,22 +312,256 @@ mod host {
         println!("{line}");
 
         let stop = Arc::new(AtomicBool::new(false));
+        let ticks = Arc::new(AtomicU64::new(0));
+        let worst_gap_micros = Arc::new(AtomicU64::new(0));
         let ticker = {
             let stop = Arc::clone(&stop);
+            let ticks = Arc::clone(&ticks);
+            let worst_gap_micros = Arc::clone(&worst_gap_micros);
             std::thread::spawn(move || {
-                let mut ticks: u64 = 0;
+                let mut last = Instant::now();
                 while !stop.load(Ordering::Relaxed) {
-                    ticks += 1;
+                    let now = Instant::now();
+                    let gap =
+                        u64::try_from(now.duration_since(last).as_micros()).unwrap_or(u64::MAX);
+                    last = now;
+                    worst_gap_micros.fetch_max(gap, Ordering::Relaxed);
+                    let tick = ticks.fetch_add(1, Ordering::Relaxed) + 1;
                     // SAFETY: `counter` is an 8-byte aligned slot inside the
                     // `DATA` static; this thread is the only writer.
-                    unsafe { std::ptr::write_volatile(counter as usize as *mut u64, ticks) };
+                    unsafe { std::ptr::write_volatile(counter as usize as *mut u64, tick) };
                     std::thread::sleep(Duration::from_millis(5));
                 }
             })
         };
-        let mut sink = Vec::new();
-        let _ = std::io::stdin().read_to_end(&mut sink);
+
+        let mut watch = Watch {
+            ticks,
+            worst_gap_micros,
+            baseline: thread_infos().iter().map(|thread| thread.id).collect(),
+            dlls: Vec::new(),
+        };
+        for path in &args.loads {
+            load_dll(&mut watch, path);
+        }
+
+        // Commands arrive one per line; closing stdin ends the process.
+        let stdin = std::io::stdin();
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match stdin.lock().read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
+            }
+            let command = line.trim();
+            if let Some(path) = command.strip_prefix("load ") {
+                load_dll(&mut watch, path.trim());
+            } else if command == "report" {
+                println!("{}", watch.report());
+            }
+        }
+        if args.report_stall {
+            println!("{}", watch.report());
+        }
         stop.store(true, Ordering::Relaxed);
         let _ = ticker.join();
+    }
+
+    /// What the host measures about itself and the DLLs it was asked to load.
+    struct Watch {
+        ticks: Arc<AtomicU64>,
+        worst_gap_micros: Arc<AtomicU64>,
+        /// Thread ids before the first load.
+        baseline: Vec<u32>,
+        /// Paths handed to `LoadLibraryW`, loaded or not.
+        dlls: Vec<String>,
+    }
+
+    impl Watch {
+        /// A report line. Starts a new stall window.
+        fn report(&self) -> serde_json::Value {
+            let worst = self.worst_gap_micros.swap(0, Ordering::Relaxed);
+            let now = thread_infos();
+            let new_threads: Vec<_> = now
+                .iter()
+                .filter(|thread| !self.baseline.contains(&thread.id))
+                .map(|thread| serde_json::json!({ "id": thread.id, "module": thread.module }))
+                .collect();
+            let dlls: Vec<_> = self
+                .dlls
+                .iter()
+                .map(|path| {
+                    serde_json::json!({
+                        "path": path,
+                        "loaded": is_loaded(path),
+                    })
+                })
+                .collect();
+            serde_json::json!({
+                "report": {
+                    "worst_gap_ms": worst as f64 / 1000.0,
+                    "ticks": self.ticks.load(Ordering::Relaxed),
+                    "threads": now.len(),
+                    "threads_before_load": self.baseline.len(),
+                    "new_threads": new_threads,
+                    "dlls": dlls,
+                }
+            })
+        }
+    }
+
+    fn wide(text: &OsStr) -> Vec<u16> {
+        text.encode_wide().chain(std::iter::once(0)).collect()
+    }
+
+    /// Loads a DLL on the calling thread, as a game's own loader would, and
+    /// prints one line with the result.
+    fn load_dll(watch: &mut Watch, path: &str) {
+        watch.dlls.push(path.to_owned());
+        let wide_path = wide(OsStr::new(path));
+        // SAFETY: `wide_path` is a null-terminated UTF-16 string that outlives
+        // the call. Loading a library runs its `DllMain`; the DLLs given to a
+        // test host are the ones under test.
+        let module = unsafe { LoadLibraryW(wide_path.as_ptr()) };
+        let error = if module.is_null() {
+            // SAFETY: reads the calling thread's last error; no preconditions.
+            unsafe { GetLastError() }
+        } else {
+            0
+        };
+        let line = serde_json::json!({
+            "loaded": { "path": path, "ok": !module.is_null(), "error": error }
+        });
+        println!("{line}");
+    }
+
+    /// Whether a module with the file name of `path` is mapped in this process.
+    fn is_loaded(path: &str) -> bool {
+        let Some(name) = Path::new(path).file_name() else {
+            return false;
+        };
+        let wide_name = wide(name);
+        // SAFETY: `wide_name` is a null-terminated UTF-16 string that outlives
+        // the call; `GetModuleHandleW` does not change the module's reference
+        // count.
+        !unsafe { GetModuleHandleW(wide_name.as_ptr()) }.is_null()
+    }
+
+    /// `ThreadQuerySetWin32StartAddress` of `THREADINFOCLASS`.
+    const THREAD_QUERY_SET_WIN32_START_ADDRESS: i32 = 9;
+
+    /// A thread of this process and where it started.
+    struct ThreadInfo {
+        id: u32,
+        /// File name of the module holding the start address; `None` if the
+        /// address is in no mapped module or could not be read.
+        module: Option<String>,
+    }
+
+    /// The module file name that contains `address`, if one does.
+    fn module_name_at(address: usize) -> Option<String> {
+        let mut module: HMODULE = std::ptr::null_mut();
+        // SAFETY: with FROM_ADDRESS the "name" is an address; any value is
+        // accepted and a failure is reported. UNCHANGED_REFCOUNT means no
+        // reference is taken, so nothing needs releasing. `module` is a valid
+        // out pointer.
+        let found = unsafe {
+            GetModuleHandleExW(
+                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+                    | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                address as *const u16,
+                &mut module,
+            )
+        };
+        if found == 0 {
+            return None;
+        }
+        let mut buffer = vec![0_u16; 1024];
+        // SAFETY: `buffer` is writable for its whole length, which is passed.
+        let length = unsafe { GetModuleFileNameW(module, buffer.as_mut_ptr(), 1024) } as usize;
+        let path = String::from_utf16_lossy(buffer.get(..length.min(buffer.len()))?);
+        Path::new(&path)
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+    }
+
+    /// The module that holds the start address of thread `id`. `Err(())` when
+    /// the thread cannot be opened, which means it has just exited.
+    fn thread_start_module(id: u32) -> Result<Option<String>, ()> {
+        // SAFETY: opening a thread of this process by id has no preconditions;
+        // a null handle means the thread is gone.
+        let thread = unsafe { OpenThread(THREAD_QUERY_INFORMATION, 0, id) };
+        if thread.is_null() {
+            return Err(());
+        }
+        let mut start: usize = 0;
+        // SAFETY: `thread` is a valid handle with query access, and `start` is
+        // a writable `usize`, the size the class expects.
+        let status = unsafe {
+            NtQueryInformationThread(
+                thread,
+                THREAD_QUERY_SET_WIN32_START_ADDRESS,
+                (&raw mut start).cast(),
+                size_of::<usize>() as u32,
+                std::ptr::null_mut(),
+            )
+        };
+        // SAFETY: `thread` is a handle we own and have not closed.
+        unsafe { CloseHandle(thread) };
+        if status != 0 || start == 0 {
+            return Ok(None);
+        }
+        Ok(module_name_at(start))
+    }
+
+    /// Every thread of this process with its start module, from a toolhelp
+    /// snapshot. Empty if the snapshot cannot be taken.
+    fn thread_infos() -> Vec<ThreadInfo> {
+        thread_ids()
+            .into_iter()
+            .filter_map(|id| {
+                thread_start_module(id)
+                    .ok()
+                    .map(|module| ThreadInfo { id, module })
+            })
+            .collect()
+    }
+
+    /// Ids of every thread of this process, from a toolhelp snapshot. Empty if
+    /// the snapshot cannot be taken.
+    fn thread_ids() -> Vec<u32> {
+        let pid = std::process::id();
+        // SAFETY: a thread snapshot with process id 0 covers all processes; the
+        // call has no preconditions and returns a handle we close below.
+        let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
+        if snapshot == INVALID_HANDLE_VALUE {
+            return Vec::new();
+        }
+        let mut ids = Vec::new();
+        let mut entry = THREADENTRY32 {
+            dwSize: size_of::<THREADENTRY32>() as u32,
+            cntUsage: 0,
+            th32ThreadID: 0,
+            th32OwnerProcessID: 0,
+            tpBasePri: 0,
+            tpDeltaPri: 0,
+            dwFlags: 0,
+        };
+        // SAFETY: `snapshot` is a valid snapshot handle and `entry` is a
+        // `THREADENTRY32` whose `dwSize` is set, as the API requires.
+        let mut more = unsafe { Thread32First(snapshot, &mut entry) } != 0;
+        while more {
+            if entry.th32OwnerProcessID == pid {
+                ids.push(entry.th32ThreadID);
+            }
+            entry.dwSize = size_of::<THREADENTRY32>() as u32;
+            // SAFETY: as for `Thread32First`.
+            more = unsafe { Thread32Next(snapshot, &mut entry) } != 0;
+        }
+        // SAFETY: `snapshot` is a handle we own and have not closed.
+        unsafe { CloseHandle(snapshot) };
+        ids.sort_unstable();
+        ids
     }
 }

@@ -18,11 +18,16 @@ ufathom-mem.workspace = true
 ufathom-model.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-# VirtualAlloc for the fake host's heap and GetModuleHandleW for its own module base.
+# VirtualAlloc for the fake host's heap, GetModuleHandleW and LoadLibraryW for its own module base
+# and for hosting a DLL, and a toolhelp snapshot plus thread start addresses to tell the threads
+# of a hosted DLL from the system's own.
 windows-sys = { workspace = true, features = [
+    "Wdk_System_Threading",
     "Win32_Foundation",
+    "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",
+    "Win32_System_Threading",
 ] }
 
 [lints]
