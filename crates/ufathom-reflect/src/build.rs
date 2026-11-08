@@ -161,8 +161,10 @@ pub fn build_dump(
     })
 }
 
-/// The width of an enum is the widest underlying integer of any property that
-/// uses it.
+/// The width of an enum is the widest of: the smallest integer that holds
+/// all its values (see [`values_width`]), and the underlying integer of any
+/// property that uses it. The enum object does not store its width, so an enum
+/// no property refers to would otherwise get 1 byte whatever its values.
 fn finish_enum_sizes(enums: &mut [ufathom_model::EnumDef], uses: &[(String, u32)]) {
     let mut widest: HashMap<&str, u32> = HashMap::new();
     for (path, size) in uses {
@@ -170,9 +172,59 @@ fn finish_enum_sizes(enums: &mut [ufathom_model::EnumDef], uses: &[(String, u32)
         *slot = (*slot).max(*size);
     }
     for def in enums {
-        if let Some(&size) = widest.get(def.path.as_str()) {
-            def.underlying_size = size.max(1);
+        let used = widest.get(def.path.as_str()).copied().unwrap_or(0);
+        def.underlying_size = used.max(values_width(&def.values)).max(1);
+    }
+}
+
+/// The smallest width in bytes (1, 2, 4 or 8) that holds every value, as a
+/// signed integer when any value is negative.
+///
+/// The trailing `_MAX` entry that the engine appends is left out when it is
+/// exactly one past the range of the others (`256` for a byte enum): it is a
+/// count, not a value the enum can hold, and counting it would widen every
+/// byte enum.
+fn values_width(values: &[ufathom_model::EnumValue]) -> u32 {
+    let signed = values.iter().any(|v| v.value < 0);
+    let fit = |values: &mut dyn Iterator<Item = i64>| -> u32 {
+        let (mut min, mut max) = (0i64, 0i64);
+        for v in values {
+            min = min.min(v);
+            max = max.max(v);
         }
+        [1u32, 2, 4]
+            .into_iter()
+            .find(|&w| {
+                let bits = 8 * w;
+                if signed {
+                    min >= -(1i64 << (bits - 1)) && max < (1i64 << (bits - 1))
+                } else {
+                    max < (1i64 << bits)
+                }
+            })
+            .unwrap_or(8)
+    };
+    let all = fit(&mut values.iter().map(|v| v.value));
+    let Some(top) = values.iter().max_by_key(|v| v.value) else {
+        return 1;
+    };
+    if !top.name.ends_with("_MAX") {
+        return all;
+    }
+    let others = fit(&mut values
+        .iter()
+        .filter(|v| !std::ptr::eq(*v, top))
+        .map(|v| v.value));
+    let bits = 8 * others;
+    let one_past = if signed {
+        1i64 << (bits - 1)
+    } else {
+        1i64 << bits
+    };
+    if others < 8 && top.value == one_past {
+        others
+    } else {
+        all
     }
 }
 
@@ -255,5 +307,81 @@ fn note_name_problems(names: &NameTable, tally: &mut Tally) {
                 stats.unresolved_numbered, stats.unreadable_entries
             ),
         ));
+    }
+}
+
+#[cfg(test)]
+mod width_tests {
+    use super::*;
+    use ufathom_model::{EnumDef, EnumValue};
+
+    fn values(list: &[(&str, i64)]) -> Vec<EnumValue> {
+        list.iter()
+            .map(|&(name, value)| EnumValue {
+                name: name.to_owned(),
+                value,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn width_holds_every_value() {
+        assert_eq!(values_width(&values(&[("A", 0), ("B", 255)])), 1);
+        assert_eq!(values_width(&values(&[("A", 0), ("B", 256)])), 2);
+        assert_eq!(values_width(&values(&[("A", 0), ("B", 65_536)])), 4);
+        assert_eq!(values_width(&values(&[("A", 1_934_772_034)])), 4);
+        assert_eq!(values_width(&values(&[("A", 0), ("B", 1 << 40)])), 8);
+        assert_eq!(values_width(&[]), 1);
+    }
+
+    #[test]
+    fn negative_values_make_it_signed() {
+        assert_eq!(values_width(&values(&[("A", -1), ("B", 127)])), 1);
+        assert_eq!(values_width(&values(&[("A", -1), ("B", 128)])), 2);
+        assert_eq!(values_width(&values(&[("A", -129), ("B", 1)])), 2);
+        assert_eq!(values_width(&values(&[("A", -1), ("B", 40_000)])), 4);
+    }
+
+    #[test]
+    fn a_trailing_max_one_past_the_range_does_not_widen() {
+        assert_eq!(
+            values_width(&values(&[("A", 0), ("B", 255), ("E_MAX", 256)])),
+            1
+        );
+        assert_eq!(
+            values_width(&values(&[("A", 0), ("B", 65_535), ("E_MAX", 65_536)])),
+            2
+        );
+        // A `_MAX` that is a real, larger value still counts.
+        assert_eq!(
+            values_width(&values(&[("A", 0), ("B", 3), ("E_MAX", 300)])),
+            2
+        );
+        // Only a trailing `_MAX` is special.
+        assert_eq!(values_width(&values(&[("A", 0), ("Big", 256)])), 2);
+    }
+
+    #[test]
+    fn unreferenced_enum_takes_its_width_from_its_values() {
+        let mut enums = vec![
+            EnumDef {
+                path: "/P.Wide".to_owned(),
+                name: "Wide".to_owned(),
+                package: "/P".to_owned(),
+                underlying_size: 1,
+                values: values(&[("A", 1_934_772_034)]),
+            },
+            EnumDef {
+                path: "/P.Used".to_owned(),
+                name: "Used".to_owned(),
+                package: "/P".to_owned(),
+                underlying_size: 1,
+                values: values(&[("A", 1)]),
+            },
+        ];
+        finish_enum_sizes(&mut enums, &[("/P.Used".to_owned(), 4)]);
+        assert_eq!(enums[0].underlying_size, 4);
+        // The property's width wins when it is wider than the values need.
+        assert_eq!(enums[1].underlying_size, 4);
     }
 }

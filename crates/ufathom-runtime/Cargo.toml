@@ -9,8 +9,7 @@ repository.workspace = true
 
 [dependencies]
 ufathom-mem.workspace = true
-ufathom-model.workspace = true
-ufathom-engine.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true
