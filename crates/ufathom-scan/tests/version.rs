@@ -211,10 +211,10 @@ fn build_strings_inside_other_text_or_too_long_are_not_candidates() {
 #[test]
 fn the_best_build_does_not_depend_on_where_the_strings_are() {
     let items = [
-        b"++B+Main\0".to_vec(),
-        b"++A+Main-CL-5\0".to_vec(),
-        utf16z("++C+Main-CL-5"),
-        utf16z("++A+Main-CL-5"),
+        b"++BB+Main\0".to_vec(),
+        b"++AA+Main-CL-5\0".to_vec(),
+        utf16z("++CC+Main-CL-5"),
+        utf16z("++AA+Main-CL-5"),
     ];
     let mut order: Vec<usize> = (0..items.len()).collect();
     let mut orders = std::collections::BTreeSet::new();
@@ -235,7 +235,7 @@ fn the_best_build_does_not_depend_on_where_the_strings_are() {
     }
     assert_eq!(orders.len(), 1, "{orders:?}");
     let ranked = orders.into_iter().next().unwrap();
-    assert_eq!(ranked[0].0, "++A+Main-CL-5");
+    assert_eq!(ranked[0].0, "++AA+Main-CL-5");
     assert_eq!(ranked[0].1, StringEncoding::Utf16);
 }
 

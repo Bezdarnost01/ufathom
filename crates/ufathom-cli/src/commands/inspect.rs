@@ -8,6 +8,7 @@ use rayon::prelude::*;
 use serde::Serialize;
 use ufathom_mem::{ProcessInfo, list_processes};
 use ufathom_model::EngineInfo;
+use ufathom_scan::version::BuildString;
 use ufathom_scan::{ExeFacts, inspect_exe};
 
 use crate::args::{InspectArgs, PsArgs};
@@ -155,24 +156,34 @@ fn print_text(path: &Path, facts: &ExeFacts) {
 #[derive(Debug, Clone)]
 struct Hint {
     claimed: Option<String>,
+    /// An engine grade build string, see [`BuildString::is_engine_grade`].
     has_build_string: bool,
     has_marker: bool,
 }
 
 impl Hint {
-    /// The file carries something only an engine build carries.
+    /// The file carries strong evidence of an engine build: a version claim,
+    /// a marker string, or an engine grade build string (a bare `++A+B` is
+    /// not enough).
     fn probable(&self) -> bool {
         self.claimed.is_some() || self.has_build_string || self.has_marker
     }
 }
 
 fn hint_of(path: &str) -> Option<Hint> {
-    let facts = inspect_exe(path).ok()?;
-    Some(Hint {
+    inspect_exe(path).ok().map(|facts| hint_from(&facts))
+}
+
+fn hint_from(facts: &ExeFacts) -> Hint {
+    Hint {
         claimed: facts.version.engine.claimed.clone(),
-        has_build_string: !facts.version.build_strings.is_empty(),
+        has_build_string: facts
+            .version
+            .build_strings
+            .iter()
+            .any(BuildString::is_engine_grade),
         has_marker: !facts.version.markers.is_empty(),
-    })
+    }
 }
 
 /// Whether `path` is under the Windows folder, whose executables are never
@@ -264,6 +275,10 @@ fn table(processes: &[ProcessInfo], hints: &HashMap<&str, Option<Hint>>, all: bo
     reason = "test code may panic on failure"
 )]
 mod tests {
+    use ufathom_mem::MemoryReaderExt;
+    use ufathom_scan::PeImage;
+    use ufathom_scan::version::StringEncoding;
+
     use super::*;
 
     fn process(pid: u32, name: &str, path: Option<&str>) -> ProcessInfo {
@@ -280,6 +295,80 @@ mod tests {
             has_build_string: true,
             has_marker: false,
         })
+    }
+
+    /// A build string as the scanner records it, split the same way.
+    fn build(text: &str) -> BuildString {
+        let body = text.strip_prefix("++").unwrap();
+        let (project, rest) = body.split_once('+').unwrap();
+        let (branch, changelist) = match rest.rsplit_once("-CL-") {
+            Some((branch, digits)) => (branch, digits.parse().ok()),
+            None => (rest, None),
+        };
+        BuildString {
+            text: text.to_owned(),
+            encoding: StringEncoding::Utf16,
+            project: project.to_owned(),
+            branch: branch.to_owned(),
+            changelist,
+            engine_release: None,
+            section: ".rdata".to_owned(),
+            rva: 0,
+        }
+    }
+
+    /// Facts of an executable that states nothing about an engine, except
+    /// the given build strings.
+    fn facts_with_builds(texts: &[&str]) -> ExeFacts {
+        // Any PE will do: write the testkit's module out as a file.
+        let fx = ufathom_testkit::FixtureBuilder::new(
+            ufathom_testkit::Profile::by_name("ue4.25-cp").unwrap(),
+        )
+        .filler_objects(10)
+        .build();
+        let base = fx.addresses.module_base;
+        let image = PeImage::parse_from_memory(&fx.memory, base).unwrap();
+        let mut file = fx
+            .memory
+            .read_vec::<u8>(base, image.size_of_headers as usize)
+            .unwrap();
+        for section in &image.sections {
+            let data = fx
+                .memory
+                .read_vec::<u8>(base + u64::from(section.rva), section.raw_size as usize)
+                .unwrap();
+            file.resize(section.raw_offset as usize, 0);
+            file.extend_from_slice(&data);
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("module.exe");
+        std::fs::write(&path, file).unwrap();
+        let mut facts = inspect_exe(&path).unwrap();
+        // Drop what the fixture says; keep only what the test wants.
+        facts.version.engine.claimed = None;
+        facts.version.markers.clear();
+        facts.version.build_strings = texts.iter().map(|text| build(text)).collect();
+        facts
+    }
+
+    #[test]
+    fn a_bare_build_string_is_not_enough_to_flag_a_process() {
+        for text in ["++Game+Live", "++VQLHqe8RT6q9OKPv+RKY9ji9i0qVQBDb6Thi"] {
+            let hint = hint_from(&facts_with_builds(&[text]));
+            assert!(!hint.probable(), "{text}");
+        }
+        for text in [
+            "++Game+Live-CL-123",
+            "++UE5+Release-5.4-CL-1",
+            "++Game+Release-1.2",
+        ] {
+            let hint = hint_from(&facts_with_builds(&[text]));
+            assert!(hint.probable(), "{text}");
+        }
+        // One strong string among weak ones is enough.
+        let hint = hint_from(&facts_with_builds(&["++Game+Live", "++Game+Live-CL-9"]));
+        assert!(hint.probable());
+        assert!(!hint_from(&facts_with_builds(&[])).probable());
     }
 
     #[test]
