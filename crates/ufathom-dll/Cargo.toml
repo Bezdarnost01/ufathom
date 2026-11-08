@@ -9,7 +9,11 @@ repository.workspace = true
 publish = false
 
 [lib]
-name = "ufathom"
+# Not "ufathom": the CLI binary is called `ufathom`, and a library and a binary
+# of one name share `ufathom.pdb` on Windows. Cargo has no stable way to name
+# the output file apart from the crate, so the build makes `ufathom_dll.dll`;
+# the file is shipped and loaded as `ufathom.dll` (the name is only a file name).
+name = "ufathom_dll"
 crate-type = ["cdylib"]
 
 [dependencies]
