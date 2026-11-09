@@ -58,6 +58,7 @@ pub(crate) fn files() -> Vec<OutFile> {
         .map(|(path, content)| OutFile {
             path: (*path).to_owned(),
             content: (*content).to_owned(),
+            preserve_existing: false,
         })
         .collect()
 }

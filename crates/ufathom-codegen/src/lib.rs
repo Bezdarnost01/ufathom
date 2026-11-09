@@ -1,6 +1,7 @@
 //! Generates a Rust SDK from a dump.
 //!
-//! [`generate`] turns a [`Dump`] into one Cargo crate: `src/lib.rs`, one module
+//! [`generate`] turns a [`Dump`] into one Cargo crate: `src/lib.rs`, an editable
+//! `src/main.rs` shared by DLL and external-executable entry points, one module
 //! per package behind a Cargo feature of the same name, and a manifest. The
 //! crate depends on `ufathom-runtime`.
 //!
@@ -9,9 +10,9 @@
 //! be represented exactly is degraded to raw bytes or left out, and listed in
 //! the [`GenReport`], so the generated crate always compiles.
 //!
-//! The output is deterministic: the same dump gives the same bytes. A file is
-//! written only when its content hash differs from the manifest of the previous
-//! run.
+//! In a fresh output directory the same dump gives the same bytes. A generated
+//! file is written only when its content hash differs from the manifest of the
+//! previous run. An existing `main.rs` is preserved as user-owned code.
 
 #![forbid(unsafe_code)]
 
@@ -24,6 +25,7 @@ mod output;
 mod planner;
 mod report;
 mod runtime_bundle;
+mod scaffold;
 mod types;
 
 use std::path::{Path, PathBuf};
@@ -136,6 +138,7 @@ pub fn generate(
     };
 
     let built = build::build(dump);
+    let sdk_crate = options.crate_name.replace('-', "_");
 
     let mut files = vec![
         output::OutFile {
@@ -147,16 +150,24 @@ pub fn generate(
                 &runtime,
                 &workspace,
             ),
+            preserve_existing: false,
         },
         output::OutFile {
             path: "src/lib.rs".to_owned(),
-            content: emit::lib_source(&built, dump.engine.claimed.as_deref()),
+            content: emit::lib_source(&built, dump.engine.claimed.as_deref(), &sdk_crate),
+            preserve_existing: false,
+        },
+        output::OutFile {
+            path: "src/main.rs".to_owned(),
+            content: scaffold::main_source(&options.crate_name),
+            preserve_existing: true,
         },
     ];
     for module in &built.modules {
         files.push(output::OutFile {
             path: format!("src/{}.rs", module.name),
             content: emit::module_source(&built, module),
+            preserve_existing: false,
         });
     }
     if bundled {

@@ -28,6 +28,9 @@ pub(crate) fn content_hash(text: &str) -> String {
 pub(crate) struct OutFile {
     pub path: String,
     pub content: String,
+    /// Keep an existing file unchanged and record its actual hash instead.
+    /// Used for the editable application scaffold, not for generated sources.
+    pub preserve_existing: bool,
 }
 
 /// What [`write_files`] did.
@@ -81,12 +84,18 @@ pub(crate) fn write_files(dir: &Path, files: &[OutFile]) -> Result<Written, Code
     };
     let mut new: BTreeMap<String, String> = BTreeMap::new();
     for file in files {
-        let hash = content_hash(&file.content);
+        let generated_hash = content_hash(&file.content);
         let rel = safe_relative(&file.path)
             .ok_or_else(|| CodegenError::Internal(format!("unsafe output path {}", file.path)))?;
         let full = dir.join(&rel);
+        if file.preserve_existing && full.is_file() {
+            let existing = fs::read_to_string(&full).map_err(|e| io_err(&full, e))?;
+            new.insert(file.path.clone(), content_hash(&existing));
+            result.unchanged.push(file.path.clone());
+            continue;
+        }
         let current = full.is_file()
-            && old.get(&file.path) == Some(&hash)
+            && old.get(&file.path) == Some(&generated_hash)
             && fs::metadata(&full).map(|m| m.len()).ok() == Some(file.content.len() as u64);
         if current {
             result.unchanged.push(file.path.clone());
@@ -97,7 +106,7 @@ pub(crate) fn write_files(dir: &Path, files: &[OutFile]) -> Result<Written, Code
             fs::write(&full, &file.content).map_err(|e| io_err(&full, e))?;
             result.written.push(file.path.clone());
         }
-        new.insert(file.path.clone(), hash);
+        new.insert(file.path.clone(), generated_hash);
     }
     for stale in old.keys().filter(|p| !new.contains_key(*p)) {
         if let Some(rel) = safe_relative(stale) {
@@ -131,6 +140,7 @@ mod tests {
         OutFile {
             path: path.to_owned(),
             content: content.to_owned(),
+            preserve_existing: false,
         }
     }
 
@@ -138,6 +148,25 @@ mod tests {
     fn hash_is_fixed() {
         assert_eq!(content_hash(""), "cbf29ce484222325");
         assert_eq!(content_hash("a"), "af63dc4c8601ec8c");
+    }
+
+    #[test]
+    fn preserved_files_keep_user_content_and_update_their_manifest_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut scaffold = file("src/main.rs", "template");
+        scaffold.preserve_existing = true;
+        write_files(dir.path(), &[scaffold]).unwrap();
+        let path = dir.path().join("src/main.rs");
+        fs::write(&path, "user code").unwrap();
+
+        let mut changed_template = file("src/main.rs", "new template");
+        changed_template.preserve_existing = true;
+        let second = write_files(dir.path(), &[changed_template]).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "user code");
+        assert_eq!(second.unchanged, vec!["src/main.rs"]);
+        let manifest = fs::read_to_string(dir.path().join(MANIFEST_NAME)).unwrap();
+        assert!(manifest.contains(&content_hash("user code")));
+        assert!(!manifest.contains(&content_hash("new template")));
     }
 
     #[test]

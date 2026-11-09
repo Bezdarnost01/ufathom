@@ -318,6 +318,8 @@ By default the output is self-contained: the generator embeds the matching `ufat
 
 The incremental output manifest covers the vendored files as well as the generated types. Unchanged sources are not rewritten, and switching to an explicit runtime removes only the stale files managed by the previous generation.
 
+The crate has `rlib` and `cdylib` library outputs and an external-executable target. The editable `src/main.rs` is shared by both: the DLL calls `run` with `SelfMemory` on a contained worker thread, while the executable opens a PID with `ProcessMemory` and calls the same function. `lib.rs` includes this file as a module for the DLL entry point. An existing `main.rs` is never overwritten by generation; the manifest records its current hash. The application DLL scaffold is resident and deliberately does not implement hot-unload.
+
 Why one crate: Rust modules may reference each other cyclically, so no package cycle elimination is needed. Cargo features may also be cyclic. By-value struct containment is acyclic by construction.
 
 Layout rules:

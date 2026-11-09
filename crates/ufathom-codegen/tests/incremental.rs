@@ -35,7 +35,7 @@ fn modified(dir: &std::path::Path, files: &[String]) -> Vec<std::time::SystemTim
 fn unchanged_dump_writes_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let first = generate(&golden_dump(), &options(), dir.path()).unwrap();
-    assert_eq!(first.files_written.len(), 8);
+    assert_eq!(first.files_written.len(), 9);
     let before = read_tree(dir.path());
     let times = modified(dir.path(), &first.files_written);
     let second = generate(&golden_dump(), &options(), dir.path()).unwrap();
@@ -44,7 +44,7 @@ fn unchanged_dump_writes_nothing() {
         "{:?}",
         second.files_written
     );
-    assert_eq!(second.files_unchanged.len(), 8);
+    assert_eq!(second.files_unchanged.len(), 9);
     assert_eq!(read_tree(dir.path()), before);
     assert_eq!(
         times,
@@ -74,9 +74,22 @@ fn one_changed_package_rewrites_only_its_file() {
     pawn.size = 0x58;
     let second = generate(&dump, &options(), dir.path()).unwrap();
     assert_eq!(second.files_written, vec!["src/engine.rs".to_owned()]);
-    assert_eq!(second.files_unchanged.len(), 7);
+    assert_eq!(second.files_unchanged.len(), 8);
     let text = fs::read_to_string(dir.path().join("src/engine.rs")).unwrap();
     assert!(text.contains("pub extra: i32"));
+}
+
+#[test]
+fn regeneration_preserves_the_application_entry_point() {
+    let dir = tempfile::tempdir().unwrap();
+    generate(&golden_dump(), &options(), dir.path()).unwrap();
+    let main = dir.path().join("src/main.rs");
+    fs::write(&main, "// application code\n").unwrap();
+
+    let second = generate(&golden_dump(), &options(), dir.path()).unwrap();
+    assert_eq!(fs::read_to_string(&main).unwrap(), "// application code\n");
+    assert!(!second.files_written.contains(&"src/main.rs".to_owned()));
+    assert!(second.files_unchanged.contains(&"src/main.rs".to_owned()));
 }
 
 #[test]
