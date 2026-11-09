@@ -87,6 +87,9 @@ pub(crate) fn lib_source(built: &Built, engine: Option<&str>, sdk_crate: &str) -
     wl!(out, "#[path = \"main.rs\"]");
     wl!(out, "mod app;");
     wl!(out);
+    wl!(out, "#[cfg(windows)]");
+    wl!(out, "mod dll;");
+    wl!(out);
     wl!(out, "/// The `FName` of this build.");
     wl!(out, "pub type FName = {};", built.fname.alias_target);
     for m in &built.modules {
@@ -129,6 +132,8 @@ pub(crate) fn cargo_source(
     wl!(out);
     wl!(out, "[dependencies]");
     wl!(out, "ufathom-runtime = {runtime}");
+    wl!(out);
+    wl!(out, "[target.'cfg(windows)'.dependencies]");
     wl!(
         out,
         "windows-sys = {{ version = \"0.61.2\", features = [\"Win32_Foundation\", \"Win32_Security\", \"Win32_System_Diagnostics_Debug\", \"Win32_System_LibraryLoader\", \"Win32_System_SystemServices\", \"Win32_System_Threading\"] }}"

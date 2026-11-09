@@ -158,6 +158,11 @@ pub fn generate(
             preserve_existing: false,
         },
         output::OutFile {
+            path: "src/dll.rs".to_owned(),
+            content: scaffold::dll_source().to_owned(),
+            preserve_existing: false,
+        },
+        output::OutFile {
             path: "src/main.rs".to_owned(),
             content: scaffold::main_source(&options.crate_name),
             preserve_existing: true,
