@@ -4,6 +4,12 @@ All notable changes are recorded here, in the [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-09
+
+### Added
+
+- Every generated SDK now includes an editable `src/main.rs` with a shared application entry point. The crate builds as a resident Windows DLL or as an external executable that opens a target PID for read-only access. Regenerating the SDK preserves the existing `main.rs`.
+
 ## [0.2.0] - 2026-11-08
 
 ### Added

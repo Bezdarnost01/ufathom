@@ -2,7 +2,7 @@
 
 An Unreal Engine dumper DLL and Rust SDK generator, built to survive what breaks Dumper-7's DLL. Load it in a game and it writes a reflection dump, a usmap and a Rust SDK. If your offsets are wrong, you get an error message, not a crashed game.
 
-**Status: pre-release.** `v0.2.0` is available, with real-build results for the UE 4.25 editor and a UE 4.21 shipping build. See [COMPATIBILITY.md](COMPATIBILITY.md) for exactly what has been tested. The target range is UE 4.11 to 5.8, and support is claimed version by version as real builds are verified.
+**Status: pre-release.** `v0.2.1` is available, with real-build results for the UE 4.25 editor and a UE 4.21 shipping build. See [COMPATIBILITY.md](COMPATIBILITY.md) for exactly what has been tested. The target range is UE 4.11 to 5.8, and support is claimed version by version as real builds are verified.
 
 ## Goals
 
@@ -66,6 +66,31 @@ cargo check --manifest-path my_sdk/Cargo.toml
 ```
 
 Use `--runtime-path PATH` or `--runtime-version VERSION` only when you want to override the bundled runtime with a local crate or a registry dependency.
+
+### Build the generated application
+
+Every SDK includes an editable `src/main.rs`. Put your logic in its `run` function and import generated types through the SDK crate, for example `ufathom_sdk::core_uobject::UObject`. Later SDK generation preserves this file; other generated files may be refreshed.
+
+**Windows DLL (the default library configuration):**
+
+```bat
+cd my_sdk
+cargo build --release --lib
+```
+
+The result is `target/release/ufathom_sdk.dll`. Loading it starts `run` once on a worker thread with `SelfMemory`. This scaffold is resident and does not implement hot-unload.
+
+**External Windows executable:**
+
+```bat
+cd my_sdk
+cargo build --release --bin ufathom-sdk-external
+.\target\release\ufathom-sdk-external.exe <PID>
+```
+
+The executable opens the PID with `ProcessMemory` and calls the same `run` function. Access is read-only and requires the same privileges as the target; access denial is reported, not bypassed. External mode does not provide a `ProcessEvent` executor.
+
+The file and target names above use the default `ufathom-sdk` crate name. If you customize it, replace hyphens with underscores in the DLL file name and append `-external` to the package name for the binary target.
 
 ## Documents
 

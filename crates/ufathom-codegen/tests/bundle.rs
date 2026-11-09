@@ -27,7 +27,10 @@ fn bundled_sdk_compiles_without_an_ufathom_checkout() {
         manifest.contains(r#"ufathom-runtime = { path = "vendor/ufathom-runtime" }"#),
         "{manifest}"
     );
+    assert!(manifest.contains(r#"crate-type = ["rlib", "cdylib"]"#));
     for file in [
+        "src/main.rs",
+        "src/dll.rs",
         "vendor/ufathom-runtime/Cargo.toml",
         "vendor/ufathom-runtime/src/lib.rs",
         "vendor/ufathom-mem/Cargo.toml",
@@ -44,6 +47,20 @@ fn bundled_sdk_compiles_without_an_ufathom_checkout() {
         "warnings in the standalone SDK:\n{}",
         run.stderr
     );
+    // Checking is not enough here: prove that both entry points link, including
+    // the test harnesses Cargo builds for the library and the executable.
+    for args in [
+        &["build", "--lib"][..],
+        &["build", "--bin", "ufathom-sdk-external"][..],
+        &["test", "--no-run"][..],
+    ] {
+        let run = run_cargo(dir.path(), args);
+        assert!(
+            !run.stderr.contains("warning:"),
+            "warnings while linking {args:?}:\n{}",
+            run.stderr
+        );
+    }
 }
 
 #[test]

@@ -17,6 +17,14 @@
     clippy::nursery
 )]
 
+extern crate self as ufathom_sdk;
+
+#[path = "main.rs"]
+mod app;
+
+#[cfg(windows)]
+mod dll;
+
 /// The `FName` of this build.
 pub type FName = ::ufathom_runtime::FName12;
 
