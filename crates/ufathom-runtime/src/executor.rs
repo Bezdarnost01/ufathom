@@ -72,4 +72,21 @@ pub unsafe trait Executor {
         function_path: &str,
         params: &mut [u8],
     ) -> Result<(), CallError>;
+
+    /// The class default object of the class at `class_path`, the `this` a
+    /// static function is called on.
+    ///
+    /// The default refuses: only an executor that can look objects up (such
+    /// as the in-process one) provides it.
+    ///
+    /// # Errors
+    ///
+    /// [`CallError::Refused`] by default; an implementation returns
+    /// [`CallError::FunctionNotFound`] or [`CallError::Failed`] when the class
+    /// or its default object cannot be found.
+    fn default_object(&self, class_path: &str) -> Result<Ptr<UObjectBase>, CallError> {
+        Err(CallError::Refused(format!(
+            "this executor cannot find the default object of {class_path}"
+        )))
+    }
 }

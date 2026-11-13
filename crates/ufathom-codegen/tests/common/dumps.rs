@@ -2,7 +2,7 @@
 //! and every degradation case, a small one for the behaviour test, and dumps
 //! built from the synthetic engine images of `ufathom-testkit`.
 
-use ufathom_model::flags::{CPF_CONST_PARM, CPF_OUT_PARM, CPF_PARM, CPF_RETURN_PARM};
+use ufathom_model::flags::{CPF_CONST_PARM, CPF_OUT_PARM, CPF_PARM, CPF_RETURN_PARM, FUNC_STATIC};
 use ufathom_model::{
     Dump, EngineLayout, EnumDef, EnumValue, FieldDef, FunctionDef, PropertyType, StructDef,
     StructKind,
@@ -496,6 +496,21 @@ fn actor_functions() -> Vec<FunctionDef> {
             1,
             vec![ret(native_bool_type(), 1)],
         ),
+        FunctionDef {
+            flags: FUNC_STATIC,
+            ..function(
+                &owner,
+                "GetActorCount",
+                4,
+                vec![param(
+                    "ReturnValue",
+                    0,
+                    PropertyType::Int32,
+                    4,
+                    CPF_RETURN_PARM,
+                )],
+            )
+        },
         function(
             &owner,
             "SetHealth",
@@ -1100,17 +1115,34 @@ pub fn behaviour_dump() -> Dump {
                     12,
                 ),
             ],
-            vec![function(
-                &actor,
-                "SetHealth",
-                0x10,
-                vec![
-                    param("NewHealth", 0, PropertyType::Float, 4, 0),
-                    param("bClamp", 4, native_bool_type(), 1, 0),
-                    param("OldHealth", 8, PropertyType::Float, 4, CPF_OUT_PARM),
-                    param("ReturnValue", 12, native_bool_type(), 1, CPF_RETURN_PARM),
-                ],
-            )],
+            vec![
+                function(
+                    &actor,
+                    "SetHealth",
+                    0x10,
+                    vec![
+                        param("NewHealth", 0, PropertyType::Float, 4, 0),
+                        param("bClamp", 4, native_bool_type(), 1, 0),
+                        param("OldHealth", 8, PropertyType::Float, 4, CPF_OUT_PARM),
+                        param("ReturnValue", 12, native_bool_type(), 1, CPF_RETURN_PARM),
+                    ],
+                ),
+                FunctionDef {
+                    flags: FUNC_STATIC,
+                    ..function(
+                        &actor,
+                        "GetActorCount",
+                        4,
+                        vec![param(
+                            "ReturnValue",
+                            0,
+                            PropertyType::Int32,
+                            4,
+                            CPF_RETURN_PARM,
+                        )],
+                    )
+                },
+            ],
         ),
         class(
             ENGINE,

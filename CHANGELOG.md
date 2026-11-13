@@ -19,6 +19,7 @@ All notable changes are recorded here, in the [Keep a Changelog](https://keepach
   - `run` and `call` to run code on the game thread, with an executor;
   - `before` and `after` callbacks on any game function, which can read or change parameters and skip the original;
   - `uninstall` and `rescan`.
+- **Static functions and strings.** Wrappers of static game functions take no `this`: they call the class default object, which the executor finds through the new `Executor::default_object`. `FStringBuf` and `TArrayBuf` pass Rust-owned strings and arrays as input parameters. `Session::fstring`, `fname_text` and `read_array` read engine strings, names and arrays. Together these give `FName` from text through `UKismetStringLibrary::Conv_StringToName` and text from `FText` through `UKismetTextLibrary`.
 - Dumps record the `ProcessEvent` vtable index and the `GWorld` and `GEngine` slots under `globals`. Dumps without them still load.
 
 ## [0.2.1] - 2026-11-09

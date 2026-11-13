@@ -185,4 +185,10 @@ unsafe impl Executor for InProcessExecutor {
         }
         Ok(())
     }
+
+    fn default_object(&self, class_path: &str) -> Result<Ptr<UObjectBase>, CallError> {
+        self.session
+            .default_object_of(class_path)
+            .map_err(|error| CallError::Failed(error.to_string()))
+    }
 }

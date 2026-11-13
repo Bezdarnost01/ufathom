@@ -16,7 +16,9 @@ use std::cell::RefCell;
 
 use common::{PARAMS_SIZE, desc, image, object_addr, slot};
 use ufathom_runtime::inproc::InProcessExecutor;
-use ufathom_runtime::{CallError, EngineDesc, Executor, Ptr, SessionError, UObjectBase};
+use ufathom_runtime::{
+    CallError, EngineDesc, Executor, FStringBuf, Ptr, SessionError, TArrayBuf, UObjectBase,
+};
 
 thread_local! {
     static CALLS: RefCell<Vec<(usize, usize)>> = const { RefCell::new(Vec::new()) };
@@ -143,4 +145,29 @@ fn attach_needs_the_process_event_index() {
 fn bytemuck_bytes(words: &mut [u64; 2]) -> &mut [u8] {
     // SAFETY: 16 initialised bytes, uniquely borrowed.
     unsafe { core::slice::from_raw_parts_mut(words.as_mut_ptr().cast::<u8>(), 16) }
+}
+
+#[test]
+fn reads_owned_values_and_finds_default_objects() {
+    let live = live();
+    let exec = attach(&live);
+    let text = FStringBuf::new("Привет, Unreal");
+    assert_eq!(
+        exec.session().fstring(&text.as_fstring()).unwrap(),
+        "Привет, Unreal"
+    );
+    let numbers = TArrayBuf::new(vec![3i32, 1, 4]);
+    assert_eq!(
+        exec.session().read_array(&numbers.as_tarray()).unwrap(),
+        vec![3, 1, 4]
+    );
+    assert_eq!(
+        exec.default_object("/Script/Engine.Actor").unwrap().addr(),
+        object_addr(live.base, slot::ACTOR_CDO)
+    );
+    assert!(matches!(
+        exec.default_object("/Script/Engine.Missing"),
+        Err(CallError::Failed(_))
+    ));
+    drop(live.memory);
 }

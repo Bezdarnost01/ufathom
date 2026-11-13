@@ -25,6 +25,7 @@ mod executor;
 pub mod inproc;
 mod name;
 mod object;
+mod owned;
 mod ptr;
 mod session;
 mod traits;
@@ -42,6 +43,7 @@ pub use desc::{
 pub use executor::{CallError, Executor};
 pub use name::{FName4, FName8, FName12, FName12Ue5, FNameBytes};
 pub use object::{ObjectRef, UObjectBase};
+pub use owned::{FStringBuf, TArrayBuf};
 pub use ptr::Ptr;
 pub use session::{Session, SessionError, SessionResult};
 pub use traits::{BitRef, FieldRef, IsA, TypePath};

@@ -157,3 +157,19 @@ fn unknown_module_is_an_error() {
         Err(SessionError::ModuleNotFound(_))
     ));
 }
+
+#[test]
+fn fname_values_and_default_objects_by_path() {
+    let s = session();
+    // The `NamePrivate` of `Actor_1`: the entry of "Actor", number 2.
+    let name: [u32; 2] = s
+        .read(Ptr::<[u32; 2]>::new(object_addr(BASE, slot::ACTOR_1) + 24))
+        .unwrap();
+    assert_eq!(s.fname_text(&name).unwrap(), "Actor_1");
+    assert_eq!(s.fname_text(&[name[0], 0]).unwrap(), "Actor");
+    assert_eq!(
+        s.default_object_of("/Script/Engine.Actor").unwrap(),
+        obj(slot::ACTOR_CDO)
+    );
+    assert!(s.default_object_of("/Script/Engine.Missing").is_err());
+}

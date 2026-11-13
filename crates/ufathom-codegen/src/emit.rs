@@ -610,15 +610,30 @@ fn emit_wrapper(out: &mut String, f: &PlannedFunction) {
         out,
         "    /// This wrapper fills the parameter block and hands it to the executor; it"
     );
-    wl!(
-        out,
-        "    /// runs nothing itself. `this` must be the address of a live object of this"
-    );
-    wl!(
-        out,
-        "    /// class. Memory the engine allocates for return values or out parameters"
-    );
-    wl!(out, "    /// (strings, arrays) is not freed here.");
+    if f.is_static {
+        wl!(
+            out,
+            "    /// runs nothing itself. A static function: it runs on the class default"
+        );
+        wl!(
+            out,
+            "    /// object, which the executor looks up. Memory the engine allocates for"
+        );
+        wl!(
+            out,
+            "    /// return values or out parameters (strings, arrays) is not freed here."
+        );
+    } else {
+        wl!(
+            out,
+            "    /// runs nothing itself. `this` must be the address of a live object of this"
+        );
+        wl!(
+            out,
+            "    /// class. Memory the engine allocates for return values or out parameters"
+        );
+        wl!(out, "    /// (strings, arrays) is not freed here.");
+    }
     let mut args = String::new();
     for p in &f.inputs {
         w!(args, ", {}: {}", p.arg, p.api_type);
@@ -635,11 +650,23 @@ fn emit_wrapper(out: &mut String, f: &PlannedFunction) {
                 .join(", ")
         ),
     };
-    wl!(
-        out,
-        "    pub fn {}(this: rt::Ptr<Self>, exec: &impl rt::Executor{args}) -> Result<{ret_ty}, rt::CallError> {{",
-        f.wrapper
-    );
+    if f.is_static {
+        wl!(
+            out,
+            "    pub fn {}(exec: &impl rt::Executor{args}) -> Result<{ret_ty}, rt::CallError> {{",
+            f.wrapper
+        );
+        wl!(
+            out,
+            "        let this: rt::Ptr<Self> = exec.default_object(<Self as rt::TypePath>::PATH)?.cast();"
+        );
+    } else {
+        wl!(
+            out,
+            "    pub fn {}(this: rt::Ptr<Self>, exec: &impl rt::Executor{args}) -> Result<{ret_ty}, rt::CallError> {{",
+            f.wrapper
+        );
+    }
     wl!(
         out,
         "        let mut params: {} = rt::zeroed();",

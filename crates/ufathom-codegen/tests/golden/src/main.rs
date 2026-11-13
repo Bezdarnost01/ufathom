@@ -18,7 +18,7 @@ use ufathom_sdk as sdk;
 /// DLL), on the game thread. The DLL worker is not the game thread; hook
 /// `ProcessEvent` and hand the work over:
 ///
-/// ```ignore
+/// ```text
 /// let game = unsafe { sdk::game_thread() }?;
 /// let name = game.call(std::time::Duration::from_secs(5), |ctx| {
 ///     // On the game thread: pass `ctx.executor()` to generated wrappers.

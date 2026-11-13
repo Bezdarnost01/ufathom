@@ -217,6 +217,19 @@ impl AActor {
         }
     }
 
+    /// Calls `/Script/Engine.Actor:GetActorCount` through `exec`.
+    ///
+    /// This wrapper fills the parameter block and hands it to the executor; it
+    /// runs nothing itself. A static function: it runs on the class default
+    /// object, which the executor looks up. Memory the engine allocates for
+    /// return values or out parameters (strings, arrays) is not freed here.
+    pub fn get_actor_count(exec: &impl rt::Executor) -> Result<i32, rt::CallError> {
+        let this: rt::Ptr<Self> = exec.default_object(<Self as rt::TypePath>::PATH)?.cast();
+        let mut params: AActor_GetActorCount_Params = rt::zeroed();
+        exec.process_event(this.cast(), "/Script/Engine.Actor:GetActorCount", rt::as_bytes_mut(&mut params))?;
+        Ok(params.return_value)
+    }
+
     /// Calls `/Script/Engine.Actor:GetLabel` through `exec`.
     ///
     /// This wrapper fills the parameter block and hands it to the executor; it
@@ -309,6 +322,26 @@ impl AActor {
         Ok(params.hit)
     }
 }
+
+/// Parameter block of `/Script/Engine.Actor:GetActorCount`.
+///
+/// Size 0x4, alignment 4.
+#[repr(C, align(4))]
+#[derive(Clone, Copy, Debug)]
+pub struct AActor_GetActorCount_Params {
+    /// Offset 0x0, `int32`.
+    pub return_value: i32,
+}
+
+// SAFETY: every field is `Pod`, the type is `Copy`, and the explicit padding
+// leaves no implicit padding: the size assertion below covers every byte.
+unsafe impl rt::Pod for AActor_GetActorCount_Params {}
+
+const _: () = {
+    assert!(::core::mem::size_of::<AActor_GetActorCount_Params>() == 0x4);
+    assert!(::core::mem::align_of::<AActor_GetActorCount_Params>() == 4);
+    assert!(::core::mem::offset_of!(AActor_GetActorCount_Params, return_value) == 0x0);
+};
 
 /// Parameter block of `/Script/Engine.Actor:GetLabel`.
 ///

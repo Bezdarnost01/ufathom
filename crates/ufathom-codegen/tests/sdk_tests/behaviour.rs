@@ -128,11 +128,35 @@ unsafe impl Executor for Recorder {
         self.calls
             .borrow_mut()
             .push((object.addr(), function_path.to_owned(), params.to_vec()));
-        // Out parameter `OldHealth` at 8 and return value `ReturnValue` at 12.
-        params[8..12].copy_from_slice(&25.0f32.to_le_bytes());
-        params[12] = 1;
+        if params.len() == 4 {
+            // `GetActorCount`: the return value at 0.
+            params.copy_from_slice(&7i32.to_le_bytes());
+        } else {
+            // Out parameter `OldHealth` at 8 and return value `ReturnValue` at 12.
+            params[8..12].copy_from_slice(&25.0f32.to_le_bytes());
+            params[12] = 1;
+        }
         Ok(())
     }
+
+    fn default_object(&self, class_path: &str) -> Result<Ptr<UObjectBase>, CallError> {
+        assert_eq!(class_path, "/Script/Engine.Actor");
+        Ok(Ptr::new(CDO))
+    }
+}
+
+const CDO: u64 = 0xCD0;
+
+#[test]
+fn static_wrapper_runs_on_the_class_default_object() {
+    let exec = Recorder {
+        calls: RefCell::new(Vec::new()),
+        fail: false,
+    };
+    assert_eq!(AActor::get_actor_count(&exec).unwrap(), 7);
+    let calls = exec.calls.borrow();
+    assert_eq!(calls[0].0, CDO);
+    assert_eq!(calls[0].1, "/Script/Engine.Actor:GetActorCount");
 }
 
 #[test]

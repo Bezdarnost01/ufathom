@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ufathom_model::flags::{CPF_CONST_PARM, CPF_OUT_PARM, CPF_RETURN_PARM};
+use ufathom_model::flags::{CPF_CONST_PARM, CPF_OUT_PARM, CPF_RETURN_PARM, FUNC_STATIC};
 use ufathom_model::{
     Dump, EngineLayout, EnumDef, FieldDef, FunctionDef, PropertyType, StructDef, StructKind,
 };
@@ -109,6 +109,8 @@ pub(crate) struct PlannedFunction {
     pub ret: Option<ParamBinding>,
     /// Out parameters, in declared order.
     pub outs: Vec<ParamBinding>,
+    /// `FUNC_Static`: called on the class default object, with no `this`.
+    pub is_static: bool,
     /// Modules referenced.
     pub refs: BTreeSet<String>,
 }
@@ -1001,6 +1003,7 @@ fn plan_function(
         inputs,
         ret,
         outs,
+        is_static: f.flags & FUNC_STATIC != 0,
         refs,
     })
 }

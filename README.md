@@ -129,6 +129,21 @@ game.before("/Script/Engine.Actor:ReceiveTick", |ctx| {
 })?;
 ```
 
+Strings and names work the way they do in Dumper-7 SDKs:
+
+```rust
+// An input string or array may point at Rust memory: ProcessEvent never frees inputs.
+let text = rt::FStringBuf::new("Hello");
+// Static functions run on the class default object, found by the executor.
+let name = sdk::engine::UKismetStringLibrary::conv_string_to_name(ctx.executor(), text.as_fstring())?;
+println!("{}", ctx.session().fname_text(&name)?);
+// Returned strings and arrays are read through the session.
+let label = sdk::engine::UKismetSystemLibrary::get_display_name(ctx.executor(), object)?;
+println!("{}", ctx.session().fstring(&label)?);
+```
+
+Strings and arrays the engine returns are not freed (engine allocator support is not there yet), so avoid calling such functions every frame. Never pass `FStringBuf` or `TArrayBuf` as an out parameter.
+
 The hook changes only data pointers. It patches the `ProcessEvent` slot in the virtual tables of live native classes. The thread that first makes 64 hooked calls is taken as the game thread. Tasks and callbacks get an executor, and calls made through that executor do not trigger callbacks again. A panic in user code is caught. `uninstall()` puts the slots back.
 
 The file and target names above use the default `ufathom-sdk` crate name. If you customize it, replace hyphens with underscores in the DLL file name and append `-external` to the package name for the binary target.

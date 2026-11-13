@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use ufathom_mem::{MemError, MemoryReader, MemoryReaderExt, Pod};
 
+use crate::containers::{FString, TArray};
 use crate::desc::{EngineDesc, NameArrayDesc, NamePoolDesc, NamesDesc, Place};
 use crate::object::{ObjectRef, UObjectBase};
 use crate::ptr::Ptr;
@@ -547,16 +548,28 @@ impl<M: MemoryReader> Session<M> {
     ///
     /// # Errors
     ///
-    /// As [`static_class`](Self::static_class), plus
-    /// [`SessionError::Unknown`] when the build's `ClassDefaultObject` offset
-    /// was not found and [`SessionError::Invalid`] for a null default object.
+    /// As [`default_object_of`](Self::default_object_of).
     pub fn default_object<T: TypePath>(&self) -> SessionResult<Ptr<T>> {
+        Ok(self.default_object_of(T::PATH)?.cast())
+    }
+
+    /// The class default object of the class at `class_path`.
+    ///
+    /// # Errors
+    ///
+    /// As [`find_object`](Self::find_object), plus
+    /// [`SessionError::Unknown`] when the build's `ClassDefaultObject` offset
+    /// was not found and [`SessionError::Invalid`] when the class is not
+    /// loaded or its default object is null.
+    pub fn default_object_of(&self, class_path: &str) -> SessionResult<Ptr<UObjectBase>> {
         let offset = self
             .desc
             .object
             .default_object
             .ok_or(SessionError::Unknown("UClass::ClassDefaultObject"))?;
-        let class = self.static_class::<T>()?;
+        let class = self
+            .find_object(class_path)?
+            .ok_or_else(|| invalid("type", 0, format!("{class_path} is not loaded")))?;
         let at = class.addr().wrapping_add(u64::from(offset));
         let object = self
             .mem
@@ -566,6 +579,45 @@ impl<M: MemoryReader> Session<M> {
             return Err(invalid("default object", at, "null"));
         }
         Ok(Ptr::new(object))
+    }
+
+    // ---- values ----
+
+    /// The text of an `FString`, for example a return value or a field.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::Read`] for an inconsistent or unreadable string.
+    pub fn fstring(&self, value: &FString) -> SessionResult<String> {
+        value
+            .read(&self.mem)
+            .map_err(read_error(value.chars.data.addr(), "FString"))
+    }
+
+    /// The text of an `FName` value of this build, such as the SDK's
+    /// `FName` alias.
+    ///
+    /// # Errors
+    ///
+    /// As [`fname_to_string`](Self::fname_to_string).
+    pub fn fname_text<F: Pod>(&self, value: &F) -> SessionResult<String> {
+        // SAFETY: `F: Pod` has no padding-dependent invariants; viewing its
+        // bytes is a read of initialised memory of `size_of::<F>()` bytes.
+        let bytes = unsafe {
+            core::slice::from_raw_parts(core::ptr::from_ref(value).cast::<u8>(), size_of::<F>())
+        };
+        self.fname_to_string(bytes)
+    }
+
+    /// Every element of a `TArray`.
+    ///
+    /// # Errors
+    ///
+    /// [`SessionError::Read`] for an inconsistent or unreadable array.
+    pub fn read_array<T: Pod>(&self, array: &TArray<T>) -> SessionResult<Vec<T>> {
+        array
+            .read_all(&self.mem)
+            .map_err(read_error(array.data.addr(), "TArray"))
     }
 
     /// `object` as a `T` when it is an instance of `T` or a subclass.
