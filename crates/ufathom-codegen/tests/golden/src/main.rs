@@ -14,9 +14,21 @@ use ufathom_sdk as sdk;
 /// generated types such as `sdk::core_uobject::UObject` with
 /// `session.object(ptr).get(...)`.
 ///
-/// Calling game functions needs the `inproc` feature and the game thread:
-/// `let exec = unsafe { sdk::attach() }?;` then pass `&exec` to a generated
-/// wrapper. The DLL worker below is not the game thread.
+/// Calling game functions needs the `inproc` feature, inside the game (the
+/// DLL), on the game thread. The DLL worker is not the game thread; hook
+/// `ProcessEvent` and hand the work over:
+///
+/// ```ignore
+/// let game = unsafe { sdk::game_thread() }?;
+/// let name = game.call(std::time::Duration::from_secs(5), |ctx| {
+///     // On the game thread: pass `ctx.executor()` to generated wrappers.
+///     ctx.session().gworld().ok().flatten().map(|w| ctx.session().full_name_of(w))
+/// })?;
+/// game.before("/Script/Engine.Actor:ReceiveTick", |ctx| {
+///     // Runs before every Actor tick event; may read or change parameters.
+///     let _ = ctx.object();
+/// })?;
+/// ```
 pub(crate) fn run(memory: &dyn MemoryReader) -> Result<(), Box<dyn std::error::Error>> {
     let session = sdk::session(memory)?;
     // Replace this with your own logic.

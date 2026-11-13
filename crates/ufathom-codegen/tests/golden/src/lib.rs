@@ -107,6 +107,26 @@ pub unsafe fn attach() -> Result<::ufathom_runtime::inproc::InProcessExecutor, :
     unsafe { ::ufathom_runtime::inproc::InProcessExecutor::attach(&ENGINE) }
 }
 
+/// Hooks `ProcessEvent` to run code on the game thread: `run` and `call`
+/// queue tasks that get an executor, `before` and `after` intercept calls of
+/// one game function. Installs once; later calls return the same hook.
+///
+/// # Safety
+///
+/// As [`::ufathom_runtime::inproc::GameThread::install`]: this code runs inside the game
+/// this SDK was generated from, and this module stays loaded while the hook
+/// is installed.
+///
+/// # Errors
+///
+/// As [`::ufathom_runtime::inproc::GameThread::install`].
+#[cfg(feature = "inproc")]
+pub unsafe fn game_thread() -> Result<&'static ::ufathom_runtime::inproc::GameThread, ::ufathom_runtime::inproc::HookError> {
+    // SAFETY: the caller upholds the contract above, which is the contract of
+    // `GameThread::install` for `ENGINE`.
+    unsafe { ::ufathom_runtime::inproc::GameThread::install(&ENGINE) }
+}
+
 #[cfg(feature = "mods")]
 pub mod mods;
 

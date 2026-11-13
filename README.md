@@ -114,7 +114,22 @@ let exec = unsafe { sdk::attach() }?;
 sdk::engine::AActor::k2_destroy_actor(actor, &exec)?;
 ```
 
-Before each call, the executor checks three things: the object is still alive, the path names a `UFunction`, and the parameter block is large enough. The DLL scaffold's worker thread is not the game thread. Running code on the game thread needs a hook, which is not provided yet.
+Before each call, the executor checks three things: the object is still alive, the path names a `UFunction`, and the parameter block is large enough. The DLL scaffold's worker thread is not the game thread. To get there, hook `ProcessEvent`:
+
+```rust
+// SAFETY: inside the game; the DLL stays loaded.
+let game = unsafe { sdk::game_thread() }?;
+// Run on the game thread and wait for the result.
+let world = game.call(Duration::from_secs(5), |ctx| {
+    ctx.session().gworld().ok().flatten()
+})?;
+// Intercept a game function: read or change its parameters, or skip it.
+game.before("/Script/Engine.Actor:ReceiveTick", |ctx| {
+    let _actor = ctx.object();
+})?;
+```
+
+The hook changes only data pointers. It patches the `ProcessEvent` slot in the virtual tables of live native classes. The thread that first makes 64 hooked calls is taken as the game thread. Tasks and callbacks get an executor, and calls made through that executor do not trigger callbacks again. A panic in user code is caught. `uninstall()` puts the slots back.
 
 The file and target names above use the default `ufathom-sdk` crate name. If you customize it, replace hyphens with underscores in the DLL file name and append `-external` to the package name for the binary target.
 

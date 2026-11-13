@@ -69,7 +69,7 @@ Requires the user to start each game and to load the DLL or allow attaching.
 ## M6: Polish and wider support (stage 12)
 
 - [ ] `diff` command, documentation, performance numbers measured on real dumps
-- [ ] Rust mod toolkit, so new mods need no C++: ProcessEvent and native function hooks, proxy DLL exports, game thread dispatch, engine allocator
+- [ ] Rust mod toolkit, so new mods need no C++: ProcessEvent and native function hooks, proxy DLL exports, game thread dispatch, engine allocator. Done: the ProcessEvent hook with game thread dispatch and per-function callbacks (`GameThread`), tested on a fake engine.
 - [ ] Opt-in asset loading in DLL mode
 - [ ] More engine versions, added as each is verified on a real build, using any game without anti-cheat
 

@@ -15,6 +15,10 @@ All notable changes are recorded here, in the [Keep a Changelog](https://keepach
 
   It works inside the game with `SelfMemory` and from another process with `ProcessMemory`. Every generated class and struct implements `TypePath`.
 - **Calling game functions.** With the SDK's `inproc` feature, `unsafe { sdk::attach() }` returns an `InProcessExecutor`. Generated wrappers call through `ProcessEvent` with it, after the object, the function and the parameter block size are checked.
+- **Game thread hook.** With `inproc`, `unsafe { sdk::game_thread() }` hooks `ProcessEvent` by swapping its virtual table slot. No code is patched. The hook supports:
+  - `run` and `call` to run code on the game thread, with an executor;
+  - `before` and `after` callbacks on any game function, which can read or change parameters and skip the original;
+  - `uninstall` and `rescan`.
 - Dumps record the `ProcessEvent` vtable index and the `GWorld` and `GEngine` slots under `globals`. Dumps without them still load.
 
 ## [0.2.1] - 2026-11-09

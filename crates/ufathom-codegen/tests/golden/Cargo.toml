@@ -30,5 +30,8 @@ engine = ["core_uobject"]
 main_pkg = ["core_uobject"]
 std_pkg = ["core_uobject"]
 
+# The workspace lints are for the vendored runtime, not for generated code.
+[lints]
+
 # This crate is its own workspace, so it builds from any directory.
 [workspace]

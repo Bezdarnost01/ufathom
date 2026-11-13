@@ -131,6 +131,26 @@ pub unsafe fn attach() -> Result<{rt}::inproc::InProcessExecutor, {rt}::SessionE
     // `InProcessExecutor::attach` for `ENGINE`.
     unsafe {{ {rt}::inproc::InProcessExecutor::attach(&ENGINE) }}
 }}
+
+/// Hooks `ProcessEvent` to run code on the game thread: `run` and `call`
+/// queue tasks that get an executor, `before` and `after` intercept calls of
+/// one game function. Installs once; later calls return the same hook.
+///
+/// # Safety
+///
+/// As [`{rt}::inproc::GameThread::install`]: this code runs inside the game
+/// this SDK was generated from, and this module stays loaded while the hook
+/// is installed.
+///
+/// # Errors
+///
+/// As [`{rt}::inproc::GameThread::install`].
+#[cfg(feature = \"inproc\")]
+pub unsafe fn game_thread() -> Result<&'static {rt}::inproc::GameThread, {rt}::inproc::HookError> {{
+    // SAFETY: the caller upholds the contract above, which is the contract of
+    // `GameThread::install` for `ENGINE`.
+    unsafe {{ {rt}::inproc::GameThread::install(&ENGINE) }}
+}}
 ",
         place(&o.location),
         o.objects,

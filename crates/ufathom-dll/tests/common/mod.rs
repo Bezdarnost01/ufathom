@@ -42,13 +42,7 @@ fn target_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("CARGO_TARGET_DIR") {
         return PathBuf::from(dir);
     }
-    // target/<profile>/deps/<test>.exe
-    let exe = std::env::current_exe().unwrap();
-    exe.parent()
-        .and_then(Path::parent)
-        .and_then(Path::parent)
-        .unwrap()
-        .to_owned()
+    ufathom_testkit::artifact_dir().parent().unwrap().to_owned()
 }
 
 /// File name `cargo build -p ufathom-dll` gives the DLL. The library is not
@@ -95,9 +89,7 @@ pub const LARGE_FILLER: usize = 60_000;
 pub fn fake_host_path() -> PathBuf {
     static PATH: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
     PATH.get_or_init(|| {
-        let exe = std::env::current_exe().unwrap();
-        let profile_dir = exe.parent().and_then(Path::parent).unwrap().to_owned();
-        let path = profile_dir.join("fake-host.exe");
+        let path = ufathom_testkit::artifact_dir().join("fake-host.exe");
         if !path.exists() {
             let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
             let status = Command::new(cargo)

@@ -2,6 +2,14 @@
 //!
 //! Only compiled with the `inproc` feature. This is the one place in the
 //! runtime that runs game code.
+//!
+//! [`GameThread`] hooks `ProcessEvent` to run code on the game thread: queued
+//! tasks, and callbacks before and after chosen game functions.
+
+mod hook;
+mod patch;
+
+pub use hook::{CallContext, GameContext, GameThread, HookError, HookId};
 
 use core::ffi::c_void;
 use core::marker::PhantomData;
@@ -17,7 +25,7 @@ use crate::session::{Session, SessionError};
 /// `void UObject::ProcessEvent(UFunction*, void*)`, a virtual member
 /// function. On x86-64 a `this` call uses the platform C convention with
 /// `this` as the first argument.
-type ProcessEventFn = unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void);
+pub(crate) type ProcessEventFn = unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void);
 
 /// Calls game functions from inside the game process.
 ///

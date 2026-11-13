@@ -161,6 +161,12 @@ pub(crate) fn cargo_source(
     wl!(out);
     wl!(
         out,
+        "# The workspace lints are for the vendored runtime, not for generated code."
+    );
+    wl!(out, "[lints]");
+    wl!(out);
+    wl!(
+        out,
         "# This crate is its own workspace, so it builds from any directory."
     );
     wl!(out, "[workspace]");

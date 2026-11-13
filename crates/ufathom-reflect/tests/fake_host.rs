@@ -39,9 +39,7 @@ fn fake_host_path() -> PathBuf {
 }
 
 fn locate_fake_host() -> PathBuf {
-    let exe = std::env::current_exe().unwrap();
-    let profile_dir = exe.parent().and_then(|deps| deps.parent()).unwrap();
-    let path = profile_dir.join("fake-host.exe");
+    let path = ufathom_testkit::artifact_dir().join("fake-host.exe");
     if !path.exists() {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
         let status = Command::new(cargo)
