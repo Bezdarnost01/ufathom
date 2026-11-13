@@ -11,18 +11,27 @@ pub(crate) fn main_source(crate_name: &str) -> String {
 //! The DLL and the external executable both call `run`. Generated files are
 //! refreshed by later dumps, but an existing `main.rs` is preserved.
 
-use ufathom_runtime::{mem::ProcessMemory, MemError, MemoryReader};
+use ufathom_runtime::{mem::ProcessMemory, MemoryReader};
 use ufathom_sdk as sdk;
 
 /// Runs with checked, read-only access to the target's memory.
 ///
-/// Add application logic here. Import generated types through `sdk`, for
-/// example `sdk::core_uobject::UObject`, and read them with `ObjectRef`.
-pub(crate) fn run(memory: &dyn MemoryReader) -> Result<(), MemError> {
-    // This use proves that the application is linked to the generated SDK.
-    // Replace it with your own object reads.
-    let _fname_size = core::mem::size_of::<sdk::FName>();
-    let _ = memory;
+/// Add application logic here. `sdk::session` gives names, object paths,
+/// `find_object`, `objects_of::<T>()`, `is_a`, `cast`, `static_class::<T>()`,
+/// `default_object::<T>()`, `gworld()` and `gengine()`. Read fields of
+/// generated types such as `sdk::core_uobject::UObject` with
+/// `session.object(ptr).get(...)`.
+///
+/// Calling game functions needs the `inproc` feature and the game thread:
+/// `let exec = unsafe { sdk::attach() }?;` then pass `&exec` to a generated
+/// wrapper. The DLL worker below is not the game thread.
+pub(crate) fn run(memory: &dyn MemoryReader) -> Result<(), Box<dyn std::error::Error>> {
+    let session = sdk::session(memory)?;
+    // Replace this with your own logic.
+    let _objects = session.num_objects()?;
+    if let Ok(Some(world)) = session.gworld() {
+        let _world = session.full_name_of(world)?;
+    }
     Ok(())
 }
 

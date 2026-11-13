@@ -4,6 +4,19 @@ All notable changes are recorded here, in the [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+### Added
+
+- **In-game toolbox in every SDK.** `sdk::session(memory)` opens a `Session` from the build description the SDK now carries as `ENGINE`. It provides:
+  - `FName` to text, object paths and full names;
+  - `find_object`, `find_by_name` and `objects_of::<T>()`;
+  - `is_a` and `cast::<T>()`;
+  - `static_class::<T>()` and `default_object::<T>()`;
+  - `gworld()` and `gengine()`.
+
+  It works inside the game with `SelfMemory` and from another process with `ProcessMemory`. Every generated class and struct implements `TypePath`.
+- **Calling game functions.** With the SDK's `inproc` feature, `unsafe { sdk::attach() }` returns an `InProcessExecutor`. Generated wrappers call through `ProcessEvent` with it, after the object, the function and the parameter block size are checked.
+- Dumps record the `ProcessEvent` vtable index and the `GWorld` and `GEngine` slots under `globals`. Dumps without them still load.
+
 ## [0.2.1] - 2026-11-09
 
 ### Added

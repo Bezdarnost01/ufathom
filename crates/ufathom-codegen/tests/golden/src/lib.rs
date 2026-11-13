@@ -28,6 +28,85 @@ mod dll;
 /// The `FName` of this build.
 pub type FName = ::ufathom_runtime::FName12;
 
+/// The engine build this SDK was generated from: where the name table and the
+/// object array live and the offsets a [`::ufathom_runtime::Session`] needs.
+pub static ENGINE: ::ufathom_runtime::EngineDesc = ::ufathom_runtime::EngineDesc {
+    names: ::ufathom_runtime::NamesDesc::Pool(::ufathom_runtime::NamePoolDesc {
+        location: ::ufathom_runtime::Place::Absolute(0x0),
+        blocks: 0x10,
+        stride: 4,
+        block_offset_bits: 16,
+        header_offset: 0x4,
+        string_offset: 0x6,
+        len_shift: 1,
+        wide_mask: 0x1,
+    }),
+    objects: ::ufathom_runtime::ObjectArrayDesc {
+        location: ::ufathom_runtime::Place::Absolute(0x0),
+        elements_per_chunk: Some(65536),
+        objects: 0x0,
+        num_elements: 0x14,
+        item_size: 0x18,
+        item_object: 0x0,
+        item_serial: Some(0x10),
+        pointer_transform: &[],
+    },
+    fname: ::ufathom_runtime::FNameDesc {
+        size: 12,
+        comparison_index: 0x0,
+        display_index: Some(0x4),
+        number: Some(0x8),
+    },
+    object: ::ufathom_runtime::ObjectDesc {
+        flags: 0x8,
+        index: 0xc,
+        class: 0x10,
+        name: 0x18,
+        outer: 0x28,
+        super_struct: 0x48,
+        properties_size: 0x60,
+        default_object: Some(0x128),
+    },
+    process_event_index: Some(68),
+    gworld: Some(::ufathom_runtime::Place::Rva { module: "Game-Win64-Shipping.exe", rva: 0x5a12340 }),
+    gengine: None,
+};
+
+/// Opens a session over `memory` for this build: names, object paths,
+/// lookups, `IsA`, class default objects, `GWorld` and `GEngine`.
+///
+/// Inside the game pass `::ufathom_runtime::mem::SelfMemory::new()`; from another process
+/// pass a `::ufathom_runtime::mem::ProcessMemory`.
+///
+/// # Errors
+///
+/// As [`::ufathom_runtime::Session::new`].
+pub fn session<M: ::ufathom_runtime::MemoryReader>(
+    memory: M,
+) -> Result<::ufathom_runtime::Session<M>, ::ufathom_runtime::SessionError> {
+    ::ufathom_runtime::Session::new(memory, &ENGINE)
+}
+
+/// Attaches an executor that calls game functions through `ProcessEvent`.
+/// Its [`session`](::ufathom_runtime::inproc::InProcessExecutor::session) gives the
+/// lookups as well.
+///
+/// # Safety
+///
+/// As [`::ufathom_runtime::inproc::InProcessExecutor::attach`]: this code runs inside the
+/// game this SDK was generated from, and every call is made on the game
+/// thread.
+///
+/// # Errors
+///
+/// As [`::ufathom_runtime::inproc::InProcessExecutor::attach`].
+#[cfg(feature = "inproc")]
+pub unsafe fn attach() -> Result<::ufathom_runtime::inproc::InProcessExecutor, ::ufathom_runtime::SessionError> {
+    // SAFETY: the caller upholds the contract above, which is the contract of
+    // `InProcessExecutor::attach` for `ENGINE`.
+    unsafe { ::ufathom_runtime::inproc::InProcessExecutor::attach(&ENGINE) }
+}
+
 #[cfg(feature = "mods")]
 pub mod mods;
 

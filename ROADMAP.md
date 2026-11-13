@@ -43,7 +43,7 @@ Research, naming, architecture, workspace, memory reading.
 ## M4: Rust SDK and runtime (stages 8, 9)
 
 - [ ] `ufathom-codegen` with golden and compile tests
-- [ ] `ufathom-runtime`: containers, `Session`, `ObjectRef`, `Executor`, `inproc`
+- [x] `ufathom-runtime`: containers, `Session`, `ObjectRef`, `Executor`, `inproc` (tested against fake objects and a fake vtable; not yet run in a real game)
 - [ ] DLL and CLI: SDK output
 - [ ] Self-contained SDK output: matching runtime sources and licenses under `vendor/`, with no ufathom checkout or published runtime package required
 - [x] Editable `main.rs` scaffold that links as a resident DLL or an external read-only executable and survives SDK regeneration

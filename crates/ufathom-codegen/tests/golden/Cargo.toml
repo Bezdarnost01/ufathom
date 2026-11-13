@@ -21,6 +21,8 @@ windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Secur
 [features]
 default = ["all"]
 all = ["mods", "core_pkg", "core_uobject", "engine", "main_pkg", "std_pkg"]
+# Calls game functions through ProcessEvent: `attach()`. Inside the game only.
+inproc = ["ufathom-runtime/inproc"]
 mods = ["core_uobject", "engine"]
 core_pkg = ["core_uobject"]
 core_uobject = []

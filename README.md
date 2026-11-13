@@ -90,6 +90,32 @@ cargo build --release --bin ufathom-sdk-external
 
 The executable opens the PID with `ProcessMemory` and calls the same `run` function. Access is read-only and requires the same privileges as the target; access denial is reported, not bypassed. External mode does not provide a `ProcessEvent` executor.
 
+### Work with game objects
+
+`sdk::session(memory)` opens a `Session` for the build the SDK was generated from. It works in both modes:
+
+```rust
+let session = sdk::session(memory)?;
+let actor_class = session.static_class::<sdk::engine::AActor>()?;
+for pawn in session.objects_of::<sdk::engine::APawn>()? {
+    println!("{}", session.full_name_of(pawn)?);
+}
+let world = session.gworld()?;
+```
+
+It also provides `find_object` by path, `find_by_name`, `is_a`, `cast::<T>()`, `default_object::<T>()`, `gengine()` and checked field reads through `session.object(ptr).get(T::FIELD)`.
+
+Calling game functions works only inside the game. Build with `--features inproc` and attach on the game thread:
+
+```rust
+// SAFETY: inside the game, on the game thread.
+let exec = unsafe { sdk::attach() }?;
+// `actor` is a `Ptr<sdk::engine::AActor>`, for example from `objects_of` or `cast`.
+sdk::engine::AActor::k2_destroy_actor(actor, &exec)?;
+```
+
+Before each call, the executor checks three things: the object is still alive, the path names a `UFunction`, and the parameter block is large enough. The DLL scaffold's worker thread is not the game thread. Running code on the game thread needs a hook, which is not provided yet.
+
 The file and target names above use the default `ufathom-sdk` crate name. If you customize it, replace hyphens with underscores in the DLL file name and append `-external` to the package name for the binary target.
 
 ## Documents

@@ -214,7 +214,7 @@ pub(crate) fn build(dump: &Dump) -> Built {
     let mut packages: BTreeSet<&str> = dump.packages.iter().map(String::as_str).collect();
     packages.extend(dump.structs.iter().map(|s| s.package.as_str()));
     packages.extend(dump.enums.iter().map(|e| e.package.as_str()));
-    let mut module_ns = Namespace::with_reserved(&["default", "all"]);
+    let mut module_ns = Namespace::with_reserved(&["default", "all", "inproc", "app", "dll"]);
     let mut module_of: BTreeMap<&str, String> = BTreeMap::new();
     for pkg in &packages {
         module_of.insert(

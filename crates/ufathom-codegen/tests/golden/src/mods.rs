@@ -28,6 +28,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(ABP_Thing_C, count) == 0x48);
 };
 
+impl rt::TypePath for ABP_Thing_C {
+    const PATH: &'static str = "/Game/Mods.BP_Thing_C";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<ABP_Thing_C> for ABP_Thing_C {}
 

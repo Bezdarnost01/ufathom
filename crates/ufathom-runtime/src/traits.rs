@@ -16,6 +16,17 @@ use core::marker::PhantomData;
 /// from an address that holds a `Self`.
 pub unsafe trait IsA<Base> {}
 
+/// The engine path of a generated class or script struct, such as
+/// `/Script/Engine.Actor`.
+///
+/// Generated types implement it, which gives a
+/// [`Session`](crate::Session) `StaticClass`, the class default object,
+/// typed casts and typed object lists for them.
+pub trait TypePath {
+    /// Full object path of the type.
+    const PATH: &'static str;
+}
+
 /// The offset of a field of type `Field` inside an `Owner`.
 ///
 /// Used for reads through a [`MemoryReader`](crate::MemoryReader) with

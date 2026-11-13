@@ -342,9 +342,10 @@ Layout rules:
 
 - Containers as `Pod` views: `Ptr<T>`, `TArray<T>`, `FString`, `FName` variants, `TMap`, `TSet`, `FText` opaque, delegates opaque, soft and weak pointers.
 - In-process use is the main case, for mods written in Rust: `Ptr<T>` to `&T` through an `unsafe` conversion with a stated contract, plus safe checked lookups.
-- `Session<M: MemoryReader>`: name table and objects from an `EngineLayout`, for any reader. `find_class`, `find_object`, `objects_of::<T>()`. `ObjectRef<T>::read()` and `.get(T::FIELD)`.
+- `Session<M: MemoryReader>`: built from the `EngineDesc` the SDK carries as `ENGINE` (opened with `sdk::session(memory)`), for any reader. `FName` to text with a cache by entry index, `path_of`, `full_name_of` (`Class Path`, as `GetFullName` prints it), `find_object` by path with a re-validated cache, `find_by_name`, `objects_of::<T>()` (class default objects excluded), `is_a`, `cast::<T>()`, `static_class::<T>()`, `default_object::<T>()`, `gworld()`, `gengine()`, `is_valid`. Every generated class and script struct implements `TypePath` with its engine path. `ObjectRef<T>::read()` and `.get(T::FIELD)`.
+- The dump carries `globals` (`process_event_index`, `gworld`, `gengine`) next to the layout. A global with several candidate slots is left out. An empty value is not written, so older dumps read unchanged.
 - `Executor` is the only way to call a game function. External sessions do not implement it, so a remote call does not compile.
-- `InProcessExecutor` (`inproc` feature): created through `unsafe fn attach` with the contract "on the game thread". Calls ProcessEvent through the discovered vtable index. Checks object validity by index and serial before each call.
+- `InProcessExecutor` (`inproc` feature, `sdk::attach()` in the SDK): created through `unsafe fn attach` with the contract "inside this game, on the game thread", and `!Send` so it stays on that thread. Before each call it checks that the object still sits in the slot its `InternalIndex` names, that the path names a `UFunction`, and that the parameter block is at least its `PropertiesSize`. It then calls ProcessEvent through the discovered vtable index. A fault inside the game function is not caught.
 - Generated wrappers do not free memory the engine allocated for return values. This is documented on the wrapper.
 
 ## `ufathom-usmap`

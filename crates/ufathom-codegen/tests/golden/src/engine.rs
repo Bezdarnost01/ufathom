@@ -113,6 +113,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(AActor, location) == 0x38);
 };
 
+impl rt::TypePath for AActor {
+    const PATH: &'static str = "/Script/Engine.Actor";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<AActor> for AActor {}
 
@@ -522,6 +526,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(UBitShare, b_plain) == 0x33);
 };
 
+impl rt::TypePath for UBitShare {
+    const PATH: &'static str = "/Script/Engine.BitShare";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UBitShare> for UBitShare {}
 
@@ -637,6 +645,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(FCycleA, b) == 0x0);
 };
 
+impl rt::TypePath for FCycleA {
+    const PATH: &'static str = "/Script/Engine.CycleA";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<FCycleA> for FCycleA {}
 
@@ -664,6 +676,10 @@ const _: () = {
     assert!(::core::mem::align_of::<FCycleB>() == 4);
     assert!(::core::mem::offset_of!(FCycleB, a) == 0x0);
 };
+
+impl rt::TypePath for FCycleB {
+    const PATH: &'static str = "/Script/Engine.CycleB";
+}
 
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<FCycleB> for FCycleB {}
@@ -696,6 +712,10 @@ const _: () = {
     assert!(::core::mem::align_of::<UDup>() == 8);
     assert!(::core::mem::offset_of!(UDup, a) == 0x30);
 };
+
+impl rt::TypePath for UDup {
+    const PATH: &'static str = "/Script/Engine.Dup";
+}
 
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UDup> for UDup {}
@@ -738,6 +758,10 @@ const _: () = {
     assert!(::core::mem::align_of::<FEmptyAligned>() == 8);
 };
 
+impl rt::TypePath for FEmptyAligned {
+    const PATH: &'static str = "/Script/Engine.EmptyAligned";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<FEmptyAligned> for FEmptyAligned {}
 
@@ -762,6 +786,10 @@ const _: () = {
     assert!(::core::mem::align_of::<UEmptyBase>() == 8);
 };
 
+impl rt::TypePath for UEmptyBase {
+    const PATH: &'static str = "/Script/Engine.EmptyBase";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UEmptyBase> for UEmptyBase {}
 
@@ -785,6 +813,10 @@ const _: () = {
     assert!(::core::mem::size_of::<FEmptyStruct>() == 0x0);
     assert!(::core::mem::align_of::<FEmptyStruct>() == 1);
 };
+
+impl rt::TypePath for FEmptyStruct {
+    const PATH: &'static str = "/Script/Engine.EmptyStruct";
+}
 
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<FEmptyStruct> for FEmptyStruct {}
@@ -963,6 +995,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(UEverything, corners) == 0x2e0);
     assert!(::core::mem::offset_of!(UEverything, _bits_0x02f8) == 0x2f8);
 };
+
+impl rt::TypePath for UEverything {
+    const PATH: &'static str = "/Script/Engine.Everything";
+}
 
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UEverything> for UEverything {}
@@ -1170,6 +1206,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(UFromEmpty, value) == 0x0);
 };
 
+impl rt::TypePath for UFromEmpty {
+    const PATH: &'static str = "/Script/Engine.FromEmpty";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UFromEmpty> for UFromEmpty {}
 
@@ -1225,6 +1265,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(UKeywords, r#match) == 0x31);
     assert!(::core::mem::offset_of!(UKeywords, plain) == 0x38);
 };
+
+impl rt::TypePath for UKeywords {
+    const PATH: &'static str = "/Script/Engine.Keywords";
+}
 
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UKeywords> for UKeywords {}
@@ -1433,6 +1477,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(FLowAlign, n) == 0x8);
 };
 
+impl rt::TypePath for FLowAlign {
+    const PATH: &'static str = "/Script/Engine.LowAlign";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<FLowAlign> for FLowAlign {}
 
@@ -1471,6 +1519,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(FMisaligned, b) == 0x4);
     assert!(::core::mem::offset_of!(FMisaligned, c) == 0xc);
 };
+
+impl rt::TypePath for FMisaligned {
+    const PATH: &'static str = "/Script/Engine.Misaligned";
+}
 
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<FMisaligned> for FMisaligned {}
@@ -1516,6 +1568,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(FOddSize, c) == 0x28);
 };
 
+impl rt::TypePath for FOddSize {
+    const PATH: &'static str = "/Script/Engine.OddSize";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<FOddSize> for FOddSize {}
 
@@ -1554,6 +1610,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(UOrphan, v) == 0x10);
 };
 
+impl rt::TypePath for UOrphan {
+    const PATH: &'static str = "/Script/Engine.Orphan";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UOrphan> for UOrphan {}
 
@@ -1585,6 +1645,10 @@ const _: () = {
     assert!(::core::mem::align_of::<UDup_1>() == 8);
     assert!(::core::mem::offset_of!(UDup_1, b) == 0x30);
 };
+
+impl rt::TypePath for UDup_1 {
+    const PATH: &'static str = "/Script/Engine.Outer.Dup";
+}
 
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UDup_1> for UDup_1 {}
@@ -1636,6 +1700,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(UOverlapper, big) == 0x30);
     assert!(::core::mem::offset_of!(UOverlapper, after) == 0x38);
 };
+
+impl rt::TypePath for UOverlapper {
+    const PATH: &'static str = "/Script/Engine.Overlapper";
+}
 
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UOverlapper> for UOverlapper {}
@@ -1691,6 +1759,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(APawn, speed) == 0x48);
 };
 
+impl rt::TypePath for APawn {
+    const PATH: &'static str = "/Script/Engine.Pawn";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<APawn> for APawn {}
 
@@ -1745,6 +1817,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(FQuarterSize, q) == 0x20);
 };
 
+impl rt::TypePath for FQuarterSize {
+    const PATH: &'static str = "/Script/Engine.QuarterSize";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<FQuarterSize> for FQuarterSize {}
 
@@ -1783,6 +1859,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(UReuseBase, flag) == 0x8);
 };
 
+impl rt::TypePath for UReuseBase {
+    const PATH: &'static str = "/Script/Engine.ReuseBase";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UReuseBase> for UReuseBase {}
 
@@ -1820,6 +1900,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(UReuseChild, extra) == 0xc);
     assert!(::core::mem::offset_of!(UReuseChild, tail) == 0x10);
 };
+
+impl rt::TypePath for UReuseChild {
+    const PATH: &'static str = "/Script/Engine.ReuseChild";
+}
 
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UReuseChild> for UReuseChild {}
@@ -1877,6 +1961,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(USizeMismatch, v) == 0x30);
     assert!(::core::mem::offset_of!(USizeMismatch, gone) == 0x40);
 };
+
+impl rt::TypePath for USizeMismatch {
+    const PATH: &'static str = "/Script/Engine.SizeMismatch";
+}
 
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<USizeMismatch> for USizeMismatch {}
@@ -1959,6 +2047,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(UType, self__1) == 0x58);
 };
 
+impl rt::TypePath for UType {
+    const PATH: &'static str = "/Script/Engine.Type";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UType> for UType {}
 
@@ -2034,6 +2126,10 @@ const _: () = {
     assert!(::core::mem::align_of::<FWeirdAlign>() == 4);
     assert!(::core::mem::offset_of!(FWeirdAlign, a) == 0x0);
 };
+
+impl rt::TypePath for FWeirdAlign {
+    const PATH: &'static str = "/Script/Engine.WeirdAlign";
+}
 
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<FWeirdAlign> for FWeirdAlign {}

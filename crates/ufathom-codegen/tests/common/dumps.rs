@@ -1044,7 +1044,16 @@ pub fn golden_dump() -> Dump {
         ),
         enum_def(ENGINE, "Direction", 2, &[("Left", 0), ("Right", 1)]),
     ];
-    make_dump(layout, structs, enums)
+    let mut dump = make_dump(layout, structs, enums);
+    dump.globals = ufathom_model::RuntimeGlobals {
+        process_event_index: Some(0x44),
+        gworld: Some(ufathom_model::layout::Location::Rva {
+            module: "Game-Win64-Shipping.exe".to_owned(),
+            rva: 0x5a1_2340,
+        }),
+        gengine: None,
+    };
+    dump
 }
 
 /// A small dump with known byte offsets, for the behaviour test.

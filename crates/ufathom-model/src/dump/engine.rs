@@ -4,6 +4,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::layout::Location;
+
 /// The tool that produced a dump.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolInfo {
@@ -60,4 +62,30 @@ pub struct EngineInfo {
     pub max_version: Option<EngineVersion>,
     /// Human-readable facts behind the fields above.
     pub evidence: Vec<String>,
+}
+
+/// Engine globals a generated SDK needs at run time, inside the game.
+///
+/// Every part is optional: discovery leaves a value out when it is not found
+/// or when several candidates remain. An empty value is not written to JSON,
+/// so a dump taken without globals reads and writes as before.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeGlobals {
+    /// Virtual table index of `UObject::ProcessEvent`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub process_event_index: Option<u32>,
+    /// The slot holding the pointer to the live `UWorld` (`GWorld`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gworld: Option<Location>,
+    /// The slot holding the pointer to the live `UEngine` (`GEngine`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gengine: Option<Location>,
+}
+
+impl RuntimeGlobals {
+    /// `true` when nothing is known.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.process_event_index.is_none() && self.gworld.is_none() && self.gengine.is_none()
+    }
 }

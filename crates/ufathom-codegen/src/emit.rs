@@ -47,7 +47,12 @@ pub(crate) fn module_source(built: &Built, module: &ModuleInfo) -> String {
 }
 
 /// The text of `src/lib.rs`.
-pub(crate) fn lib_source(built: &Built, engine: Option<&str>, sdk_crate: &str) -> String {
+pub(crate) fn lib_source(
+    built: &Built,
+    engine: Option<&str>,
+    sdk_crate: &str,
+    engine_items: &str,
+) -> String {
     let mut out = String::new();
     wl!(
         out,
@@ -92,6 +97,7 @@ pub(crate) fn lib_source(built: &Built, engine: Option<&str>, sdk_crate: &str) -
     wl!(out);
     wl!(out, "/// The `FName` of this build.");
     wl!(out, "pub type FName = {};", built.fname.alias_target);
+    out.push_str(engine_items);
     for m in &built.modules {
         wl!(out);
         wl!(out, "#[cfg(feature = \"{}\")]", m.name);
@@ -143,6 +149,11 @@ pub(crate) fn cargo_source(
     wl!(out, "default = [\"all\"]");
     let all: Vec<String> = built.modules.iter().map(|m| toml_string(&m.name)).collect();
     wl!(out, "all = [{}]", all.join(", "));
+    wl!(
+        out,
+        "# Calls game functions through ProcessEvent: `attach()`. Inside the game only."
+    );
+    wl!(out, "inproc = [\"ufathom-runtime/inproc\"]");
     for m in &built.modules {
         let deps: Vec<String> = m.deps.iter().map(|d| toml_string(d)).collect();
         wl!(out, "{} = [{}]", m.name, deps.join(", "));
@@ -481,6 +492,10 @@ fn emit_struct(out: &mut String, s: &PlannedStruct) {
         s.base_path.as_deref(),
     );
 
+    wl!(out);
+    wl!(out, "impl rt::TypePath for {name} {{");
+    wl!(out, "    const PATH: &'static str = {:?};", s.path);
+    wl!(out, "}}");
     wl!(out);
     wl!(out, "// SAFETY: the type starts with itself.");
     wl!(out, "unsafe impl rt::IsA<{name}> for {name} {{}}");

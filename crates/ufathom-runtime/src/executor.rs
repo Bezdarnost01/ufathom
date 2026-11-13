@@ -20,7 +20,7 @@ pub enum CallError {
         /// The object address that was passed.
         addr: u64,
     },
-    /// The parameter block does not have the size the function declares.
+    /// The parameter block is smaller than the size the function declares.
     #[error("parameter block is {actual} bytes, the function takes {expected}")]
     ParamsSize {
         /// Size the function declares.
@@ -43,9 +43,9 @@ pub enum CallError {
 /// This is an `unsafe` trait on purpose: an implementation runs game code, so
 /// it must only be written by code that can guarantee it is sound to do so
 /// (for example, an in-process executor that is on the game thread and has
-/// validated the object). Nothing implements it by accident, and this crate
-/// provides no implementation. A test double that never touches a real game
-/// may implement it too.
+/// validated the object). Nothing implements it by accident. This crate's
+/// implementation is `InProcessExecutor`, behind the `inproc` feature. A test
+/// double that never touches a real game may implement it too.
 ///
 /// An implementation must:
 ///
