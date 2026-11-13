@@ -6,7 +6,7 @@ use std::time::Instant;
 use ufathom_engine::{LoadOptions, NameTable, ObjectArrayView, for_layout};
 use ufathom_mem::{MemoryReader, PageCache};
 use ufathom_model::layout::Location;
-use ufathom_model::{Dump, EngineLayout, Severity, TargetInfo, ToolInfo};
+use ufathom_model::{Dump, EngineLayout, RuntimeGlobals, Severity, TargetInfo, ToolInfo};
 use ufathom_scan::Discovery;
 
 use crate::classify::classify;
@@ -140,6 +140,7 @@ pub fn build_dump(
     }
     stats.enums = parsed.enums.len() as u64;
     stats.functions = parsed.functions;
+    dump.globals = runtime_globals(&discovery.globals);
     dump.packages = packages;
     dump.structs = parsed.structs;
     dump.enums = parsed.enums;
@@ -307,6 +308,20 @@ fn note_name_problems(names: &NameTable, tally: &mut Tally) {
                 stats.unresolved_numbered, stats.unreadable_entries
             ),
         ));
+    }
+}
+
+/// The globals a generated SDK uses in process. A global with several
+/// candidate slots is left out: guessing would hand the SDK a wrong object.
+fn runtime_globals(globals: &ufathom_scan::Globals) -> RuntimeGlobals {
+    let only = |slots: &[Location]| match slots {
+        [one] => Some(one.clone()),
+        _ => None,
+    };
+    RuntimeGlobals {
+        process_event_index: globals.process_event_index,
+        gworld: only(&globals.gworld_slots),
+        gengine: only(&globals.gengine_slots),
     }
 }
 

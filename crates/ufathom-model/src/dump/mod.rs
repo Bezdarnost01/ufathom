@@ -6,7 +6,7 @@ mod types;
 #[cfg(test)]
 mod tests;
 
-pub use engine::{EngineInfo, EngineVersion, TargetInfo, ToolInfo};
+pub use engine::{EngineInfo, EngineVersion, RuntimeGlobals, TargetInfo, ToolInfo};
 pub use types::{
     BoolBits, Diagnostic, EnumDef, EnumValue, FieldDef, FunctionDef, PropertyType, Severity,
     StructDef, StructKind,
@@ -40,6 +40,9 @@ pub struct Dump {
     pub engine: EngineInfo,
     /// The layout the dump was read with.
     pub layout: EngineLayout,
+    /// Engine globals for in-process use. Omitted from JSON when empty.
+    #[serde(default, skip_serializing_if = "RuntimeGlobals::is_empty")]
+    pub globals: RuntimeGlobals,
     /// Names of all packages, sorted and without duplicates after
     /// [`Dump::normalize`].
     pub packages: Vec<String>,
@@ -66,6 +69,7 @@ impl Dump {
             target,
             engine,
             layout,
+            globals: RuntimeGlobals::default(),
             packages: Vec::new(),
             structs: Vec::new(),
             enums: Vec::new(),

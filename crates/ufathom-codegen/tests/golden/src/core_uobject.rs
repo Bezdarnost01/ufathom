@@ -116,6 +116,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(UClass, class_default_object) == 0x128);
 };
 
+impl rt::TypePath for UClass {
+    const PATH: &'static str = "/Script/CoreUObject.Class";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UClass> for UClass {}
 
@@ -171,6 +175,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(UField, next) == 0x30);
 };
 
+impl rt::TypePath for UField {
+    const PATH: &'static str = "/Script/CoreUObject.Field";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UField> for UField {}
 
@@ -225,6 +233,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(UFunction, function_flags) == 0xb8);
     assert!(::core::mem::offset_of!(UFunction, func) == 0xe0);
 };
+
+impl rt::TypePath for UFunction {
+    const PATH: &'static str = "/Script/CoreUObject.Function";
+}
 
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UFunction> for UFunction {}
@@ -288,6 +300,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(FGuid, d) == 0xc);
 };
 
+impl rt::TypePath for FGuid {
+    const PATH: &'static str = "/Script/CoreUObject.Guid";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<FGuid> for FGuid {}
 
@@ -341,6 +357,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(UObject, name_private) == 0x18);
     assert!(::core::mem::offset_of!(UObject, outer_private) == 0x28);
 };
+
+impl rt::TypePath for UObject {
+    const PATH: &'static str = "/Script/CoreUObject.Object";
+}
 
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UObject> for UObject {}
@@ -402,6 +422,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(UStruct, properties_size) == 0x60);
     assert!(::core::mem::offset_of!(UStruct, min_alignment) == 0x64);
 };
+
+impl rt::TypePath for UStruct {
+    const PATH: &'static str = "/Script/CoreUObject.Struct";
+}
 
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UStruct> for UStruct {}
@@ -469,6 +493,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(FTransform, translation) == 0x10);
 };
 
+impl rt::TypePath for FTransform {
+    const PATH: &'static str = "/Script/CoreUObject.Transform";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<FTransform> for FTransform {}
 
@@ -505,6 +533,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(FVector, y) == 0x4);
     assert!(::core::mem::offset_of!(FVector, z) == 0x8);
 };
+
+impl rt::TypePath for FVector {
+    const PATH: &'static str = "/Script/CoreUObject.Vector";
+}
 
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<FVector> for FVector {}

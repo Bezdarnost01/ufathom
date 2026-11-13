@@ -43,7 +43,7 @@ Research, naming, architecture, workspace, memory reading.
 ## M4: Rust SDK and runtime (stages 8, 9)
 
 - [ ] `ufathom-codegen` with golden and compile tests
-- [ ] `ufathom-runtime`: containers, `Session`, `ObjectRef`, `Executor`, `inproc`
+- [x] `ufathom-runtime`: containers, `Session`, `ObjectRef`, `Executor`, `inproc` (tested against fake objects and a fake vtable; not yet run in a real game)
 - [ ] DLL and CLI: SDK output
 - [ ] Self-contained SDK output: matching runtime sources and licenses under `vendor/`, with no ufathom checkout or published runtime package required
 - [x] Editable `main.rs` scaffold that links as a resident DLL or an external read-only executable and survives SDK regeneration
@@ -69,7 +69,7 @@ Requires the user to start each game and to load the DLL or allow attaching.
 ## M6: Polish and wider support (stage 12)
 
 - [ ] `diff` command, documentation, performance numbers measured on real dumps
-- [ ] Rust mod toolkit, so new mods need no C++: ProcessEvent and native function hooks, proxy DLL exports, game thread dispatch, engine allocator
+- [ ] Rust mod toolkit, so new mods need no C++: ProcessEvent and native function hooks, proxy DLL exports, game thread dispatch, engine allocator. Done: the ProcessEvent hook with game thread dispatch and per-function callbacks (`GameThread`), tested on a fake engine.
 - [ ] Opt-in asset loading in DLL mode
 - [ ] More engine versions, added as each is verified on a real build, using any game without anti-cheat
 

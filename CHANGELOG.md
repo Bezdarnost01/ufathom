@@ -4,6 +4,26 @@ All notable changes are recorded here, in the [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+### Added
+
+- **In-game toolbox in every SDK.** `sdk::session(memory)` opens a `Session` from the build description the SDK now carries as `ENGINE`. It provides:
+  - `FName` to text, object paths and full names;
+  - `find_object`, `find_by_name` and `objects_of::<T>()`;
+  - `is_a` and `cast::<T>()`;
+  - `static_class::<T>()` and `default_object::<T>()`;
+  - `gworld()` and `gengine()`.
+
+  It works inside the game with `SelfMemory` and from another process with `ProcessMemory`. Every generated class and struct implements `TypePath`.
+- **Calling game functions.** With the SDK's `inproc` feature, `unsafe { sdk::attach() }` returns an `InProcessExecutor`. Generated wrappers call through `ProcessEvent` with it, after the object, the function and the parameter block size are checked.
+- **Game thread hook.** With `inproc`, `unsafe { sdk::game_thread() }` hooks `ProcessEvent` by swapping its virtual table slot. No code is patched. The hook supports:
+  - `run` and `call` to run code on the game thread, with an executor;
+  - `before` and `after` callbacks on any game function, which can read or change parameters and skip the original;
+  - `uninstall` and `rescan`.
+- **Static functions and strings.** Wrappers of static game functions take no `this`: they call the class default object, which the executor finds through the new `Executor::default_object`. `FStringBuf` and `TArrayBuf` pass Rust-owned strings and arrays as input parameters. `Session::fstring`, `fname_text` and `read_array` read engine strings, names and arrays. Together these give `FName` from text through `UKismetStringLibrary::Conv_StringToName` and text from `FText` through `UKismetTextLibrary`.
+- **Typed globals and faster lookups.** The SDK has `gworld(&session)` and `gengine(&session)`, which return the generated `UWorld` and `UEngine`. `find_object` and `find_by_name` use a name index built in one walk of the object array, and walk again only on a miss.
+- **Russian user guide** in `docs/ru/README.md`, with a mapping from Dumper-7 SDK calls.
+- Dumps record the `ProcessEvent` vtable index and the `GWorld` and `GEngine` slots under `globals`. Dumps without them still load.
+
 ## [0.2.1] - 2026-11-09
 
 ### Added

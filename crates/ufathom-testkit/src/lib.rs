@@ -54,3 +54,35 @@ pub use space::{
     Addresses, DATA_CAP, DATA_RVA, HostedPlacement, PAGE, Part, PartKind, Placement, RDATA_CAP,
     RDATA_RVA, RSRC_RVA, TEXT_CAP, TEXT_RVA,
 };
+
+/// The folder Cargo puts this build's executables and libraries in, such as
+/// `target/debug`, found from the running test executable.
+///
+/// Test executables sit in `target/<profile>/deps` with the classic layout and
+/// deeper, under `target/<profile>/build/<package>/<hash>`, with the newer
+/// build directory layout. The artifact folder is the nearest ancestor holding
+/// Cargo's `.cargo-lock`; failing that, the parent of the nearest `build`
+/// folder, then the parent of `deps`.
+///
+/// # Panics
+///
+/// When the path of the running executable cannot be read.
+#[must_use]
+#[allow(
+    clippy::expect_used,
+    reason = "test support: no executable path means no test"
+)]
+pub fn artifact_dir() -> std::path::PathBuf {
+    let exe = std::env::current_exe().expect("path of the running test");
+    let ancestors = || exe.ancestors().skip(1);
+    ancestors()
+        .find(|dir| dir.join(".cargo-lock").is_file())
+        .or_else(|| {
+            ancestors()
+                .find(|dir| dir.file_name().is_some_and(|name| name == "build"))
+                .and_then(std::path::Path::parent)
+        })
+        .or_else(|| exe.parent().and_then(std::path::Path::parent))
+        .expect("the test executable has a parent folder")
+        .to_owned()
+}

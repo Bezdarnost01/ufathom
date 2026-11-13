@@ -79,6 +79,26 @@ static EMBEDDED: &[(&str, &str)] = &[
         include_str!("../../ufathom-runtime/src/containers.rs"),
     ),
     (
+        "vendor/ufathom-runtime/src/desc.rs",
+        include_str!("../../ufathom-runtime/src/desc.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/inproc/mod.rs",
+        include_str!("../../ufathom-runtime/src/inproc/mod.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/inproc/hook.rs",
+        include_str!("../../ufathom-runtime/src/inproc/hook.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/inproc/patch.rs",
+        include_str!("../../ufathom-runtime/src/inproc/patch.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/session.rs",
+        include_str!("../../ufathom-runtime/src/session.rs"),
+    ),
+    (
         "vendor/ufathom-runtime/src/executor.rs",
         include_str!("../../ufathom-runtime/src/executor.rs"),
     ),
@@ -89,6 +109,10 @@ static EMBEDDED: &[(&str, &str)] = &[
     (
         "vendor/ufathom-runtime/src/object.rs",
         include_str!("../../ufathom-runtime/src/object.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/owned.rs",
+        include_str!("../../ufathom-runtime/src/owned.rs"),
     ),
     (
         "vendor/ufathom-runtime/src/ptr.rs",

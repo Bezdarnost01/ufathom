@@ -1,11 +1,11 @@
 ufathom-codegen manifest 1
-21c106244d8ebb1f	Cargo.toml
-b745dbf9c480d6b3	src/core_pkg.rs
-6f5330ab660e8ae3	src/core_uobject.rs
+f7f5ed6ed77d5f32	Cargo.toml
+169c3e68cbd3d762	src/core_pkg.rs
+154393fd1b21f096	src/core_uobject.rs
 f3369d5c24d2bd57	src/dll.rs
-7868d19ef96f56f0	src/engine.rs
-3407ee8581912d5b	src/lib.rs
-8fd91bfbb5f94cba	src/main.rs
-4a3490d4d8429ffb	src/main_pkg.rs
-2dca859c1ee89b10	src/mods.rs
-349e50efade6b7df	src/std_pkg.rs
+978f60227cdb475f	src/engine.rs
+f0a70ab3b1663580	src/lib.rs
+4d77fffdda18d438	src/main.rs
+c2d7ac9ea1a157f0	src/main_pkg.rs
+dc1bdefc6dc53a54	src/mods.rs
+d33f4fe5a3652e2c	src/std_pkg.rs

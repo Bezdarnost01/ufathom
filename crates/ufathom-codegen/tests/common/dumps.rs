@@ -2,7 +2,7 @@
 //! and every degradation case, a small one for the behaviour test, and dumps
 //! built from the synthetic engine images of `ufathom-testkit`.
 
-use ufathom_model::flags::{CPF_CONST_PARM, CPF_OUT_PARM, CPF_PARM, CPF_RETURN_PARM};
+use ufathom_model::flags::{CPF_CONST_PARM, CPF_OUT_PARM, CPF_PARM, CPF_RETURN_PARM, FUNC_STATIC};
 use ufathom_model::{
     Dump, EngineLayout, EnumDef, EnumValue, FieldDef, FunctionDef, PropertyType, StructDef,
     StructKind,
@@ -496,6 +496,21 @@ fn actor_functions() -> Vec<FunctionDef> {
             1,
             vec![ret(native_bool_type(), 1)],
         ),
+        FunctionDef {
+            flags: FUNC_STATIC,
+            ..function(
+                &owner,
+                "GetActorCount",
+                4,
+                vec![param(
+                    "ReturnValue",
+                    0,
+                    PropertyType::Int32,
+                    4,
+                    CPF_RETURN_PARM,
+                )],
+            )
+        },
         function(
             &owner,
             "SetHealth",
@@ -985,6 +1000,15 @@ pub fn golden_dump() -> Dump {
             Vec::new(),
         ),
         everything(),
+        class(ENGINE, "World", Some(&object), 0x30, Vec::new(), Vec::new()),
+        class(
+            ENGINE,
+            "Engine",
+            Some(&object),
+            0x30,
+            Vec::new(),
+            Vec::new(),
+        ),
         class(
             MODS,
             "BP_Thing_C",
@@ -1044,7 +1068,16 @@ pub fn golden_dump() -> Dump {
         ),
         enum_def(ENGINE, "Direction", 2, &[("Left", 0), ("Right", 1)]),
     ];
-    make_dump(layout, structs, enums)
+    let mut dump = make_dump(layout, structs, enums);
+    dump.globals = ufathom_model::RuntimeGlobals {
+        process_event_index: Some(0x44),
+        gworld: Some(ufathom_model::layout::Location::Rva {
+            module: "Game-Win64-Shipping.exe".to_owned(),
+            rva: 0x5a1_2340,
+        }),
+        gengine: None,
+    };
+    dump
 }
 
 /// A small dump with known byte offsets, for the behaviour test.
@@ -1091,17 +1124,34 @@ pub fn behaviour_dump() -> Dump {
                     12,
                 ),
             ],
-            vec![function(
-                &actor,
-                "SetHealth",
-                0x10,
-                vec![
-                    param("NewHealth", 0, PropertyType::Float, 4, 0),
-                    param("bClamp", 4, native_bool_type(), 1, 0),
-                    param("OldHealth", 8, PropertyType::Float, 4, CPF_OUT_PARM),
-                    param("ReturnValue", 12, native_bool_type(), 1, CPF_RETURN_PARM),
-                ],
-            )],
+            vec![
+                function(
+                    &actor,
+                    "SetHealth",
+                    0x10,
+                    vec![
+                        param("NewHealth", 0, PropertyType::Float, 4, 0),
+                        param("bClamp", 4, native_bool_type(), 1, 0),
+                        param("OldHealth", 8, PropertyType::Float, 4, CPF_OUT_PARM),
+                        param("ReturnValue", 12, native_bool_type(), 1, CPF_RETURN_PARM),
+                    ],
+                ),
+                FunctionDef {
+                    flags: FUNC_STATIC,
+                    ..function(
+                        &actor,
+                        "GetActorCount",
+                        4,
+                        vec![param(
+                            "ReturnValue",
+                            0,
+                            PropertyType::Int32,
+                            4,
+                            CPF_RETURN_PARM,
+                        )],
+                    )
+                },
+            ],
         ),
         class(
             ENGINE,

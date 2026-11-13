@@ -28,6 +28,10 @@ const _: () = {
     assert!(::core::mem::offset_of!(UEntry, value) == 0x30);
 };
 
+impl rt::TypePath for UEntry {
+    const PATH: &'static str = "/Script/Std.Entry";
+}
+
 // SAFETY: the type starts with itself.
 unsafe impl rt::IsA<UEntry> for UEntry {}
 

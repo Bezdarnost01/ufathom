@@ -20,7 +20,7 @@ pub enum CallError {
         /// The object address that was passed.
         addr: u64,
     },
-    /// The parameter block does not have the size the function declares.
+    /// The parameter block is smaller than the size the function declares.
     #[error("parameter block is {actual} bytes, the function takes {expected}")]
     ParamsSize {
         /// Size the function declares.
@@ -43,9 +43,9 @@ pub enum CallError {
 /// This is an `unsafe` trait on purpose: an implementation runs game code, so
 /// it must only be written by code that can guarantee it is sound to do so
 /// (for example, an in-process executor that is on the game thread and has
-/// validated the object). Nothing implements it by accident, and this crate
-/// provides no implementation. A test double that never touches a real game
-/// may implement it too.
+/// validated the object). Nothing implements it by accident. This crate's
+/// implementation is `InProcessExecutor`, behind the `inproc` feature. A test
+/// double that never touches a real game may implement it too.
 ///
 /// An implementation must:
 ///
@@ -72,4 +72,21 @@ pub unsafe trait Executor {
         function_path: &str,
         params: &mut [u8],
     ) -> Result<(), CallError>;
+
+    /// The class default object of the class at `class_path`, the `this` a
+    /// static function is called on.
+    ///
+    /// The default refuses: only an executor that can look objects up (such
+    /// as the in-process one) provides it.
+    ///
+    /// # Errors
+    ///
+    /// [`CallError::Refused`] by default; an implementation returns
+    /// [`CallError::FunctionNotFound`] or [`CallError::Failed`] when the class
+    /// or its default object cannot be found.
+    fn default_object(&self, class_path: &str) -> Result<Ptr<UObjectBase>, CallError> {
+        Err(CallError::Refused(format!(
+            "this executor cannot find the default object of {class_path}"
+        )))
+    }
 }

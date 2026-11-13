@@ -111,6 +111,9 @@ const RESERVED_MODULES: &[&str] = &[
     "ufathom_runtime",
     "default",
     "all",
+    "inproc",
+    "app",
+    "dll",
 ];
 
 /// Words that stay in one piece when a package name is split into snake case.

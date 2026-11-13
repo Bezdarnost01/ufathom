@@ -1,9 +1,13 @@
 //! Library used by generated SDKs: containers, object access and function calls.
 //!
 //! Everything in this crate is plain data plus checked reads. The types are
-//! views over the memory layout of a 64-bit Unreal Engine build. They never
-//! execute game code: calling a game function goes through the [`Executor`]
-//! trait, and this crate ships no implementation of it.
+//! views over the memory layout of a 64-bit Unreal Engine build, and a
+//! [`Session`] gives names, object paths, lookups, `IsA`, class default objects,
+//! `GWorld` and `GEngine` through any reader.
+//!
+//! Calling a game function goes through the [`Executor`] trait. The only
+//! implementation that runs game code is `inproc::InProcessExecutor`, behind
+//! the `inproc` feature; without it this crate never executes game code.
 //!
 //! # `Pod`
 //!
@@ -15,10 +19,15 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 mod containers;
+mod desc;
 mod executor;
+#[cfg(feature = "inproc")]
+pub mod inproc;
 mod name;
 mod object;
+mod owned;
 mod ptr;
+mod session;
 mod traits;
 mod ubool;
 
@@ -27,11 +36,17 @@ pub use containers::{
     FScriptInterface, FSoftObjectPath, FSoftObjectPtr, FString, FText, FWeakObjectPtr, TArray,
     TMap, TSet,
 };
+pub use desc::{
+    EngineDesc, FNameDesc, NameArrayDesc, NamePoolDesc, NamesDesc, ObjectArrayDesc, ObjectDesc,
+    Place, Transform,
+};
 pub use executor::{CallError, Executor};
 pub use name::{FName4, FName8, FName12, FName12Ue5, FNameBytes};
 pub use object::{ObjectRef, UObjectBase};
+pub use owned::{FStringBuf, TArrayBuf};
 pub use ptr::Ptr;
-pub use traits::{BitRef, FieldRef, IsA};
+pub use session::{Session, SessionError, SessionResult};
+pub use traits::{BitRef, FieldRef, IsA, TypePath};
 pub use ubool::UBool;
 
 /// The memory access crate, re-exported so generated SDKs need no second

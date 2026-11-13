@@ -18,6 +18,7 @@
 
 mod build;
 mod emit;
+mod engine_desc;
 mod error;
 mod header;
 mod names;
@@ -154,7 +155,12 @@ pub fn generate(
         },
         output::OutFile {
             path: "src/lib.rs".to_owned(),
-            content: emit::lib_source(&built, dump.engine.claimed.as_deref(), &sdk_crate),
+            content: emit::lib_source(
+                &built,
+                dump.engine.claimed.as_deref(),
+                &sdk_crate,
+                &engine_desc::lib_items(dump, &built),
+            ),
             preserve_existing: false,
         },
         output::OutFile {

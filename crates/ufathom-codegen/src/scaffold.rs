@@ -11,18 +11,39 @@ pub(crate) fn main_source(crate_name: &str) -> String {
 //! The DLL and the external executable both call `run`. Generated files are
 //! refreshed by later dumps, but an existing `main.rs` is preserved.
 
-use ufathom_runtime::{mem::ProcessMemory, MemError, MemoryReader};
+use ufathom_runtime::{mem::ProcessMemory, MemoryReader};
 use ufathom_sdk as sdk;
 
 /// Runs with checked, read-only access to the target's memory.
 ///
-/// Add application logic here. Import generated types through `sdk`, for
-/// example `sdk::core_uobject::UObject`, and read them with `ObjectRef`.
-pub(crate) fn run(memory: &dyn MemoryReader) -> Result<(), MemError> {
-    // This use proves that the application is linked to the generated SDK.
-    // Replace it with your own object reads.
-    let _fname_size = core::mem::size_of::<sdk::FName>();
-    let _ = memory;
+/// Add application logic here. `sdk::session` gives names, object paths,
+/// `find_object`, `objects_of::<T>()`, `is_a`, `cast`, `static_class::<T>()`,
+/// `default_object::<T>()`, `gworld()` and `gengine()`. Read fields of
+/// generated types such as `sdk::core_uobject::UObject` with
+/// `session.object(ptr).get(...)`.
+///
+/// Calling game functions needs the `inproc` feature, inside the game (the
+/// DLL), on the game thread. The DLL worker is not the game thread; hook
+/// `ProcessEvent` and hand the work over:
+///
+/// ```text
+/// let game = unsafe { sdk::game_thread() }?;
+/// let name = game.call(std::time::Duration::from_secs(5), |ctx| {
+///     // On the game thread: pass `ctx.executor()` to generated wrappers.
+///     ctx.session().gworld().ok().flatten().map(|w| ctx.session().full_name_of(w))
+/// })?;
+/// game.before("/Script/Engine.Actor:ReceiveTick", |ctx| {
+///     // Runs before every Actor tick event; may read or change parameters.
+///     let _ = ctx.object();
+/// })?;
+/// ```
+pub(crate) fn run(memory: &dyn MemoryReader) -> Result<(), Box<dyn std::error::Error>> {
+    let session = sdk::session(memory)?;
+    // Replace this with your own logic.
+    let _objects = session.num_objects()?;
+    if let Ok(Some(world)) = session.gworld() {
+        let _world = session.full_name_of(world)?;
+    }
     Ok(())
 }
 

@@ -1,5 +1,7 @@
 # ufathom
 
+[Руководство на русском](docs/ru/README.md)
+
 An Unreal Engine dumper DLL and Rust SDK generator, built to survive what breaks Dumper-7's DLL. Load it in a game and it writes a reflection dump, a usmap and a Rust SDK. If your offsets are wrong, you get an error message, not a crashed game.
 
 **Status: pre-release.** `v0.2.1` is available, with real-build results for the UE 4.25 editor and a UE 4.21 shipping build. See [COMPATIBILITY.md](COMPATIBILITY.md) for exactly what has been tested. The target range is UE 4.11 to 5.8, and support is claimed version by version as real builds are verified.
@@ -90,10 +92,67 @@ cargo build --release --bin ufathom-sdk-external
 
 The executable opens the PID with `ProcessMemory` and calls the same `run` function. Access is read-only and requires the same privileges as the target; access denial is reported, not bypassed. External mode does not provide a `ProcessEvent` executor.
 
+### Work with game objects
+
+`sdk::session(memory)` opens a `Session` for the build the SDK was generated from. It works in both modes:
+
+```rust
+let session = sdk::session(memory)?;
+let actor_class = session.static_class::<sdk::engine::AActor>()?;
+for pawn in session.objects_of::<sdk::engine::APawn>()? {
+    println!("{}", session.full_name_of(pawn)?);
+}
+let world = session.gworld()?;
+```
+
+It also provides `find_object` by path, `find_by_name`, `is_a`, `cast::<T>()`, `default_object::<T>()`, `gengine()` and checked field reads through `session.object(ptr).get(T::FIELD)`.
+
+Calling game functions works only inside the game. Build with `--features inproc` and attach on the game thread:
+
+```rust
+// SAFETY: inside the game, on the game thread.
+let exec = unsafe { sdk::attach() }?;
+// `actor` is a `Ptr<sdk::engine::AActor>`, for example from `objects_of` or `cast`.
+sdk::engine::AActor::k2_destroy_actor(actor, &exec)?;
+```
+
+Before each call, the executor checks three things: the object is still alive, the path names a `UFunction`, and the parameter block is large enough. The DLL scaffold's worker thread is not the game thread. To get there, hook `ProcessEvent`:
+
+```rust
+// SAFETY: inside the game; the DLL stays loaded.
+let game = unsafe { sdk::game_thread() }?;
+// Run on the game thread and wait for the result.
+let world = game.call(Duration::from_secs(5), |ctx| {
+    ctx.session().gworld().ok().flatten()
+})?;
+// Intercept a game function: read or change its parameters, or skip it.
+game.before("/Script/Engine.Actor:ReceiveTick", |ctx| {
+    let _actor = ctx.object();
+})?;
+```
+
+Strings and names work the way they do in Dumper-7 SDKs:
+
+```rust
+// An input string or array may point at Rust memory: ProcessEvent never frees inputs.
+let text = rt::FStringBuf::new("Hello");
+// Static functions run on the class default object, found by the executor.
+let name = sdk::engine::UKismetStringLibrary::conv_string_to_name(ctx.executor(), text.as_fstring())?;
+println!("{}", ctx.session().fname_text(&name)?);
+// Returned strings and arrays are read through the session.
+let label = sdk::engine::UKismetSystemLibrary::get_display_name(ctx.executor(), object)?;
+println!("{}", ctx.session().fstring(&label)?);
+```
+
+Strings and arrays the engine returns are not freed (engine allocator support is not there yet), so avoid calling such functions every frame. Never pass `FStringBuf` or `TArrayBuf` as an out parameter.
+
+The hook changes only data pointers. It patches the `ProcessEvent` slot in the virtual tables of live native classes. The thread that first makes 64 hooked calls is taken as the game thread. Tasks and callbacks get an executor, and calls made through that executor do not trigger callbacks again. A panic in user code is caught. `uninstall()` puts the slots back.
+
 The file and target names above use the default `ufathom-sdk` crate name. If you customize it, replace hyphens with underscores in the DLL file name and append `-external` to the package name for the binary target.
 
 ## Documents
 
+- [docs/ru/README.md](docs/ru/README.md): user guide in Russian (руководство на русском)
 - [ARCHITECTURE.md](ARCHITECTURE.md): crates, contracts, the discovery algorithm
 - [RESEARCH.md](RESEARCH.md): analysis of existing tools
 - [IDEAS.md](IDEAS.md): ranked features

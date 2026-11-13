@@ -778,8 +778,10 @@ dependencies = [
 name = "ufathom-runtime"
 version = "0.2.1"
 dependencies = [
+ "libc",
  "thiserror",
  "ufathom-mem",
+ "windows-sys",
 ]
 
 [[package]]

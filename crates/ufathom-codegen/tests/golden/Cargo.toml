@@ -21,12 +21,17 @@ windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Secur
 [features]
 default = ["all"]
 all = ["mods", "core_pkg", "core_uobject", "engine", "main_pkg", "std_pkg"]
+# Calls game functions through ProcessEvent: `attach()`. Inside the game only.
+inproc = ["ufathom-runtime/inproc"]
 mods = ["core_uobject", "engine"]
 core_pkg = ["core_uobject"]
 core_uobject = []
 engine = ["core_uobject"]
 main_pkg = ["core_uobject"]
 std_pkg = ["core_uobject"]
+
+# The workspace lints are for the vendored runtime, not for generated code.
+[lints]
 
 # This crate is its own workspace, so it builds from any directory.
 [workspace]

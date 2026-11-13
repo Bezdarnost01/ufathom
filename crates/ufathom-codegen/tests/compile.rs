@@ -34,9 +34,15 @@ fn report(label: &str, report: &ufathom_codegen::GenReport, elapsed: std::time::
 
 #[test]
 fn golden_dump_compiles() {
-    let (_dir, r, elapsed) = generate_and_check(&golden_dump(), "golden");
+    let (dir, r, elapsed) = generate_and_check(&golden_dump(), "golden");
     report("golden", &r, elapsed);
     assert!(r.degraded_fields() > 0);
+    // The in-process executor and `attach` compile too.
+    let run = run_cargo(dir.path(), &["check", "--features", "inproc"]);
+    eprintln!(
+        "compile test golden inproc: cargo check {:.1?}",
+        run.elapsed
+    );
 }
 
 #[test]

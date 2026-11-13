@@ -21,7 +21,8 @@ mod test_support;
 pub use diff::{DumpDiff, diff};
 pub use dump::{
     BoolBits, Diagnostic, Dump, EngineInfo, EngineVersion, EnumDef, EnumValue, FORMAT_VERSION,
-    FieldDef, FunctionDef, PropertyType, Severity, StructDef, StructKind, TargetInfo, ToolInfo,
+    FieldDef, FunctionDef, PropertyType, RuntimeGlobals, Severity, StructDef, StructKind,
+    TargetInfo, ToolInfo,
 };
 pub use error::ModelError;
 pub use layout::EngineLayout;

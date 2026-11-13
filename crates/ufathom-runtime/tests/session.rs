@@ -1,0 +1,210 @@
+//! `Session` over a snapshot of a fake engine.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    reason = "tests may panic"
+)]
+
+mod common;
+
+use common::types::{AActor, AMissing, APawn, UObject};
+use common::{desc, image, object_addr, slot};
+use ufathom_runtime::mem::Snapshot;
+use ufathom_runtime::{EngineDesc, Ptr, Session, SessionError, UObjectBase};
+
+const BASE: u64 = 0x7000_0000;
+
+fn session() -> Session<Snapshot> {
+    let mem = Snapshot::builder()
+        .region(BASE, image(BASE, 0))
+        .build()
+        .unwrap();
+    let desc: &'static EngineDesc = Box::leak(Box::new(desc(BASE)));
+    Session::new(mem, desc).unwrap()
+}
+
+fn obj(index: u32) -> Ptr<UObjectBase> {
+    Ptr::new(object_addr(BASE, index))
+}
+
+#[test]
+fn walks_the_object_array() {
+    let s = session();
+    assert_eq!(s.num_objects().unwrap(), slot::COUNT);
+    let all = s.objects().unwrap();
+    assert_eq!(all.len(), slot::COUNT as usize);
+    assert_eq!(all[9], obj(9), "second chunk is reached");
+    assert_eq!(s.object_at(slot::PAWN).unwrap(), Some(obj(slot::PAWN)));
+    assert_eq!(s.object_at(slot::COUNT).unwrap(), None);
+    assert_eq!(s.serial_at(slot::PAWN).unwrap(), Some(100 + slot::PAWN));
+}
+
+#[test]
+fn names_paths_and_full_names() {
+    let s = session();
+    assert_eq!(s.name_of(obj(slot::ACTOR)).unwrap(), "Actor");
+    assert_eq!(s.name_of(obj(slot::ACTOR_1)).unwrap(), "Actor_1");
+    assert_eq!(s.path_of(obj(slot::ENGINE)).unwrap(), "/Script/Engine");
+    assert_eq!(s.path_of(obj(slot::ACTOR)).unwrap(), "/Script/Engine.Actor");
+    assert_eq!(
+        s.path_of(obj(slot::DESTROY)).unwrap(),
+        "/Script/Engine.Actor:K2_DestroyActor"
+    );
+    assert_eq!(
+        s.full_name_of(obj(slot::DESTROY)).unwrap(),
+        "Function /Script/Engine.Actor:K2_DestroyActor"
+    );
+    assert_eq!(
+        s.full_name_of(obj(slot::MY_PAWN)).unwrap(),
+        "Pawn /Script/Engine.MyPawn"
+    );
+}
+
+#[test]
+fn finds_objects_by_path_and_name() {
+    let s = session();
+    let path = "/Script/Engine.Actor:K2_DestroyActor";
+    assert_eq!(s.find_object(path).unwrap(), Some(obj(slot::DESTROY)));
+    // A second lookup is served from the cache and gives the same answer.
+    assert_eq!(s.find_object(path).unwrap(), Some(obj(slot::DESTROY)));
+    assert_eq!(s.find_object("/Script/Engine.Nothing").unwrap(), None);
+    assert_eq!(
+        s.find_by_name("MyPawn", None).unwrap(),
+        Some(obj(slot::MY_PAWN))
+    );
+    assert_eq!(
+        s.find_by_name("Actor_1", Some("/Script/Engine.Actor"))
+            .unwrap(),
+        Some(obj(slot::ACTOR_1))
+    );
+    assert_eq!(
+        s.find_by_name("MyPawn", Some("/Script/Engine.Missing"))
+            .unwrap(),
+        None
+    );
+}
+
+#[test]
+fn types_classes_and_casts() {
+    let s = session();
+    assert_eq!(s.static_class::<AActor>().unwrap(), obj(slot::ACTOR));
+    assert!(matches!(
+        s.static_class::<AMissing>(),
+        Err(SessionError::Invalid { .. })
+    ));
+    assert_eq!(
+        s.default_object::<AActor>().unwrap().addr(),
+        object_addr(BASE, slot::ACTOR_CDO)
+    );
+
+    let pawn = obj(slot::MY_PAWN);
+    assert!(s.is_a(pawn, obj(slot::ACTOR)).unwrap());
+    assert!(s.is_a(pawn, obj(slot::OBJECT)).unwrap());
+    assert!(!s.is_a(obj(slot::ACTOR_1), obj(slot::PAWN)).unwrap());
+    assert!(s.cast::<APawn, _>(pawn).unwrap().is_some());
+    assert!(s.cast::<APawn, _>(obj(slot::ACTOR_1)).unwrap().is_none());
+    assert!(
+        s.cast::<UObject, _>(Ptr::<UObjectBase>::NULL)
+            .unwrap()
+            .is_none()
+    );
+
+    // Instances of Actor and subclasses, without the class default object.
+    let actors: Vec<u64> = s
+        .objects_of::<AActor>()
+        .unwrap()
+        .iter()
+        .map(|p| p.addr())
+        .collect();
+    assert_eq!(
+        actors,
+        vec![
+            object_addr(BASE, slot::ACTOR_1),
+            object_addr(BASE, slot::MY_PAWN)
+        ]
+    );
+}
+
+#[test]
+fn globals_and_validity() {
+    let s = session();
+    assert_eq!(s.gworld().unwrap(), Some(obj(slot::MY_PAWN)));
+    assert!(matches!(s.gengine(), Err(SessionError::Unknown("GEngine"))));
+    assert!(s.is_valid(obj(slot::PAWN)));
+    assert!(!s.is_valid(Ptr::<UObjectBase>::NULL));
+    assert!(!s.is_valid(Ptr::<UObjectBase>::new(BASE + 0x5000)));
+    // An object whose index names another object's slot is stale.
+    assert!(!s.is_valid(Ptr::<UObjectBase>::new(object_addr(BASE, 1) + 8)));
+    assert_eq!(s.params_size(obj(slot::DESTROY)).unwrap(), 16);
+}
+
+#[test]
+fn unknown_module_is_an_error() {
+    let mem = Snapshot::builder()
+        .region(BASE, image(BASE, 0))
+        .build()
+        .unwrap();
+    let mut d = desc(BASE);
+    d.objects.location = ufathom_runtime::Place::Rva {
+        module: "Game.exe",
+        rva: 0,
+    };
+    let d: &'static EngineDesc = Box::leak(Box::new(d));
+    assert!(matches!(
+        Session::new(mem, d),
+        Err(SessionError::ModuleNotFound(_))
+    ));
+}
+
+#[test]
+fn fname_values_and_default_objects_by_path() {
+    let s = session();
+    // The `NamePrivate` of `Actor_1`: the entry of "Actor", number 2.
+    let name: [u32; 2] = s
+        .read(Ptr::<[u32; 2]>::new(object_addr(BASE, slot::ACTOR_1) + 24))
+        .unwrap();
+    assert_eq!(s.fname_text(&name).unwrap(), "Actor_1");
+    assert_eq!(s.fname_text(&[name[0], 0]).unwrap(), "Actor");
+    assert_eq!(
+        s.default_object_of("/Script/Engine.Actor").unwrap(),
+        obj(slot::ACTOR_CDO)
+    );
+    assert!(s.default_object_of("/Script/Engine.Missing").is_err());
+}
+
+#[test]
+fn objects_created_after_the_index_are_still_found() {
+    use ufathom_runtime::mem::SelfMemory;
+    // Live memory, so the test can "create" an object by raising the count.
+    let mut memory = vec![0u64; common::SIZE / 8];
+    let base = memory.as_ptr() as u64;
+    let bytes = image(base, 0);
+    for (word, chunk) in memory.iter_mut().zip(bytes.chunks_exact(8)) {
+        *word = u64::from_le_bytes(chunk.try_into().unwrap());
+    }
+    let count_word = ((common::ARRAY + 0x10) / 8) as usize;
+    let low = memory[count_word] & 0xffff_ffff;
+    memory[count_word] = (u64::from(slot::MY_PAWN) << 32) | low;
+
+    let d: &'static EngineDesc = Box::leak(Box::new(desc(base)));
+    let s = Session::new(SelfMemory::new(), d).unwrap();
+    // The first lookup builds the name index; MyPawn is not there yet.
+    assert!(s.find_object("/Script/Engine.Actor").unwrap().is_some());
+    assert_eq!(s.find_object("/Script/Engine.MyPawn").unwrap(), None);
+
+    memory[count_word] = (u64::from(slot::COUNT) << 32) | low;
+    // A miss in the index walks the array again and finds the new object.
+    assert_eq!(
+        s.find_object("/Script/Engine.MyPawn")
+            .unwrap()
+            .map(|p| p.addr()),
+        Some(object_addr(base, slot::MY_PAWN))
+    );
+    assert_eq!(
+        s.find_by_name("MyPawn", None).unwrap().map(|p| p.addr()),
+        Some(object_addr(base, slot::MY_PAWN))
+    );
+    drop(memory);
+}

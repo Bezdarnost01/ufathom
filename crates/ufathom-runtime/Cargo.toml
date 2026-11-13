@@ -11,5 +11,19 @@ repository.workspace = true
 ufathom-mem.workspace = true
 thiserror.workspace = true
 
+[features]
+# `InProcessExecutor`: calls game functions through ProcessEvent. Off by
+# default; without it the crate never runs game code.
+inproc = ["dep:libc", "dep:windows-sys"]
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, optional = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Memory",
+] }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true, optional = true }
+
 [lints]
 workspace = true

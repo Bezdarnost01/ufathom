@@ -53,6 +53,8 @@ fn bundled_sdk_compiles_without_an_ufathom_checkout() {
         &["build", "--lib"][..],
         &["build", "--bin", "ufathom-sdk-external"][..],
         &["test", "--no-run"][..],
+        // The vendored hook and executor, with their OS dependencies.
+        &["build", "--lib", "--features", "inproc"][..],
     ] {
         let run = run_cargo(dir.path(), args);
         assert!(

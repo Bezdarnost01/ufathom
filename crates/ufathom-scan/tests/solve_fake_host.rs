@@ -30,9 +30,7 @@ const EXIT_TIMEOUT: Duration = Duration::from_secs(30);
 /// The built `fake-host` executable, building it when only the library of the
 /// testkit has been built.
 fn fake_host_path() -> PathBuf {
-    let exe = std::env::current_exe().unwrap();
-    let profile_dir = exe.parent().and_then(|deps| deps.parent()).unwrap();
-    let path = profile_dir.join("fake-host.exe");
+    let path = ufathom_testkit::artifact_dir().join("fake-host.exe");
     if !path.exists() {
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
         let status = Command::new(cargo)
