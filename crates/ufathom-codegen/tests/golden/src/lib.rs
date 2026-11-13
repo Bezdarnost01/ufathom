@@ -127,6 +127,30 @@ pub unsafe fn game_thread() -> Result<&'static ::ufathom_runtime::inproc::GameTh
     unsafe { ::ufathom_runtime::inproc::GameThread::install(&ENGINE) }
 }
 
+/// `GWorld`, the live world, as the generated `UWorld`. `None` while there is none.
+///
+/// # Errors
+///
+/// As [`::ufathom_runtime::Session::gworld`].
+#[cfg(feature = "engine")]
+pub fn gworld<M: ::ufathom_runtime::MemoryReader>(
+    session: &::ufathom_runtime::Session<M>,
+) -> Result<Option<::ufathom_runtime::Ptr<engine::UWorld>>, ::ufathom_runtime::SessionError> {
+    Ok(session.gworld()?.map(|object| object.cast()))
+}
+
+/// `GEngine`, the live engine, as the generated `UEngine`. `None` while there is none.
+///
+/// # Errors
+///
+/// As [`::ufathom_runtime::Session::gengine`].
+#[cfg(feature = "engine")]
+pub fn gengine<M: ::ufathom_runtime::MemoryReader>(
+    session: &::ufathom_runtime::Session<M>,
+) -> Result<Option<::ufathom_runtime::Ptr<engine::UEngine>>, ::ufathom_runtime::SessionError> {
+    Ok(session.gengine()?.map(|object| object.cast()))
+}
+
 #[cfg(feature = "mods")]
 pub mod mods;
 

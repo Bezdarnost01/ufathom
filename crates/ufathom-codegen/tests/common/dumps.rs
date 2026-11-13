@@ -1000,6 +1000,15 @@ pub fn golden_dump() -> Dump {
             Vec::new(),
         ),
         everything(),
+        class(ENGINE, "World", Some(&object), 0x30, Vec::new(), Vec::new()),
+        class(
+            ENGINE,
+            "Engine",
+            Some(&object),
+            0x30,
+            Vec::new(),
+            Vec::new(),
+        ),
         class(
             MODS,
             "BP_Thing_C",

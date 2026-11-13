@@ -89,7 +89,10 @@ pub struct Session<M> {
     header_len: usize,
     names: Mutex<HashMap<u32, Arc<str>>>,
     found: Mutex<HashMap<String, Ptr<UObjectBase>>>,
+    by_name: Mutex<Option<NameIndex>>,
 }
+
+type NameIndex = HashMap<String, Vec<Ptr<UObjectBase>>>;
 
 impl<M: MemoryReader> Session<M> {
     /// Opens a session for the build described by `desc`.
@@ -156,6 +159,7 @@ impl<M: MemoryReader> Session<M> {
             header_len,
             names: Mutex::new(HashMap::new()),
             found: Mutex::new(HashMap::new()),
+            by_name: Mutex::new(None),
         })
     }
 
@@ -467,8 +471,12 @@ impl<M: MemoryReader> Session<M> {
     /// Finds the object with this exact path, such as
     /// `/Script/Engine.Actor` or `/Script/Engine.Actor:K2_DestroyActor`.
     ///
-    /// The first lookup of a path walks the object array; later ones reuse the
-    /// result after checking it is still valid and still has that path.
+    /// A hit is cached by path and re-validated on every use. Otherwise the
+    /// candidates come from an index of every object by name, built in one
+    /// walk of the object array; only when none of them matches is the array
+    /// walked again, which also refreshes the index. So many first lookups
+    /// cost one walk, and only a miss (an object that is not loaded) costs
+    /// another.
     ///
     /// # Errors
     ///
@@ -483,25 +491,19 @@ impl<M: MemoryReader> Session<M> {
             lock(&self.found).remove(path);
         }
         let last = path.rsplit(['.', ':']).next().unwrap_or(path);
-        let mut result = None;
-        self.for_each_object(|_, object| {
-            if self.name_of(object).is_ok_and(|name| name == last)
-                && self.path_of(object).is_ok_and(|p| p == path)
-            {
-                result = Some(object);
-                return ControlFlow::Break(());
-            }
-            ControlFlow::Continue(())
-        })?;
+        let matches = |object: Ptr<UObjectBase>| {
+            self.is_valid(object) && self.path_of(object).is_ok_and(|p| p == path)
+        };
+        let result = self.search(last, matches)?;
         if let Some(found) = result {
             lock(&self.found).insert(path.to_owned(), found);
         }
         Ok(result)
     }
 
-    /// Finds the first object named `name` (without its path), optionally
-    /// only among instances of the class at `class_path`. Slower and less
-    /// precise than [`find_object`](Self::find_object); useful for
+    /// Finds the first object, in slot order, named `name` (without its
+    /// path), optionally only among instances of the class at `class_path`.
+    /// Less precise than [`find_object`](Self::find_object); useful for
     /// exploring.
     ///
     /// # Errors
@@ -519,17 +521,45 @@ impl<M: MemoryReader> Session<M> {
             },
             None => None,
         };
-        let mut result = None;
-        self.for_each_object(|_, object| {
-            if self.name_of(object).is_ok_and(|n| n == name)
+        self.search(name, |object| {
+            self.is_valid(object)
                 && class.is_none_or(|class| self.is_a(object, class).unwrap_or(false))
-            {
-                result = Some(object);
-                return ControlFlow::Break(());
+        })
+    }
+
+    /// The first object named `name` that `accept` takes: from the name index
+    /// when it has one, otherwise after rebuilding the index.
+    fn search(
+        &self,
+        name: &str,
+        accept: impl Fn(Ptr<UObjectBase>) -> bool,
+    ) -> SessionResult<Option<Ptr<UObjectBase>>> {
+        let known: Option<Vec<Ptr<UObjectBase>>> = lock(&self.by_name)
+            .as_ref()
+            .map(|index| index.get(name).cloned().unwrap_or_default());
+        if let Some(candidates) = known
+            && let Some(hit) = candidates.into_iter().find(|&c| accept(c))
+        {
+            return Ok(Some(hit));
+        }
+        let index = self.build_name_index()?;
+        let hit = index
+            .get(name)
+            .and_then(|candidates| candidates.iter().copied().find(|&c| accept(c)));
+        *lock(&self.by_name) = Some(index);
+        Ok(hit)
+    }
+
+    /// Every live object by name, each list in slot order.
+    fn build_name_index(&self) -> SessionResult<NameIndex> {
+        let mut index = NameIndex::new();
+        self.for_each_object(|_, object| {
+            if let Ok(name) = self.name_of(object) {
+                index.entry(name).or_default().push(object);
             }
             ControlFlow::Continue(())
         })?;
-        Ok(result)
+        Ok(index)
     }
 
     /// The class (or script struct) object of the generated type `T`:

@@ -10,7 +10,7 @@ use ufathom_runtime::{
 pub const OBJ: u64 = 0x100;
 const POOL: u64 = 0x0;
 const BLOCK: u64 = 0x40;
-const ARRAY: u64 = 0x800;
+pub const ARRAY: u64 = 0x800;
 const CHUNKS: u64 = 0x840;
 const ITEMS: u64 = 0x880;
 pub const GWORLD: u64 = 0xa00;

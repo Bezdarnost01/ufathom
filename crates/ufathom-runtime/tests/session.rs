@@ -173,3 +173,38 @@ fn fname_values_and_default_objects_by_path() {
     );
     assert!(s.default_object_of("/Script/Engine.Missing").is_err());
 }
+
+#[test]
+fn objects_created_after_the_index_are_still_found() {
+    use ufathom_runtime::mem::SelfMemory;
+    // Live memory, so the test can "create" an object by raising the count.
+    let mut memory = vec![0u64; common::SIZE / 8];
+    let base = memory.as_ptr() as u64;
+    let bytes = image(base, 0);
+    for (word, chunk) in memory.iter_mut().zip(bytes.chunks_exact(8)) {
+        *word = u64::from_le_bytes(chunk.try_into().unwrap());
+    }
+    let count_word = ((common::ARRAY + 0x10) / 8) as usize;
+    let low = memory[count_word] & 0xffff_ffff;
+    memory[count_word] = (u64::from(slot::MY_PAWN) << 32) | low;
+
+    let d: &'static EngineDesc = Box::leak(Box::new(desc(base)));
+    let s = Session::new(SelfMemory::new(), d).unwrap();
+    // The first lookup builds the name index; MyPawn is not there yet.
+    assert!(s.find_object("/Script/Engine.Actor").unwrap().is_some());
+    assert_eq!(s.find_object("/Script/Engine.MyPawn").unwrap(), None);
+
+    memory[count_word] = (u64::from(slot::COUNT) << 32) | low;
+    // A miss in the index walks the array again and finds the new object.
+    assert_eq!(
+        s.find_object("/Script/Engine.MyPawn")
+            .unwrap()
+            .map(|p| p.addr()),
+        Some(object_addr(base, slot::MY_PAWN))
+    );
+    assert_eq!(
+        s.find_by_name("MyPawn", None).unwrap().map(|p| p.addr()),
+        Some(object_addr(base, slot::MY_PAWN))
+    );
+    drop(memory);
+}

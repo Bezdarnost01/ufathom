@@ -159,7 +159,7 @@ pub fn generate(
                 &built,
                 dump.engine.claimed.as_deref(),
                 &sdk_crate,
-                &engine_desc::lib_items(dump),
+                &engine_desc::lib_items(dump, &built),
             ),
             preserve_existing: false,
         },

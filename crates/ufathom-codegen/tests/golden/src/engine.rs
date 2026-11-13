@@ -858,6 +858,52 @@ impl FEmptyStruct {
 
 }
 
+/// Class `/Script/Engine.Engine`.
+///
+/// Size 0x30, alignment 8.
+#[repr(C, align(8))]
+#[derive(Clone, Copy, Debug)]
+pub struct UEngine {
+    /// The parent class.
+    pub base: crate::core_uobject::UObject,
+}
+
+// SAFETY: every field is `Pod`, the type is `Copy`, and the explicit padding
+// leaves no implicit padding: the size assertion below covers every byte.
+unsafe impl rt::Pod for UEngine {}
+
+const _: () = {
+    assert!(::core::mem::size_of::<UEngine>() == 0x30);
+    assert!(::core::mem::align_of::<UEngine>() == 8);
+};
+
+impl rt::TypePath for UEngine {
+    const PATH: &'static str = "/Script/Engine.Engine";
+}
+
+// SAFETY: the type starts with itself.
+unsafe impl rt::IsA<UEngine> for UEngine {}
+
+// SAFETY: the parent layout is the prefix of this type: embedded, or checked by a size assertion.
+unsafe impl rt::IsA<crate::core_uobject::UObject> for UEngine {}
+
+impl ::core::ops::Deref for UEngine {
+    type Target = crate::core_uobject::UObject;
+    fn deref(&self) -> &crate::core_uobject::UObject {
+        &self.base
+    }
+}
+
+impl ::core::ops::DerefMut for UEngine {
+    fn deref_mut(&mut self) -> &mut crate::core_uobject::UObject {
+        &mut self.base
+    }
+}
+
+impl UEngine {
+
+}
+
 /// Class `/Script/Engine.Everything`.
 ///
 /// Size 0x300, alignment 16.
@@ -2170,4 +2216,50 @@ unsafe impl rt::IsA<FWeirdAlign> for FWeirdAlign {}
 impl FWeirdAlign {
     /// Offset of `A`: Offset 0x0, `uint32`.
     pub const A: rt::FieldRef<Self, u32> = rt::FieldRef::new(0x0);
+}
+
+/// Class `/Script/Engine.World`.
+///
+/// Size 0x30, alignment 8.
+#[repr(C, align(8))]
+#[derive(Clone, Copy, Debug)]
+pub struct UWorld {
+    /// The parent class.
+    pub base: crate::core_uobject::UObject,
+}
+
+// SAFETY: every field is `Pod`, the type is `Copy`, and the explicit padding
+// leaves no implicit padding: the size assertion below covers every byte.
+unsafe impl rt::Pod for UWorld {}
+
+const _: () = {
+    assert!(::core::mem::size_of::<UWorld>() == 0x30);
+    assert!(::core::mem::align_of::<UWorld>() == 8);
+};
+
+impl rt::TypePath for UWorld {
+    const PATH: &'static str = "/Script/Engine.World";
+}
+
+// SAFETY: the type starts with itself.
+unsafe impl rt::IsA<UWorld> for UWorld {}
+
+// SAFETY: the parent layout is the prefix of this type: embedded, or checked by a size assertion.
+unsafe impl rt::IsA<crate::core_uobject::UObject> for UWorld {}
+
+impl ::core::ops::Deref for UWorld {
+    type Target = crate::core_uobject::UObject;
+    fn deref(&self) -> &crate::core_uobject::UObject {
+        &self.base
+    }
+}
+
+impl ::core::ops::DerefMut for UWorld {
+    fn deref_mut(&mut self) -> &mut crate::core_uobject::UObject {
+        &mut self.base
+    }
+}
+
+impl UWorld {
+
 }

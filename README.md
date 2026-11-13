@@ -1,5 +1,7 @@
 # ufathom
 
+[Руководство на русском](docs/ru/README.md)
+
 An Unreal Engine dumper DLL and Rust SDK generator, built to survive what breaks Dumper-7's DLL. Load it in a game and it writes a reflection dump, a usmap and a Rust SDK. If your offsets are wrong, you get an error message, not a crashed game.
 
 **Status: pre-release.** `v0.2.1` is available, with real-build results for the UE 4.25 editor and a UE 4.21 shipping build. See [COMPATIBILITY.md](COMPATIBILITY.md) for exactly what has been tested. The target range is UE 4.11 to 5.8, and support is claimed version by version as real builds are verified.
@@ -150,6 +152,7 @@ The file and target names above use the default `ufathom-sdk` crate name. If you
 
 ## Documents
 
+- [docs/ru/README.md](docs/ru/README.md): user guide in Russian (руководство на русском)
 - [ARCHITECTURE.md](ARCHITECTURE.md): crates, contracts, the discovery algorithm
 - [RESEARCH.md](RESEARCH.md): analysis of existing tools
 - [IDEAS.md](IDEAS.md): ranked features

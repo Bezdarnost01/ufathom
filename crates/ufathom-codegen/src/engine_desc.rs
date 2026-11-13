@@ -3,11 +3,13 @@
 use std::fmt::Write as _;
 
 use ufathom_model::Dump;
+
+use crate::build::Built;
 use ufathom_model::layout::{Location, NameTableLayout, ObjectArrayKind, TransformOp};
 
 /// Items appended to `lib.rs`: `ENGINE`, `session` and, behind the `inproc`
 /// feature, `attach`.
-pub(crate) fn lib_items(dump: &Dump) -> String {
+pub(crate) fn lib_items(dump: &Dump, built: &Built) -> String {
     let l = &dump.layout;
     let rt = "::ufathom_runtime";
     let names = match &l.names {
@@ -176,6 +178,36 @@ pub unsafe fn game_thread() -> Result<&'static {rt}::inproc::GameThread, {rt}::i
         opt_place(g.gworld.as_ref()),
         opt_place(g.gengine.as_ref()),
     );
+    for (name, path, what) in [
+        ("gworld", "/Script/Engine.World", "`GWorld`, the live world"),
+        (
+            "gengine",
+            "/Script/Engine.Engine",
+            "`GEngine`, the live engine",
+        ),
+    ] {
+        let Some(class) = built.structs.iter().find(|s| s.path == path) else {
+            continue;
+        };
+        let _ = write!(
+            out,
+            "
+/// {what}, as the generated `{ty}`. `None` while there is none.
+///
+/// # Errors
+///
+/// As [`{rt}::Session::{name}`].
+#[cfg(feature = \"{module}\")]
+pub fn {name}<M: {rt}::MemoryReader>(
+    session: &{rt}::Session<M>,
+) -> Result<Option<{rt}::Ptr<{module}::{ty}>>, {rt}::SessionError> {{
+    Ok(session.{name}()?.map(|object| object.cast()))
+}}
+",
+            ty = class.rust_name,
+            module = class.module,
+        );
+    }
     out
 }
 
