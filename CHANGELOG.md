@@ -4,6 +4,12 @@ All notable changes are recorded here, in the [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-14
+
+### Changed
+
+- **Breaking:** wrappers of static game functions no longer take `this`. They call the class default object themselves, so existing calls of such wrappers must drop the object argument.
+
 ### Added
 
 - **In-game toolbox in every SDK.** `sdk::session(memory)` opens a `Session` from the build description the SDK now carries as `ENGINE`. It provides:
@@ -91,7 +97,9 @@ First pre-release. Windows x86-64 only for the DLL. Expect breaking changes in t
   - the generated SDK compiles.
 - **Other engine versions:** tested on synthetic images only. See `COMPATIBILITY.md`.
 
-[Unreleased]: https://github.com/Bezdarnost01/ufathom/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Bezdarnost01/ufathom/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Bezdarnost01/ufathom/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/Bezdarnost01/ufathom/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Bezdarnost01/ufathom/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Bezdarnost01/ufathom/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Bezdarnost01/ufathom/releases/tag/v0.1.0
