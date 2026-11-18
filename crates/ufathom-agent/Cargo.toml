@@ -19,6 +19,7 @@ ufathom-codegen.workspace = true
 ufathom-mem.workspace = true
 ufathom-model.workspace = true
 ufathom-reflect.workspace = true
+ufathom-runtime.workspace = true
 ufathom-scan.workspace = true
 ufathom-usmap.workspace = true
 
