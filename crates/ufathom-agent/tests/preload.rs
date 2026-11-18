@@ -150,7 +150,8 @@ fn registry_dump() -> Dump {
                 preload::STRING_TO_NAME,
                 0x18,
                 vec![
-                    field("InString", 0, 16, PropertyType::Str),
+                    // UE 4.21 spells it `inString`.
+                    field("inString", 0, 16, PropertyType::Str),
                     field("ReturnValue", 0x10, 8, PropertyType::Name),
                 ],
             )],
@@ -425,4 +426,16 @@ fn the_engine_description_opens_a_session_on_the_build() {
     assert!(session.num_objects().unwrap() > 20);
     let object = session.find_object("/Script/CoreUObject.Object").unwrap();
     assert!(object.is_some());
+}
+
+/// A real dump plans: set `UFATHOM_REAL_DUMP` to a `dump.json` written from a
+/// game. Skipped without it, since game data is never committed.
+#[test]
+fn a_real_dump_plans_when_one_is_given() {
+    let Some(path) = std::env::var_os("UFATHOM_REAL_DUMP") else {
+        return;
+    };
+    let text = std::fs::read_to_string(path).unwrap();
+    let dump: Dump = serde_json::from_str(&text).unwrap();
+    preload::Plan::from_dump(&dump).unwrap();
 }

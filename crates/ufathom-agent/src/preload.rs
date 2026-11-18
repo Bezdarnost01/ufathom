@@ -108,14 +108,17 @@ impl Call {
         let params = function
             .params
             .iter()
-            .map(|p| (p.name.clone(), param(p)))
+            // Keyed in lowercase: parameter names differ in case between
+            // builds (UE 4.21 has `inString`, later builds `InString`), and
+            // the engine compares names without case.
+            .map(|p| (p.name.to_ascii_lowercase(), param(p)))
             .collect();
         Ok(Self { path, size, params })
     }
 
     fn param(&self, name: &str) -> Result<Param, String> {
         self.params
-            .get(name)
+            .get(&name.to_ascii_lowercase())
             .copied()
             .ok_or_else(|| format!("{} has no parameter `{name}`", self.path))
     }
