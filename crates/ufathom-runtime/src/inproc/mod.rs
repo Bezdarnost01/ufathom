@@ -19,7 +19,9 @@ use core::marker::PhantomData;
 
 use ufathom_mem::{MemoryReaderExt, SelfMemory};
 
+use crate::containers::{FString, TArray};
 use crate::desc::EngineDesc;
+use crate::engine_mem;
 use crate::executor::{CallError, Executor};
 use crate::object::UObjectBase;
 use crate::ptr::Ptr;
@@ -89,6 +91,46 @@ impl InProcessExecutor {
     #[must_use]
     pub fn session(&self) -> &Session<SelfMemory> {
         &self.session
+    }
+
+    /// Reads a string a game function returned, then gives its buffer back
+    /// to the engine. See [`engine_mem`](crate::engine_mem).
+    ///
+    /// # Errors
+    ///
+    /// As [`engine_mem::take_string`](crate::engine_mem::take_string).
+    pub fn take_string(&self, string: &mut FString) -> Result<String, CallError> {
+        engine_mem::take_string(self, self.session.memory(), string)
+    }
+
+    /// Reads an array of strings a game function returned, then frees the
+    /// strings and the array.
+    ///
+    /// # Errors
+    ///
+    /// As [`engine_mem::take_strings`](crate::engine_mem::take_strings).
+    pub fn take_strings(&self, array: &mut TArray<FString>) -> Result<Vec<String>, CallError> {
+        engine_mem::take_strings(self, self.session.memory(), array)
+    }
+
+    /// Gives the buffer of a string a game function returned back to the
+    /// engine.
+    ///
+    /// # Errors
+    ///
+    /// As [`engine_mem::free_string`](crate::engine_mem::free_string).
+    pub fn free_string(&self, string: &mut FString) -> Result<(), CallError> {
+        engine_mem::free_string(self, string)
+    }
+
+    /// Gives the buffer of an array a game function returned back to the
+    /// engine. Elements that own memory must be freed first.
+    ///
+    /// # Errors
+    ///
+    /// As [`engine_mem::free_array`](crate::engine_mem::free_array).
+    pub fn free_array<T>(&self, array: &mut TArray<T>) -> Result<(), CallError> {
+        engine_mem::free_array(self, array)
     }
 
     /// The `UFunction` at `path`, checked to be a function.

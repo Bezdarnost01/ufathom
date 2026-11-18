@@ -20,6 +20,7 @@
 
 mod containers;
 mod desc;
+pub mod engine_mem;
 mod executor;
 #[cfg(feature = "inproc")]
 pub mod inproc;

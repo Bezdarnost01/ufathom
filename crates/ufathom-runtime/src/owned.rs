@@ -8,9 +8,51 @@
 //! engine would write to it and free or grow the buffer with its own
 //! allocator. Pass an empty value there and let the engine allocate.
 
+use std::sync::{Mutex, PoisonError};
+
 use crate::containers::{FString, TArray};
 use crate::ptr::Ptr;
 use ufathom_mem::Pod;
+
+/// Buffers of live `FStringBuf` and `TArrayBuf` values, as `[start, end)`,
+/// so the engine is never asked to free one of them.
+static RUST_OWNED: Mutex<Vec<(u64, u64)>> = Mutex::new(Vec::new());
+
+/// Records a buffer as owned by Rust. Empty buffers are not recorded.
+fn register<T>(items: &[T]) {
+    let Some(range) = range_of(items) else { return };
+    RUST_OWNED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .push(range);
+}
+
+/// Forgets a buffer recorded by [`register`].
+fn unregister<T>(items: &[T]) {
+    let Some(range) = range_of(items) else { return };
+    let mut owned = RUST_OWNED.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(at) = owned.iter().position(|&r| r == range) {
+        owned.swap_remove(at);
+    }
+}
+
+fn range_of<T>(items: &[T]) -> Option<(u64, u64)> {
+    let bytes = core::mem::size_of_val(items) as u64;
+    (bytes != 0).then(|| {
+        let start = items.as_ptr() as usize as u64;
+        (start, start.saturating_add(bytes))
+    })
+}
+
+/// `true` when `addr` lies in the buffer of a live `FStringBuf` or
+/// `TArrayBuf`.
+pub(crate) fn is_rust_owned(addr: u64) -> bool {
+    RUST_OWNED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .any(|&(start, end)| addr >= start && addr < end)
+}
 
 /// A UTF-16, NUL-terminated string owned by Rust, viewed as an [`FString`].
 ///
@@ -19,7 +61,7 @@ use ufathom_mem::Pod;
 /// let view = name.as_fstring();
 /// assert_eq!(view.chars.num, 6); // five characters and the NUL
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FStringBuf {
     units: Vec<u16>,
 }
@@ -30,6 +72,7 @@ impl FStringBuf {
     pub fn new(text: &str) -> Self {
         let mut units: Vec<u16> = text.encode_utf16().collect();
         units.push(0);
+        register(&units);
         Self { units }
     }
 
@@ -54,6 +97,20 @@ impl FStringBuf {
     }
 }
 
+impl Clone for FStringBuf {
+    fn clone(&self) -> Self {
+        let units = self.units.clone();
+        register(&units);
+        Self { units }
+    }
+}
+
+impl Drop for FStringBuf {
+    fn drop(&mut self) {
+        unregister(&self.units);
+    }
+}
+
 impl From<&str> for FStringBuf {
     fn from(text: &str) -> Self {
         Self::new(text)
@@ -61,7 +118,7 @@ impl From<&str> for FStringBuf {
 }
 
 /// An array of `T` owned by Rust, viewed as a [`TArray`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct TArrayBuf<T> {
     items: Vec<T>,
 }
@@ -70,6 +127,7 @@ impl<T: Pod> TArrayBuf<T> {
     /// Takes the elements.
     #[must_use]
     pub fn new(items: Vec<T>) -> Self {
+        register(&items);
         Self { items }
     }
 
@@ -93,6 +151,20 @@ impl<T: Pod> TArrayBuf<T> {
     #[must_use]
     pub fn items(&self) -> &[T] {
         &self.items
+    }
+}
+
+impl<T: Clone> Clone for TArrayBuf<T> {
+    fn clone(&self) -> Self {
+        let items = self.items.clone();
+        register(&items);
+        Self { items }
+    }
+}
+
+impl<T> Drop for TArrayBuf<T> {
+    fn drop(&mut self) {
+        unregister(&self.items);
     }
 }
 
