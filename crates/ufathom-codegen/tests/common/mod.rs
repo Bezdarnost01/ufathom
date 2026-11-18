@@ -168,3 +168,40 @@ pub fn read_tree(dir: &Path) -> Vec<(String, String)> {
     }
     out
 }
+
+/// Export names of a PE file, read from its export directory.
+#[allow(dead_code, reason = "used by some test binaries only")]
+pub fn pe_exports(bytes: &[u8]) -> Vec<String> {
+    let u16_at = |o: usize| u16::from_le_bytes(bytes[o..o + 2].try_into().unwrap());
+    let u32_at = |o: usize| u32::from_le_bytes(bytes[o..o + 4].try_into().unwrap());
+    let pe = u32_at(0x3c) as usize;
+    let sections = usize::from(u16_at(pe + 6));
+    let optional = pe + 24;
+    let table = optional + usize::from(u16_at(pe + 20));
+    let file_offset = |rva: u32| -> usize {
+        (0..sections)
+            .map(|i| table + i * 40)
+            .find_map(|s| {
+                let size = u32_at(s + 8).max(u32_at(s + 16));
+                let (va, raw) = (u32_at(s + 12), u32_at(s + 20));
+                (va..va + size)
+                    .contains(&rva)
+                    .then(|| (rva - va + raw) as usize)
+            })
+            .expect("RVA inside a section")
+    };
+    let directory_rva = u32_at(optional + 112);
+    if directory_rva == 0 {
+        return Vec::new();
+    }
+    let directory = file_offset(directory_rva);
+    let count = u32_at(directory + 24) as usize;
+    let names = file_offset(u32_at(directory + 32));
+    (0..count)
+        .map(|i| {
+            let start = file_offset(u32_at(names + 4 * i));
+            let end = start + bytes[start..].iter().position(|&b| b == 0).unwrap();
+            String::from_utf8(bytes[start..end].to_vec()).unwrap()
+        })
+        .collect()
+}

@@ -55,6 +55,13 @@ fn bundled_sdk_compiles_without_an_ufathom_checkout() {
         &["test", "--no-run"][..],
         // The vendored hook and executor, with their OS dependencies.
         &["build", "--lib", "--features", "inproc"][..],
+        // Every DLL feature together: hot-unload and the engine-wait gate.
+        &[
+            "build",
+            "--lib",
+            "--features",
+            "inproc hot-unload proxy-version",
+        ][..],
     ] {
         let run = run_cargo(dir.path(), args);
         assert!(
@@ -62,6 +69,20 @@ fn bundled_sdk_compiles_without_an_ufathom_checkout() {
             "warnings while linking {args:?}:\n{}",
             run.stderr
         );
+    }
+
+    // The last build had `proxy-version`: the DLL must export every function
+    // of the system version.dll, or the game would fail to start with it.
+    #[cfg(windows)]
+    {
+        let dll = common::workspace_root().join("target/sdk-check/debug/ufathom_sdk.dll");
+        let exports = common::pe_exports(&std::fs::read(&dll).unwrap());
+        for name in ufathom_runtime::proxy::EXPORTS {
+            assert!(
+                exports.iter().any(|e| e == name),
+                "{name} is not exported: {exports:?}"
+            );
+        }
     }
 }
 
