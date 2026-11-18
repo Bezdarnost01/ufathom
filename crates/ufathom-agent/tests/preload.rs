@@ -182,6 +182,8 @@ struct State {
     paths_listed: Vec<(String, bool)>,
     cleared: Vec<u64>,
     loaded: Vec<u64>,
+    loads_at_clear: Vec<usize>,
+    keep_array: bool,
 }
 
 struct FakeEngine {
@@ -271,7 +273,11 @@ unsafe impl Executor for FakeEngine {
             ARRAY_CLEAR => {
                 let data = u64::from_le_bytes(params[..8].try_into().unwrap());
                 state.cleared.push(data);
-                params[..8].fill(0);
+                let loaded = state.loaded.len();
+                state.loads_at_clear.push(loaded);
+                if !state.keep_array {
+                    params[..8].fill(0);
+                }
             }
             preload::GET_ASSET => {
                 let id = u64::from_le_bytes(params[ASSET_ID..ASSET_ID + 8].try_into().unwrap());
@@ -326,11 +332,20 @@ fn config(max_assets: usize, batch: usize) -> PreloadConfig {
 }
 
 fn run(assets: &[(u64, &str)], config: &PreloadConfig) -> (PreloadReport, Inline) {
+    run_with_array_cleanup(assets, config, false)
+}
+
+fn run_with_array_cleanup(
+    assets: &[(u64, &str)],
+    config: &PreloadConfig,
+    keep_array: bool,
+) -> (PreloadReport, Inline) {
     let runner = Inline {
         engine: FakeEngine::new(assets),
         attached: Mutex::new(0),
         detached: Mutex::new(0),
     };
+    runner.engine.state.lock().unwrap().keep_array = keep_array;
     let report = preload::run(
         &registry_dump(),
         config,
@@ -356,6 +371,7 @@ fn only_blueprint_assets_under_the_path_are_loaded() {
     assert_eq!(state.loaded, vec![1, 3, 4]);
     // The registry's array buffer went back to the engine.
     assert_eq!(state.cleared, vec![state.assets.as_ptr() as u64]);
+    assert_eq!(state.loads_at_clear, vec![3]);
     assert_eq!(
         report,
         PreloadReport {
@@ -365,12 +381,29 @@ fn only_blueprint_assets_under_the_path_are_loaded() {
             returned: 2,
             failed: 0,
             first_error: None,
+            cleanup_warning: None,
             truncated: false,
             released: true,
         }
     );
     assert_eq!(*runner.attached.lock().unwrap(), 1);
     assert_eq!(*runner.detached.lock().unwrap(), 1);
+}
+
+#[test]
+fn unconfirmed_cleanup_does_not_discard_loaded_blueprints_or_retry() {
+    let (report, runner) =
+        run_with_array_cleanup(&[(1, "Blueprint"), (3, "Blueprint")], &config(10, 1), true);
+    assert_eq!(
+        (report.attempted, report.returned, report.failed),
+        (2, 2, 0)
+    );
+    assert!(report.cleanup_warning.unwrap().contains("left the buffer"));
+    assert!(report.released);
+    let state = runner.engine.state.lock().unwrap();
+    assert_eq!(state.loaded, vec![1, 3]);
+    assert_eq!(state.loads_at_clear, vec![2]);
+    assert_eq!(state.cleared.len(), 1);
 }
 
 #[test]

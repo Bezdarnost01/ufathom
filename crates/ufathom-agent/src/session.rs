@@ -607,6 +607,11 @@ impl Shared {
         if let Some(error) = &report.first_error {
             run.log.warn(format!("preload: first failure: {error}"));
         }
+        if let Some(warning) = &report.cleanup_warning {
+            run.log.warn(format!(
+                "preload: registry buffer release unconfirmed: {warning}"
+            ));
+        }
         if !report.released {
             run.log.warn(
                 "preload: a thread is still inside the game thread hook; the DLL will not unload",

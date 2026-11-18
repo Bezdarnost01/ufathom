@@ -14,10 +14,11 @@
 //!
 //! This is the one place where ufathom calls game functions for a dump, and
 //! it is off unless the config asks for it. Loading stalls the game thread
-//! for as long as a batch takes. The array of `FAssetData` the registry
-//! returns has its buffer freed through the engine, but what each element
-//! owns (tag maps, chunk ids) is left allocated: a bounded leak, once per
-//! dump.
+//! for as long as a batch takes. The registry's arrays stay alive until the
+//! last asset call: byte copies of `FAssetData` can still refer to their
+//! storage. Afterwards the engine is asked to release the outer allocations.
+//! The elements' nested allocations are not freed by that call; some builds
+//! also cannot confirm that the outer buffer was released.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -74,6 +75,8 @@ pub struct PreloadReport {
     pub failed: usize,
     /// The first failure, if any.
     pub first_error: Option<String>,
+    /// An engine buffer could not be confirmed as released after loading.
+    pub cleanup_warning: Option<String>,
     /// `true` when more assets matched than `max_assets` allows.
     pub truncated: bool,
     /// `true` when the hook was removed and no thread is still inside it.
@@ -319,10 +322,12 @@ fn class_name_offset(dump: &Dump, asset: &StructDef) -> Result<usize, String> {
 }
 
 /// What the listing step found, sent back from the game thread.
+#[derive(Default)]
 struct Listing {
     listed: usize,
     matched: usize,
     assets: Vec<Vec<u8>>,
+    arrays: Vec<TArray<u8>>,
     truncated: bool,
 }
 
@@ -366,7 +371,8 @@ fn list(
     reader: &dyn MemoryReader,
     plan: &Plan,
     config: &PreloadConfig,
-) -> Result<Listing, String> {
+    listing: &mut Listing,
+) -> Result<(), String> {
     let helpers = exec.default_object(HELPERS).map_err(|e| e.to_string())?;
     let library = exec
         .default_object(STRING_LIBRARY)
@@ -386,12 +392,6 @@ fn list(
                 .ok_or("an FName is shorter than its layout")?,
         );
     }
-    let mut listing = Listing {
-        listed: 0,
-        matched: 0,
-        assets: Vec::new(),
-        truncated: false,
-    };
     let by_path = &plan.by_path;
     let out = by_path.param("OutAssetData")?;
     for path in &config.paths {
@@ -402,7 +402,7 @@ fn list(
             b.set_bool(by_path.param("bIncludeOnlyOnDiskAssets")?, false)
         })?;
         let header = block.get(out)?;
-        let mut array: TArray<u8> = TArray {
+        let array: TArray<u8> = TArray {
             data: Ptr::new(word(&header, 0)?),
             num: i32::from_le_bytes(
                 header
@@ -417,6 +417,12 @@ fn list(
                     .ok_or("short TArray")?,
             ),
         };
+        if array.num < 0 || array.max < array.num || array.data.is_null() != (array.max == 0) {
+            return Err("asset registry returned an inconsistent array".to_owned());
+        }
+        if !array.data.is_null() {
+            listing.arrays.push(array);
+        }
         let count = usize::try_from(array.num).unwrap_or(0).min(MAX_LISTED);
         listing.listed += count;
         let mut element = vec![0u8; plan.asset_size];
@@ -443,10 +449,20 @@ fn list(
                 listing.truncated = true;
             }
         }
-        // The elements are not destroyed; see the module documentation.
-        engine_mem::free_array(exec, &mut array).map_err(|e| e.to_string())?;
     }
-    Ok(listing)
+    Ok(())
+}
+
+/// Releases registry arrays after no asset call can use their data. Do not
+/// retry an unconfirmed release: the engine may have consumed the buffer.
+fn release_arrays(exec: &dyn Executor, mut arrays: Vec<TArray<u8>>) -> Option<String> {
+    let mut first = None;
+    for array in &mut arrays {
+        if let Err(error) = engine_mem::free_array(exec, array) {
+            first.get_or_insert_with(|| error.to_string());
+        }
+    }
+    first
 }
 
 fn word(bytes: &[u8], at: usize) -> Result<u64, String> {
@@ -519,31 +535,48 @@ pub fn run(
     let timeout = Duration::from_secs(config.timeout_seconds);
     let mut report = PreloadReport::default();
     let result = (|| {
-        let listing = {
+        let (listing, listed) = {
             let (plan, config, reader) = (Arc::clone(&plan), config.clone(), Arc::clone(&reader));
             on_game_thread(runner, timeout, move |exec| {
-                list(exec, &*reader, &plan, &config)
-            })??
+                let mut listing = Listing::default();
+                let result = list(exec, &*reader, &plan, &config, &mut listing);
+                (listing, result)
+            })?
         };
         report.listed = listing.listed;
         report.matched = listing.matched;
         report.truncated = listing.truncated;
-        for batch in listing.assets.chunks(config.batch.max(1)) {
-            if cancel.load(Ordering::Relaxed) {
-                break;
+        let loaded = (|| {
+            listed?;
+            for batch in listing.assets.chunks(config.batch.max(1)) {
+                if cancel.load(Ordering::Relaxed) {
+                    break;
+                }
+                let (plan, batch) = (Arc::clone(&plan), batch.to_vec());
+                let count = batch.len();
+                let (returned, errors) =
+                    on_game_thread(runner, timeout, move |exec| load(exec, &plan, &batch))?;
+                report.attempted += count;
+                report.returned += returned;
+                report.failed += errors.len();
+                if report.first_error.is_none() {
+                    report.first_error = errors.into_iter().next();
+                }
             }
-            let (plan, batch) = (Arc::clone(&plan), batch.to_vec());
-            let count = batch.len();
-            let (returned, errors) =
-                on_game_thread(runner, timeout, move |exec| load(exec, &plan, &batch))?;
-            report.attempted += count;
-            report.returned += returned;
-            report.failed += errors.len();
-            if report.first_error.is_none() {
-                report.first_error = errors.into_iter().next();
+            Ok::<(), String>(())
+        })();
+        if !listing.arrays.is_empty() {
+            report.cleanup_warning = match on_game_thread(runner, timeout, move |exec| {
+                release_arrays(exec, listing.arrays)
+            }) {
+                Ok(warning) => warning,
+                Err(error) => Some(error),
+            };
+            if let (Err(error), Some(warning)) = (&loaded, &report.cleanup_warning) {
+                return Err(format!("{error}; cleanup unconfirmed: {warning}"));
             }
         }
-        Ok::<(), String>(())
+        loaded
     })();
     report.released = runner.detach(timeout);
     result.map(|()| report)

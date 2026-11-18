@@ -292,7 +292,7 @@ fn describe_pool(
             "names.pool.cursor",
             layout.cursor,
             if candidate.cursor_verified {
-                "equals the end of the last block's entries"
+                "lands on an entry boundary in the active block"
             } else {
                 "adjacent to the block counter; the last block was unreadable"
             },

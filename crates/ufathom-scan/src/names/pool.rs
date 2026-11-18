@@ -30,7 +30,7 @@ pub(crate) struct PoolCandidate {
     pub current_block_at: u64,
     /// Address of the cursor.
     pub cursor_at: u64,
-    /// The cursor equals the end of the last block's entries.
+    /// The cursor is on an entry boundary in the active block.
     pub cursor_verified: bool,
 }
 
@@ -160,9 +160,17 @@ pub(crate) fn build_candidate(
                 let Some(cursor) = le_u32(&window_bytes, cursor_index) else {
                     continue;
                 };
-                let verified = last
-                    .as_ref()
-                    .is_some_and(|(parsed, _)| parsed.complete && parsed.end == cursor as usize);
+                let at = cursor as usize;
+                let stride = format.stride;
+                let verified = last.as_ref().is_some_and(|(parsed, data)| {
+                    // The cursor is authoritative. The unallocated tail is
+                    // not necessarily zero and may parse as more entries.
+                    at <= data.len()
+                        && (parsed.end == at
+                            || (cursor != 0
+                                && cursor % stride == 0
+                                && parsed.starts.binary_search(&(cursor / stride)).is_ok()))
+                });
                 let cursor_at = slot.wrapping_sub(neighbour as u64);
                 // An unreadable last block cannot verify the cursor; the
                 // engine's order (counter, then cursor) is the only hint.
@@ -170,7 +178,10 @@ pub(crate) fn build_candidate(
                 if !usable {
                     continue;
                 }
-                let score = u32::from(verified) * 4 + u32::from(neighbour == back - 4);
+                let at_end = last.as_ref().is_some_and(|(parsed, _)| parsed.end == at);
+                let score = u32::from(verified) * 4
+                    + u32::from(neighbour == back - 4) * 2
+                    + u32::from(at_end);
                 let candidate = PoolCandidate {
                     first_slot: slot,
                     blocks: blocks.clone(),

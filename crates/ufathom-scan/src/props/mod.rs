@@ -11,7 +11,7 @@ mod core;
 mod modern;
 mod typed;
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use ufathom_engine::NameTable;
 use ufathom_model::layout::{
@@ -163,16 +163,31 @@ impl System {
     }
 }
 
+/// Core anchors must be sampled even if they are beyond the bounded generic
+/// struct sample. Keep their order deterministic and do not sample them twice.
+fn member_owners(
+    core: impl IntoIterator<Item = u64>,
+    sampled: impl IntoIterator<Item = u64>,
+) -> Vec<u64> {
+    let core: BTreeSet<_> = core.into_iter().collect();
+    core.iter()
+        .copied()
+        .chain(sampled.into_iter().filter(|addr| !core.contains(addr)))
+        .collect()
+}
+
 /// The properties of every struct and function, up to a bound.
 pub(crate) fn sample_props(env: &Env<'_, '_>, system: &System) -> Vec<Prop> {
     let mut out = Vec::new();
     let mut structs: Vec<Obj> = crate::structs::structs_of(env.universe, env.table, env.anchors);
-    // Script structs first: they are few, small and the anchors of the member
-    // offsets, and a real game's classes would use up the whole budget before
-    // the first of them.
+    // Prefer script structs within the generic sample; the explicit anchor
+    // list also covers core types registered past the sample's object limit.
     structs.sort_by_key(|o| o.class != env.anchors.script_struct);
-    for owner in &structs {
-        out.extend(system.props_of(env, owner.addr, Role::Member));
+    for addr in member_owners(
+        env.anchors.structs.values().copied(),
+        structs.iter().map(|obj| obj.addr),
+    ) {
+        out.extend(system.props_of(env, addr, Role::Member));
         if out.len() >= MAX_MEMBER_SAMPLES {
             break;
         }
@@ -255,4 +270,20 @@ pub(crate) fn solve(env: &Env<'_, '_>) -> Result<Solved, ScanError> {
         fname_size,
         props,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::member_owners;
+
+    #[test]
+    fn member_sampling_keeps_core_anchors_after_the_generic_limit() {
+        const LIMIT: usize = 3000;
+        let addresses = 1..=LIMIT as u64 + 1;
+        let capped = addresses.clone().take(LIMIT);
+        let late_anchor = *addresses.end();
+        let owners = member_owners([late_anchor, 2, late_anchor], capped);
+        assert_eq!(owners.get(..3), Some([2, late_anchor, 1].as_slice()));
+        assert_eq!(owners.len(), LIMIT + 1);
+    }
 }
