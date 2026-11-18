@@ -12,6 +12,38 @@
 //!
 //! No machine code is patched: only data pointers in virtual tables change,
 //! and [`GameThread::uninstall`] puts them back.
+//!
+//! # The game thread
+//!
+//! Tasks and callbacks run only on the game thread. It is, in order:
+//!
+//! 1. the thread named by [`GameThread::set_game_thread`], when the caller
+//!    knows it;
+//! 2. the process's main thread, which is the game thread of a standard
+//!    Unreal Engine build, as soon as it makes a hooked call;
+//! 3. otherwise, the first thread to make 64 hooked calls.
+//!
+//! # Cost on the game thread
+//!
+//! With nothing queued and no callback registered, a hooked call costs two
+//! atomic loads and a thread-local read before it forwards. With callbacks
+//! registered, a call of a function that has none is rejected by a 1024-bit
+//! filter; only a filter hit takes a read lock to clone an `Arc` of the
+//! callback table. No call allocates.
+//!
+//! # Classes loaded later
+//!
+//! A virtual table is found through a live object of its class, so a native
+//! class with no instance at install time is not hooked yet.
+//! [`GameThread::rescan`] hooks what appeared since, and
+//! [`GameThread::start_auto_rescan`] does that periodically on a background
+//! thread of its own.
+//!
+//! # Unloading
+//!
+//! [`GameThread::uninstall_and_wait`] restores every slot and then waits
+//! until no thread runs inside the hook, so the module that holds it can be
+//! unloaded.
 
 use core::ffi::c_void;
 use std::cell::{Cell, RefCell};
@@ -20,20 +52,30 @@ use std::ops::ControlFlow;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError, RwLock, mpsc};
-use std::thread::{self, ThreadId};
-use std::time::Duration;
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 
 use ufathom_mem::{MemoryReaderExt, Pod, SelfMemory};
 
-use super::{InProcessExecutor, ProcessEventFn, patch};
+use super::native::NativeHooks;
+use super::{InProcessExecutor, ProcessEventFn, os, patch};
 use crate::desc::EngineDesc;
 use crate::object::UObjectBase;
 use crate::ptr::Ptr;
 use crate::session::{Session, SessionError};
 
 /// `ProcessEvent` calls a thread must make before it is taken as the game
-/// thread.
+/// thread, when it is not the main thread and none was named.
 const GAME_THREAD_VOTES: u32 = 64;
+
+/// How long [`GameThread::uninstall_and_wait`] keeps waiting after the last
+/// thread left the hook, for a thread that read a patched slot just before
+/// it was restored and has not entered yet.
+const UNLOAD_GRACE: Duration = Duration::from_millis(50);
+
+/// Shortest interval [`GameThread::start_auto_rescan`] accepts: a rescan
+/// walks the whole object array.
+pub const MIN_RESCAN_INTERVAL: Duration = Duration::from_millis(250);
 
 /// Why the hook could not do what was asked.
 #[derive(Debug, thiserror::Error)]
@@ -65,6 +107,13 @@ pub enum HookError {
     /// not be created on the game thread.
     #[error("the task did not complete")]
     Dropped,
+    /// A background thread could not be started.
+    #[error("cannot start a thread: {0}")]
+    Thread(String),
+    /// A native function hook is not possible in this build, for example
+    /// because the offset of `UFunction::Func` could not be solved.
+    #[error("native function hook: {0}")]
+    Native(String),
 }
 
 /// What a task receives on the game thread.
@@ -186,33 +235,177 @@ impl core::fmt::Debug for CallContext<'_> {
 pub struct HookId(u64);
 
 type Task = Box<dyn FnOnce(&GameContext<'_>) + Send>;
-type Callback = Arc<dyn Fn(&mut CallContext<'_>) + Send + Sync>;
+type Callback = dyn Fn(&mut CallContext<'_>) + Send + Sync;
 
-struct Registered {
-    id: HookId,
-    after: bool,
-    callback: Callback,
+/// One registered callback.
+pub(super) struct Registered<C: ?Sized> {
+    pub(super) id: HookId,
+    pub(super) after: bool,
+    pub(super) callback: Arc<C>,
+}
+
+impl<C: ?Sized> Clone for Registered<C> {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            after: self.after,
+            callback: Arc::clone(&self.callback),
+        }
+    }
+}
+
+/// Callbacks by function address.
+pub(super) type Table<C> = HashMap<u64, Vec<Registered<C>>>;
+
+/// A 1024-bit filter over function addresses: a clear bit proves a function
+/// has no callback, without a lock.
+struct Filter([AtomicU64; 16]);
+
+impl Filter {
+    const fn new() -> Self {
+        Self([const { AtomicU64::new(0) }; 16])
+    }
+
+    fn bit(function: u64) -> (usize, u64) {
+        let hash = (function >> 4) ^ (function >> 14) ^ (function >> 24);
+        let bit = (hash & 1023) as usize;
+        (bit / 64, 1u64 << (bit % 64))
+    }
+
+    fn may_contain(&self, function: u64) -> bool {
+        let (word, mask) = Self::bit(function);
+        self.0
+            .get(word)
+            .is_some_and(|w| w.load(Ordering::Acquire) & mask != 0)
+    }
+
+    fn insert(&self, function: u64) {
+        let (word, mask) = Self::bit(function);
+        if let Some(w) = self.0.get(word) {
+            w.fetch_or(mask, Ordering::AcqRel);
+        }
+    }
+
+    /// Sets exactly the bits of `functions`. A bit of a function still in
+    /// the set is never cleared, even for a moment.
+    fn rebuild(&self, functions: impl Iterator<Item = u64>) {
+        let mut words = [0u64; 16];
+        for function in functions {
+            let (word, mask) = Self::bit(function);
+            if let Some(w) = words.get_mut(word) {
+                *w |= mask;
+            }
+        }
+        for (w, value) in self.0.iter().zip(words) {
+            w.store(value, Ordering::Release);
+        }
+    }
+}
+
+/// Callbacks keyed by function, read without allocating.
+///
+/// Writers copy the table, change the copy and publish it; a reader clones
+/// the current `Arc` under a short read lock, so a callback may register or
+/// remove callbacks while the table it runs from stays intact.
+pub(super) struct Callbacks<C: ?Sized> {
+    table: RwLock<Arc<Table<C>>>,
+    filter: Filter,
+    any: AtomicBool,
+}
+
+impl<C: ?Sized> Callbacks<C> {
+    pub(super) fn new() -> Self {
+        Self {
+            table: RwLock::new(Arc::new(HashMap::new())),
+            filter: Filter::new(),
+            any: AtomicBool::new(false),
+        }
+    }
+
+    /// `true` when any callback is registered.
+    pub(super) fn any(&self) -> bool {
+        self.any.load(Ordering::Acquire)
+    }
+
+    pub(super) fn add(&self, function: u64, entry: Registered<C>) {
+        let mut guard = write(&self.table);
+        let mut table = Table::clone(&guard);
+        table.entry(function).or_default().push(entry);
+        // The bit is set before the table that needs it is published.
+        self.filter.insert(function);
+        *guard = Arc::new(table);
+        self.any.store(true, Ordering::Release);
+    }
+
+    /// Removes the callback `id`. Returns the function it was registered
+    /// for, and whether that function has callbacks left.
+    pub(super) fn remove(&self, id: HookId) -> Option<(u64, bool)> {
+        let mut guard = write(&self.table);
+        let function = guard
+            .iter()
+            .find(|(_, list)| list.iter().any(|r| r.id == id))
+            .map(|(&function, _)| function)?;
+        let mut table = Table::clone(&guard);
+        let left = table.get_mut(&function).is_some_and(|list| {
+            list.retain(|r| r.id != id);
+            !list.is_empty()
+        });
+        if !left {
+            table.remove(&function);
+        }
+        let any = !table.is_empty();
+        let functions: Vec<u64> = table.keys().copied().collect();
+        *guard = Arc::new(table);
+        self.filter.rebuild(functions.into_iter());
+        self.any.store(any, Ordering::Release);
+        Some((function, left))
+    }
+
+    /// The table, when `function` may have callbacks. `None` is certain.
+    pub(super) fn lookup(&self, function: u64) -> Option<Arc<Table<C>>> {
+        if !self.any() || !self.filter.may_contain(function) {
+            return None;
+        }
+        let table = Arc::clone(&read(&self.table));
+        table.contains_key(&function).then_some(table)
+    }
+}
+
+/// The background thread of [`GameThread::start_auto_rescan`].
+struct Rescanner {
+    stop: mpsc::Sender<()>,
+    handle: JoinHandle<()>,
 }
 
 /// The installed `ProcessEvent` hook. There is at most one per process; get
 /// it from [`GameThread::install`] or [`GameThread::get`].
 pub struct GameThread {
-    desc: &'static EngineDesc,
+    pub(super) desc: &'static EngineDesc,
     session: Session<SelfMemory>,
     process_event: u32,
+    /// Serializes rescans, so two never patch at once.
+    scan: Mutex<()>,
     patched: Mutex<Vec<usize>>,
+    /// Virtual tables already looked at since the last uninstall.
+    seen: Mutex<HashSet<u64>>,
     tasks: Mutex<VecDeque<Task>>,
     has_tasks: AtomicBool,
-    callbacks: RwLock<HashMap<u64, Vec<Registered>>>,
-    has_callbacks: AtomicBool,
-    next_id: AtomicU64,
-    game_thread: OnceLock<ThreadId>,
-    votes: Mutex<Vec<(ThreadId, u32)>>,
+    callbacks: Callbacks<Callback>,
+    pub(super) next_id: AtomicU64,
+    /// Operating system id of the game thread, 0 while unknown.
+    game_thread: AtomicU64,
+    /// The process's main thread, preferred in the election.
+    main_thread: Option<u64>,
+    votes: Mutex<Vec<(u64, u32)>>,
+    rescanner: Mutex<Option<Rescanner>>,
+    pub(super) native: NativeHooks,
 }
 
 static STATE: OnceLock<GameThread> = OnceLock::new();
 /// The `ProcessEvent` the hook forwards to.
 static ORIGINAL: AtomicUsize = AtomicUsize::new(0);
+/// Threads currently inside a hook of this module.
+pub(super) static ACTIVE: AtomicUsize = AtomicUsize::new(0);
 
 thread_local! {
     /// Set while user code runs, so its own calls bypass the hook.
@@ -236,7 +429,8 @@ impl GameThread {
     ///   describes this exact build, including its `ProcessEvent` index.
     /// - This module stays loaded while the hook is installed and for as long
     ///   as a thread may still be running the hook after
-    ///   [`uninstall`](Self::uninstall).
+    ///   [`uninstall`](Self::uninstall); [`uninstall_and_wait`](Self::uninstall_and_wait)
+    ///   tells when that is over.
     ///
     /// # Errors
     ///
@@ -255,14 +449,18 @@ impl GameThread {
             desc,
             session: Session::new(SelfMemory::new(), desc)?,
             process_event,
+            scan: Mutex::new(()),
             patched: Mutex::new(Vec::new()),
+            seen: Mutex::new(HashSet::new()),
             tasks: Mutex::new(VecDeque::new()),
             has_tasks: AtomicBool::new(false),
-            callbacks: RwLock::new(HashMap::new()),
-            has_callbacks: AtomicBool::new(false),
+            callbacks: Callbacks::new(),
             next_id: AtomicU64::new(1),
-            game_thread: OnceLock::new(),
+            game_thread: AtomicU64::new(0),
+            main_thread: os::main_thread_id(),
             votes: Mutex::new(Vec::new()),
+            rescanner: Mutex::new(None),
+            native: NativeHooks::new(),
         };
         let state = STATE.get_or_init(|| fresh);
         state.rescan()?;
@@ -276,27 +474,39 @@ impl GameThread {
     }
 
     /// Hooks virtual tables that appeared since the last scan, for example
-    /// from a module loaded later, and re-hooks after
-    /// [`uninstall`](Self::uninstall). Returns the number of slots patched.
+    /// of a class that had no instance before or from a module loaded later,
+    /// and re-hooks after [`uninstall`](Self::uninstall). Returns the number
+    /// of slots patched.
+    ///
+    /// Only virtual tables not seen since the last uninstall are read, but
+    /// the whole object array is walked: this takes milliseconds on a large
+    /// game, so prefer a background thread
+    /// ([`start_auto_rescan`](Self::start_auto_rescan)) to the game thread.
     ///
     /// # Errors
     ///
     /// As [`install`](Self::install).
     pub fn rescan(&self) -> Result<usize, HookError> {
+        let _scan = lock(&self.scan);
         let mem = self.session.memory();
-        let mut vtables: HashSet<u64> = HashSet::new();
-        self.session.for_each_object(|_, object| {
-            if let Ok(vtable) = mem.read_u64(object.addr())
-                && vtable != 0
-            {
-                vtables.insert(vtable);
-            }
-            ControlFlow::Continue(())
-        })?;
+        let mut fresh: HashSet<u64> = HashSet::new();
+        {
+            let seen = lock(&self.seen);
+            self.session.for_each_object(|_, object| {
+                if let Ok(vtable) = mem.read_u64(object.addr())
+                    && vtable != 0
+                    && !seen.contains(&vtable)
+                {
+                    fresh.insert(vtable);
+                }
+                ControlFlow::Continue(())
+            })?;
+        }
         let hook = hooked_process_event as *const () as usize;
         let mut slots: Vec<(usize, usize)> = Vec::new();
         let mut counts: HashMap<usize, usize> = HashMap::new();
-        for vtable in vtables {
+        let mut looked_at: Vec<u64> = Vec::new();
+        for vtable in fresh {
             let Some(slot) = u64::from(self.process_event)
                 .checked_mul(8)
                 .and_then(|offset| vtable.checked_add(offset))
@@ -313,6 +523,7 @@ impl GameThread {
             if value == 0 {
                 continue;
             }
+            looked_at.push(vtable);
             if value != hook {
                 *counts.entry(value).or_default() += 1;
             }
@@ -352,18 +563,73 @@ impl GameThread {
                 count += 1;
             }
         }
+        lock(&self.seen).extend(looked_at);
         Ok(count)
     }
 
-    /// Puts every patched slot back. A thread already inside the hook
-    /// finishes its call normally. Queued tasks and callbacks are kept and
-    /// run again after [`rescan`](Self::rescan).
+    /// Starts a background thread that calls [`rescan`](Self::rescan) every
+    /// `interval` (at least [`MIN_RESCAN_INTERVAL`]), so classes that get
+    /// their first instance later are hooked too. Returns `false` when one
+    /// is already running. [`stop_auto_rescan`](Self::stop_auto_rescan) and
+    /// [`uninstall`](Self::uninstall) stop it.
+    ///
+    /// # Errors
+    ///
+    /// [`HookError::Thread`] when the thread cannot be started.
+    pub fn start_auto_rescan(&'static self, interval: Duration) -> Result<bool, HookError> {
+        let interval = interval.max(MIN_RESCAN_INTERVAL);
+        let mut slot = lock(&self.rescanner);
+        if slot.is_some() {
+            return Ok(false);
+        }
+        let (stop, wake) = mpsc::channel::<()>();
+        let handle = thread::Builder::new()
+            .name("ufathom-rescan".to_owned())
+            .spawn(move || {
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    while let Err(mpsc::RecvTimeoutError::Timeout) = wake.recv_timeout(interval) {
+                        if lock(&self.patched).is_empty() {
+                            // Uninstalled: nothing to keep up to date.
+                            continue;
+                        }
+                        let _ = self.rescan();
+                    }
+                }));
+            })
+            .map_err(|error| HookError::Thread(error.to_string()))?;
+        *slot = Some(Rescanner { stop, handle });
+        Ok(true)
+    }
+
+    /// Stops the thread of [`start_auto_rescan`](Self::start_auto_rescan)
+    /// and waits for it. Does nothing when none runs.
+    pub fn stop_auto_rescan(&self) {
+        let rescanner = lock(&self.rescanner).take();
+        if let Some(Rescanner { stop, handle }) = rescanner {
+            drop(stop);
+            let _ = handle.join();
+        }
+    }
+
+    /// `true` while the thread of [`start_auto_rescan`](Self::start_auto_rescan) runs.
+    #[must_use]
+    pub fn auto_rescan_running(&self) -> bool {
+        lock(&self.rescanner).is_some()
+    }
+
+    /// Stops [`auto rescans`](Self::start_auto_rescan), then puts every
+    /// patched slot and every [native function](Self::before_native) back. A
+    /// thread already inside the hook finishes its call normally. Queued
+    /// tasks and callbacks are kept and run again after
+    /// [`rescan`](Self::rescan).
     ///
     /// # Errors
     ///
     /// [`HookError::Patch`] for a slot that cannot be written; the remaining
     /// slots are still restored.
     pub fn uninstall(&self) -> Result<(), HookError> {
+        self.stop_auto_rescan();
+        let _scan = lock(&self.scan);
         let original = ORIGINAL.load(Ordering::Acquire);
         let hook = hooked_process_event as *const () as usize;
         let mut first_error = None;
@@ -377,7 +643,39 @@ impl GameThread {
                 });
             }
         }
+        lock(&self.seen).clear();
+        if let Err(error) = self.native.restore_all() {
+            first_error.get_or_insert(error);
+        }
         first_error.map_or(Ok(()), Err)
+    }
+
+    /// [`uninstall`](Self::uninstall)s, then waits up to `timeout` until no
+    /// thread runs inside a hook of this module. Returns `true` when none
+    /// does, after which the module may be unloaded; `false` when a thread
+    /// was still inside (for example, in a long game function called through
+    /// the hook) and unloading would be unsafe.
+    ///
+    /// # Errors
+    ///
+    /// As [`uninstall`](Self::uninstall). Nothing is waited for then.
+    pub fn uninstall_and_wait(&self, timeout: Duration) -> Result<bool, HookError> {
+        self.uninstall()?;
+        let deadline = Instant::now() + timeout;
+        loop {
+            if ACTIVE.load(Ordering::Acquire) == 0 {
+                // A thread may have read a patched slot just before it was
+                // restored and not entered yet.
+                thread::sleep(UNLOAD_GRACE);
+                if ACTIVE.load(Ordering::Acquire) == 0 {
+                    return Ok(true);
+                }
+            }
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
     }
 
     /// Number of virtual table slots currently patched.
@@ -386,11 +684,39 @@ impl GameThread {
         lock(&self.patched).len()
     }
 
-    /// `true` once the game thread has been identified: the first thread to
-    /// make 64 hooked `ProcessEvent` calls.
+    /// `true` once the game thread has been identified.
     #[must_use]
     pub fn game_thread_known(&self) -> bool {
-        self.game_thread.get().is_some()
+        self.game_thread_id().is_some()
+    }
+
+    /// The operating system id of the game thread, once identified.
+    #[must_use]
+    pub fn game_thread_id(&self) -> Option<u64> {
+        match self.game_thread.load(Ordering::Acquire) {
+            0 => None,
+            id => Some(id),
+        }
+    }
+
+    /// Names the game thread by its operating system id, for example one the
+    /// engine's `GGameThreadId` holds, instead of letting the hook pick it.
+    /// Returns `false` (and changes nothing) when the game thread is already
+    /// known or `os_thread_id` is 0.
+    pub fn set_game_thread(&self, os_thread_id: u64) -> bool {
+        os_thread_id != 0
+            && self
+                .game_thread
+                .compare_exchange(0, os_thread_id, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+    }
+
+    /// The operating system id of the calling thread, as
+    /// [`set_game_thread`](Self::set_game_thread) and
+    /// [`game_thread_id`](Self::game_thread_id) use it.
+    #[must_use]
+    pub fn current_thread_id() -> u64 {
+        os::current_thread_id()
     }
 
     /// Names, objects and lookups, usable from any thread.
@@ -466,74 +792,113 @@ impl GameThread {
         self.register(path, true, Arc::new(callback))
     }
 
-    /// Removes a callback. Returns `false` when it was not registered.
+    /// Removes a callback, of `ProcessEvent` or of a native function.
+    /// Returns `false` when it was not registered.
     pub fn remove(&self, id: HookId) -> bool {
-        let mut callbacks = write(&self.callbacks);
-        let mut found = false;
-        callbacks.retain(|_, list| {
-            let before = list.len();
-            list.retain(|r| r.id != id);
-            found |= list.len() != before;
-            !list.is_empty()
-        });
-        self.has_callbacks
-            .store(!callbacks.is_empty(), Ordering::Release);
-        found
+        self.callbacks.remove(id).is_some() || self.native.remove(id)
     }
 
-    fn register(&self, path: &str, after: bool, callback: Callback) -> Result<HookId, HookError> {
+    /// The `UFunction` at `path`, checked to be a function.
+    pub(super) fn function(&self, path: &str) -> Result<Ptr<UObjectBase>, HookError> {
         let not_found = || HookError::FunctionNotFound(path.to_owned());
         let function = self.session.find_object(path)?.ok_or_else(not_found)?;
         let class = self.session.class_of(function)?;
         if !self.session.name_of(class)?.ends_with("Function") {
             return Err(not_found());
         }
-        let id = HookId(self.next_id.fetch_add(1, Ordering::Relaxed));
-        write(&self.callbacks)
-            .entry(function.addr())
-            .or_default()
-            .push(Registered {
+        Ok(function)
+    }
+
+    pub(super) fn new_id(&self) -> HookId {
+        HookId(self.next_id.fetch_add(1, Ordering::Relaxed))
+    }
+
+    fn register(
+        &self,
+        path: &str,
+        after: bool,
+        callback: Arc<Callback>,
+    ) -> Result<HookId, HookError> {
+        let function = self.function(path)?;
+        let id = self.new_id();
+        self.callbacks.add(
+            function.addr(),
+            Registered {
                 id,
                 after,
                 callback,
-            });
-        self.has_callbacks.store(true, Ordering::Release);
+            },
+        );
         Ok(id)
     }
 
-    /// Whether the current thread is the game thread, electing it on the
-    /// first thread to make enough calls.
-    fn on_game_thread(&self) -> bool {
+    /// Whether the current thread is the game thread, electing it when it
+    /// is the main thread or the first to make enough calls.
+    pub(super) fn on_game_thread(&self) -> bool {
         if let Some(known) = IS_GAME.get() {
             return known;
         }
-        let me = thread::current().id();
-        if let Some(&game) = self.game_thread.get() {
-            let known = game == me;
-            IS_GAME.set(Some(known));
-            return known;
+        let me = os::current_thread_id();
+        let known = self.game_thread.load(Ordering::Acquire);
+        if known != 0 {
+            let is_game = known == me;
+            IS_GAME.set(Some(is_game));
+            return is_game;
         }
-        let mut votes = lock(&self.votes);
-        let count = match votes.iter_mut().find(|(id, _)| *id == me) {
-            Some((_, count)) => {
-                *count += 1;
-                *count
-            }
-            None => {
-                votes.push((me, 1));
-                1
+        if self.main_thread == Some(me) {
+            return self.elect(me);
+        }
+        let count = {
+            let mut votes = lock(&self.votes);
+            match votes.iter_mut().find(|(id, _)| *id == me) {
+                Some((_, count)) => {
+                    *count += 1;
+                    *count
+                }
+                None => {
+                    votes.push((me, 1));
+                    1
+                }
             }
         };
-        if count >= GAME_THREAD_VOTES {
-            let elected = *self.game_thread.get_or_init(|| me) == me;
-            votes.clear();
-            return elected;
+        count >= GAME_THREAD_VOTES && self.elect(me)
+    }
+
+    /// Makes `me` the game thread unless another was chosen first.
+    fn elect(&self, me: u64) -> bool {
+        let winner =
+            match self
+                .game_thread
+                .compare_exchange(0, me, Ordering::AcqRel, Ordering::Acquire)
+            {
+                Ok(_) => me,
+                Err(current) => current,
+            };
+        lock(&self.votes).clear();
+        let is_game = winner == me;
+        IS_GAME.set(Some(is_game));
+        is_game
+    }
+
+    /// Whether this call should go through tasks and callbacks: `false` when
+    /// nothing is pending or this is not the game thread.
+    pub(super) fn wants(&self, pending: bool) -> bool {
+        if BUSY.get() {
+            return false;
         }
-        false
+        if !pending && self.game_thread.load(Ordering::Acquire) != 0 {
+            return false;
+        }
+        self.on_game_thread()
+    }
+
+    /// `true` when tasks are queued.
+    pub(super) fn has_tasks(&self) -> bool {
+        self.has_tasks.load(Ordering::Acquire)
     }
 
     /// Runs the queued tasks.
-    fn drain(&self, exec: &InProcessExecutor) {
+    pub(super) fn drain(&self, exec: &InProcessExecutor) {
         if !self.has_tasks.swap(false, Ordering::AcqRel) {
             return;
         }
@@ -544,33 +909,15 @@ impl GameThread {
         }
     }
 
-    /// The callbacks for `function` of one kind, copied out of the lock so a
-    /// callback may register or remove others.
-    fn callbacks_for(&self, function: u64, after: bool) -> Vec<Callback> {
-        if !self.has_callbacks.load(Ordering::Acquire) {
-            return Vec::new();
-        }
-        read(&self.callbacks)
-            .get(&function)
-            .map(|list| {
-                list.iter()
-                    .filter(|r| r.after == after)
-                    .map(|r| Arc::clone(&r.callback))
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
     /// Runs the callbacks of one kind. Returns `true` to skip the original.
     fn notify(
         &self,
         exec: &InProcessExecutor,
-        callbacks: &[Callback],
-        object: Ptr<UObjectBase>,
-        function: Ptr<UObjectBase>,
-        parms: *mut c_void,
+        list: &[Registered<Callback>],
+        call: (Ptr<UObjectBase>, Ptr<UObjectBase>, *mut c_void),
         after: bool,
     ) -> bool {
+        let (object, function, parms) = call;
         let len = if parms.is_null() {
             0
         } else {
@@ -592,8 +939,8 @@ impl GameThread {
             after,
             skip: false,
         };
-        for callback in callbacks {
-            let _ = catch_unwind(AssertUnwindSafe(|| callback(&mut context)));
+        for entry in list.iter().filter(|r| r.after == after) {
+            let _ = catch_unwind(AssertUnwindSafe(|| (entry.callback)(&mut context)));
         }
         context.skip
     }
@@ -604,18 +951,19 @@ impl core::fmt::Debug for GameThread {
         f.debug_struct("GameThread")
             .field("process_event", &self.process_event)
             .field("hooked_slots", &self.hooked_slots())
-            .field("game_thread_known", &self.game_thread_known())
+            .field("game_thread", &self.game_thread_id())
+            .field("auto_rescan", &self.auto_rescan_running())
             .finish_non_exhaustive()
     }
 }
 
 /// Marks user code as running on this thread until dropped.
-struct Busy {
+pub(super) struct Busy {
     was: bool,
 }
 
 impl Busy {
-    fn enter() -> Self {
+    pub(super) fn enter() -> Self {
         Self {
             was: BUSY.replace(true),
         }
@@ -628,8 +976,24 @@ impl Drop for Busy {
     }
 }
 
+/// Counts a thread inside a hook of this module until dropped.
+pub(super) struct Active;
+
+impl Active {
+    pub(super) fn enter() -> Self {
+        ACTIVE.fetch_add(1, Ordering::AcqRel);
+        Self
+    }
+}
+
+impl Drop for Active {
+    fn drop(&mut self) {
+        ACTIVE.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
 /// Runs `f` with this thread's executor, creating it on first use.
-fn with_executor<R>(
+pub(super) fn with_executor<R>(
     desc: &'static EngineDesc,
     f: impl FnOnce(&InProcessExecutor) -> R,
 ) -> Option<R> {
@@ -657,46 +1021,49 @@ unsafe extern "C" fn hooked_process_event(
     function: *mut c_void,
     parms: *mut c_void,
 ) {
+    let _active = Active::enter();
     let original = ORIGINAL.load(Ordering::Acquire);
     // SAFETY: `original` is the `ProcessEvent` the patched slots held, set
     // before any slot was patched.
     let forward = || unsafe {
         core::mem::transmute::<usize, ProcessEventFn>(original)(this, function, parms);
     };
-    let state = match STATE.get() {
-        Some(state) if !BUSY.get() => state,
-        _ => return forward(),
+    let Some(state) = STATE.get() else {
+        return forward();
     };
-    let quiet =
-        !state.has_tasks.load(Ordering::Acquire) && !state.has_callbacks.load(Ordering::Acquire);
-    if (quiet && state.game_thread.get().is_some()) || !state.on_game_thread() {
+    let function_addr = function as usize as u64;
+    let table = state.callbacks.lookup(function_addr);
+    if !state.wants(table.is_some() || state.has_tasks()) {
         return forward();
     }
-
-    let object = Ptr::<UObjectBase>::new(this as usize as u64);
-    let function_ptr = Ptr::<UObjectBase>::new(function as usize as u64);
-    let before = state.callbacks_for(function_ptr.addr(), false);
-    let after = state.callbacks_for(function_ptr.addr(), true);
+    let hooks = table.as_ref().and_then(|t| t.get(&function_addr));
+    let call = (
+        Ptr::<UObjectBase>::new(this as usize as u64),
+        Ptr::<UObjectBase>::new(function_addr),
+        parms,
+    );
     let skip = {
         let _busy = Busy::enter();
         with_executor(state.desc, |exec| {
             state.drain(exec);
-            !before.is_empty() && state.notify(exec, &before, object, function_ptr, parms, false)
+            hooks.is_some_and(|list| state.notify(exec, list, call, false))
         })
         .unwrap_or(false)
     };
     if !skip {
         forward();
     }
-    if !after.is_empty() {
+    if let Some(list) = hooks
+        && list.iter().any(|r| r.after)
+    {
         let _busy = Busy::enter();
         with_executor(state.desc, |exec| {
-            state.notify(exec, &after, object, function_ptr, parms, true);
+            state.notify(exec, list, call, true);
         });
     }
 }
 
-fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+pub(super) fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 

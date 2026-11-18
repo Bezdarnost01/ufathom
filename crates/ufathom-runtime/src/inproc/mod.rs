@@ -7,9 +7,12 @@
 //! tasks, and callbacks before and after chosen game functions.
 
 mod hook;
+mod native;
+mod os;
 mod patch;
 
-pub use hook::{CallContext, GameContext, GameThread, HookError, HookId};
+pub use hook::{CallContext, GameContext, GameThread, HookError, HookId, MIN_RESCAN_INTERVAL};
+pub use native::NativeContext;
 
 use core::ffi::c_void;
 use core::marker::PhantomData;
