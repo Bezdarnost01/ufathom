@@ -4,6 +4,20 @@ All notable changes are recorded here, in the [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+### Added
+
+- **Asset preload before a dump** (`[preload]` in `ufathom.toml`, off by default). The DLL lists the assets under the given content paths through the asset registry and loads the Blueprint ones on the game thread, then reads the dump again. Classes that the game has not loaded yet reach the dump and the SDK this way. Every call is planned from the dump that was just read: parameter offsets, block sizes and the `FAssetData` layout, which is `AssetClass` before UE 5.1 and `AssetClassPath` after. Afterwards the hook is removed, and the DLL refuses to unload while a thread is still inside it. Not yet run on a real game.
+- **Freeing engine memory.** `InProcessExecutor` has `take_string`, `take_strings`, `free_string` and `free_array`, and `ufathom_runtime::engine_mem` has the same functions for any executor. They hand strings and arrays the engine returned back to its allocator through `KismetArrayLibrary::Array_Clear`, so calling such functions every frame no longer leaks. Buffers of `FStringBuf` and `TArrayBuf` are refused.
+- **Native function hooks.** `GameThread::before_native` and `after_native` hook `UFunction::Func`. Blueprint calls of native functions go through that pointer without `ProcessEvent`. The offset of `Func` is solved inside the game.
+- **Hook upkeep.** `start_auto_rescan` hooks the virtual tables of classes that get their first instance after `install`. `uninstall_and_wait` restores everything and reports when no thread is still inside a hook, so the module can be unloaded.
+- **`hot-unload` SDK feature.** When `run` returns, the DLL removes its hooks and unloads itself. It stays loaded if a thread is still inside a hook.
+- **`proxy-version` SDK feature.** Rename the built DLL to `version.dll` and put it next to the game, and the game loads it at start-up with no injector. It exports all 17 functions of the system `version.dll` and forwards each one to the real DLL, which is loaded from the system folder on first use. `run` waits until the engine has started.
+
+### Changed
+
+- **Game thread choice.** The game thread is now chosen by OS thread id: first a thread named with `set_game_thread`, then the process main thread, and only then the first thread to make 64 hooked calls. Before, any busy worker thread could win.
+- **Faster hook.** Callbacks live in a copy-on-write table behind a bit filter. Calls of unhooked functions take no lock, and no call allocates.
+
 ## [0.3.0] - 2026-11-14
 
 ### Changed

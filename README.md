@@ -44,6 +44,18 @@ formats = ["json", "usmap", "rust-sdk"]
 auto_dump = false
 ```
 
+A dump sees only loaded objects. To get Blueprint classes the game has not loaded yet, add a `[preload]` section. Before each dump, the DLL then lists the assets under these paths through the asset registry, loads the Blueprint ones on the game thread and reads the dump again:
+
+```toml
+[preload]
+paths = ["/Game"]        # content paths, listed recursively
+# classes = ["*"]        # every asset; the default is Blueprint asset classes only
+# max_assets = 2000      # at most this many per dump
+# batch = 8              # assets per game thread call; the game runs between calls
+```
+
+This is the only time ufathom calls game functions. It is off by default, and the game stalls while each batch loads. It has not yet been run on a real game. The rest of the keys are listed in `crates/ufathom-agent/src/config.rs`.
+
 `cargo build -p ufathom-dll` produces `target/<profile>/ufathom_dll.dll`; copy it next to the game as `ufathom.dll`. The library is not called `ufathom`, so that its debug symbols do not clash with the command line tool's on Windows.
 
 **Individual commands, and working with existing results:**
@@ -80,7 +92,10 @@ cd my_sdk
 cargo build --release --lib
 ```
 
-The result is `target/release/ufathom_sdk.dll`. Loading it starts `run` once on a worker thread with `SelfMemory`. This scaffold is resident and does not implement hot-unload.
+The result is `target/release/ufathom_sdk.dll`. Loading it starts `run` once on a worker thread with `SelfMemory`. By default the DLL stays loaded until the game exits. Two features change this:
+
+- `--features hot-unload`: when `run` returns, the DLL removes its hooks and unloads itself. It stays loaded if a thread is still inside a hook.
+- `--features proxy-version`: rename the DLL to `version.dll` and put it next to the game executable. The game loads it at start-up, with no injector. The DLL exports every function of the system `version.dll` and forwards each one to the real DLL. `run` waits until the engine has objects and a `GEngine`.
 
 **External Windows executable:**
 
@@ -144,9 +159,21 @@ let label = sdk::engine::UKismetSystemLibrary::get_display_name(ctx.executor(), 
 println!("{}", ctx.session().fstring(&label)?);
 ```
 
-Strings and arrays the engine returns are not freed (engine allocator support is not there yet), so avoid calling such functions every frame. Never pass `FStringBuf` or `TArrayBuf` as an out parameter.
+Strings and arrays the engine returns are allocated by the engine. Free them through it with `exec.take_string(&mut s)` (read, then free), `take_strings`, `free_string` and `free_array`. These hand the buffer back through `KismetArrayLibrary::Array_Clear`. `free_array` frees only the array's own buffer: free what the elements own first. Never pass `FStringBuf` or `TArrayBuf` as an out parameter.
 
-The hook changes only data pointers. It patches the `ProcessEvent` slot in the virtual tables of live native classes. The thread that first makes 64 hooked calls is taken as the game thread. Tasks and callbacks get an executor, and calls made through that executor do not trigger callbacks again. A panic in user code is caught. `uninstall()` puts the slots back.
+The hook changes only data pointers. It patches the `ProcessEvent` slot in the virtual tables of live native classes. Calls from other threads pass straight through. The game thread is chosen in this order:
+
+1. a thread named with `game.set_game_thread(id)`;
+2. the process main thread;
+3. the first thread to make 64 hooked calls.
+
+Tasks and callbacks get an executor, and calls made through that executor do not trigger callbacks again. A panic in user code is caught.
+
+A few more parts of the hook:
+
+- **`before_native` and `after_native`** hook the `UFunction::Func` pointer. Blueprint code reaches native functions through it without `ProcessEvent`.
+- **`start_auto_rescan(interval)`** hooks the virtual tables of classes that get their first instance later.
+- **`uninstall()`** puts the slots back. `uninstall_and_wait(timeout)` also waits until no thread is inside a hook, so the module can be unloaded.
 
 The file and target names above use the default `ufathom-sdk` crate name. If you customize it, replace hyphens with underscores in the DLL file name and append `-external` to the package name for the binary target.
 
