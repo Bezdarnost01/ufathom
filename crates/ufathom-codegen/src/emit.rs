@@ -154,6 +154,20 @@ pub(crate) fn cargo_source(
         "# Calls game functions through ProcessEvent: `attach()`. Inside the game only."
     );
     wl!(out, "inproc = [\"ufathom-runtime/inproc\"]");
+    wl!(
+        out,
+        "# The DLL unloads itself when `run` returns, after removing its hooks."
+    );
+    wl!(out, "hot-unload = []");
+    wl!(
+        out,
+        "# Name the DLL version.dll and put it beside the game: it forwards the system"
+    );
+    wl!(
+        out,
+        "# version.dll's exports and waits for the engine before `run`. Windows only."
+    );
+    wl!(out, "proxy-version = [\"ufathom-runtime/proxy-version\"]");
     for m in &built.modules {
         let deps: Vec<String> = m.deps.iter().map(|d| toml_string(d)).collect();
         wl!(out, "{} = [{}]", m.name, deps.join(", "));

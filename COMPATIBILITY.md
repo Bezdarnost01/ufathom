@@ -41,6 +41,16 @@ This was an external read of an editor build, not the DLL and not a shipping gam
 - **Repeat:** the second dump took 1.7 s.
 - **Unload:** the module was unmapped, the three threads it started were gone, and the editor kept responding throughout.
 
+**Blueprint preload in UE 4.25.4.** In a separate editor project, the asset
+registry reported three fixture Blueprints on disk and unloaded. The baseline
+dump contained none of their generated classes. With `[preload]`, two
+Blueprints under the requested path (one in a subfolder) loaded and both
+generated classes appeared in the repeated dump. The out-of-path Blueprint
+remained absent. Both DLL copies unloaded before the editor was closed.
+The engine did not confirm release of the registry array's outer buffer;
+this is logged separately from asset loading. Preload in a shipping game
+was not checked by this test.
+
 **DLL in a UE 4.21 shipping game.** `ufathom.dll` was loaded into a running shipping game, with no hints and no layout file.
 - **First run:** it refused with `ustruct.children is ambiguous: 0x38, 0x68`. Real engines fill `UStruct`'s property link chains, and `DestructorLink` passed the `Children` test. The game kept running, and `stop` worked. The solver was fixed, and the testkit reproduces the failure.
 - **Second run:** one automatic dump of 95,842 objects in about 5.7 s:

@@ -21,6 +21,22 @@
 //! | `threads` | `2` | Threads of the dump pool, 1 to 4. |
 //! | `module` | the first `.exe` module | File name of the module that holds the engine globals. |
 //! | `pointer_transform` | none | Steps that decode the object array pointer, such as `[{ Xor = 255 }, "Not"]`. |
+//!
+//! # `[preload]`
+//!
+//! Off unless the section is present. Before each dump, assets under the
+//! given content paths are listed through the asset registry and loaded on
+//! the game thread, so classes that were not loaded yet (Blueprint classes
+//! of other levels, for example) are in the dump. This calls game functions,
+//! which the dump itself never does, and the game stalls while assets load.
+//!
+//! | Key | Default | Meaning |
+//! |---|---|---|
+//! | `paths` | required | Content paths to list recursively, such as `["/Game"]`. |
+//! | `classes` | Blueprint asset classes | Asset class names to load, matched exactly. `["*"]` loads every asset. |
+//! | `max_assets` | `2000` | Most assets loaded in one dump, 1 to 100000. |
+//! | `batch` | `8` | Assets loaded in one game thread call, 1 to 256. The game runs between calls. |
+//! | `timeout_seconds` | `60` | Longest wait for one game thread call, 1 to 3600. |
 
 use std::path::{Path, PathBuf};
 
@@ -49,6 +65,29 @@ pub const MAX_TRIGGER_DELAY_SECONDS: f64 = 86_400.0;
 pub const DEFAULT_HOTKEY_DUMP: &str = "F8";
 /// Hotkey that unloads the DLL, when the config does not say.
 pub const DEFAULT_HOTKEY_UNLOAD: &str = "F6";
+/// Asset classes `[preload]` loads when it does not name its own: the
+/// classes the asset registry lists for Blueprint packages, in editor and
+/// cooked form.
+pub const DEFAULT_PRELOAD_CLASSES: [&str; 6] = [
+    "Blueprint",
+    "BlueprintGeneratedClass",
+    "WidgetBlueprint",
+    "WidgetBlueprintGeneratedClass",
+    "AnimBlueprint",
+    "AnimBlueprintGeneratedClass",
+];
+/// `max_assets` of `[preload]` when the config does not say.
+pub const DEFAULT_PRELOAD_MAX_ASSETS: usize = 2000;
+/// Largest accepted `max_assets`.
+pub const MAX_PRELOAD_ASSETS: usize = 100_000;
+/// `batch` of `[preload]` when the config does not say.
+pub const DEFAULT_PRELOAD_BATCH: usize = 8;
+/// Largest accepted `batch`.
+pub const MAX_PRELOAD_BATCH: usize = 256;
+/// `timeout_seconds` of `[preload]` when the config does not say.
+pub const DEFAULT_PRELOAD_TIMEOUT_SECONDS: u64 = 60;
+/// Largest accepted `timeout_seconds`.
+pub const MAX_PRELOAD_TIMEOUT_SECONDS: u64 = 3600;
 
 /// An output format of a dump.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -111,6 +150,34 @@ pub struct Config {
     pub module: Option<String>,
     /// Steps that decode the object array pointer, stated by the user.
     pub pointer_transform: Vec<TransformOp>,
+    /// Loading assets before each dump. `None` (the default) loads nothing.
+    pub preload: Option<PreloadConfig>,
+}
+
+/// The `[preload]` section: which assets to load before a dump.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PreloadConfig {
+    /// Content paths listed recursively, such as `/Game`. Never empty.
+    pub paths: Vec<String>,
+    /// Asset class short names to load. Empty means every asset.
+    pub classes: Vec<String>,
+    /// Most assets loaded in one dump.
+    pub max_assets: usize,
+    /// Assets loaded in one game thread call.
+    pub batch: usize,
+    /// Longest wait for one game thread call, in seconds.
+    pub timeout_seconds: u64,
+}
+
+/// `[preload]` as written.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawPreload {
+    paths: Option<Vec<String>>,
+    classes: Option<Vec<String>>,
+    max_assets: Option<i64>,
+    batch: Option<i64>,
+    timeout_seconds: Option<i64>,
 }
 
 /// Where the settings in effect came from.
@@ -147,6 +214,7 @@ struct RawConfig {
     threads: Option<i64>,
     module: Option<String>,
     pointer_transform: Option<Vec<TransformOp>>,
+    preload: Option<RawPreload>,
 }
 
 impl Config {
@@ -165,6 +233,7 @@ impl Config {
             threads: DEFAULT_THREADS,
             module: None,
             pointer_transform: Vec::new(),
+            preload: None,
         }
     }
 
@@ -305,8 +374,83 @@ impl Config {
         if let Some(steps) = raw.pointer_transform {
             config.pointer_transform = steps;
         }
+        if let Some(preload) = raw.preload {
+            config.preload = Some(preload_config(preload, &invalid)?);
+        }
         Ok(config)
     }
+}
+
+/// Validates `[preload]`.
+fn preload_config(
+    raw: RawPreload,
+    invalid: &dyn Fn(&'static str, String) -> ConfigError,
+) -> Result<PreloadConfig, ConfigError> {
+    let in_range = |key: &'static str, value: Option<i64>, default: usize, max: usize| {
+        let Some(value) = value else {
+            return Ok(default);
+        };
+        usize::try_from(value)
+            .ok()
+            .filter(|n| (1..=max).contains(n))
+            .ok_or_else(|| invalid(key, format!("must be from 1 to {max}, got {value}")))
+    };
+    let mut paths: Vec<String> = raw
+        .paths
+        .unwrap_or_default()
+        .into_iter()
+        .map(|path| path.trim().trim_end_matches('/').to_owned())
+        .collect();
+    paths.dedup();
+    if paths.is_empty() {
+        return Err(invalid(
+            "preload.paths",
+            "must name at least one content path, such as \"/Game\"".to_owned(),
+        ));
+    }
+    if let Some(bad) = paths.iter().find(|p| !p.starts_with('/') || p.len() < 2) {
+        return Err(invalid(
+            "preload.paths",
+            format!("{bad:?} is not a content path; it must start with `/`, such as \"/Game\""),
+        ));
+    }
+    let classes = match raw.classes {
+        None => DEFAULT_PRELOAD_CLASSES.map(str::to_owned).to_vec(),
+        Some(list) if list.iter().any(|c| c.trim() == "*") => Vec::new(),
+        Some(list) => {
+            let list: Vec<String> = list.iter().map(|c| c.trim().to_owned()).collect();
+            if list.is_empty() || list.iter().any(String::is_empty) {
+                return Err(invalid(
+                    "preload.classes",
+                    "must name asset classes, or be [\"*\"] for every asset".to_owned(),
+                ));
+            }
+            list
+        }
+    };
+    let timeout = in_range(
+        "preload.timeout_seconds",
+        raw.timeout_seconds,
+        usize::try_from(DEFAULT_PRELOAD_TIMEOUT_SECONDS).unwrap_or(60),
+        usize::try_from(MAX_PRELOAD_TIMEOUT_SECONDS).unwrap_or(3600),
+    )?;
+    Ok(PreloadConfig {
+        paths,
+        classes,
+        max_assets: in_range(
+            "preload.max_assets",
+            raw.max_assets,
+            DEFAULT_PRELOAD_MAX_ASSETS,
+            MAX_PRELOAD_ASSETS,
+        )?,
+        batch: in_range(
+            "preload.batch",
+            raw.batch,
+            DEFAULT_PRELOAD_BATCH,
+            MAX_PRELOAD_BATCH,
+        )?,
+        timeout_seconds: u64::try_from(timeout).unwrap_or(DEFAULT_PRELOAD_TIMEOUT_SECONDS),
+    })
 }
 
 #[cfg(test)]
@@ -569,5 +713,66 @@ mod tests {
         std::fs::write(dir.path().join(CONFIG_FILE_NAME), r#"output = "out""#).unwrap();
         let loaded = Config::load(&[dir.path()], Path::new("elsewhere"));
         assert_eq!(loaded.config.output, dir.path().join("out"));
+    }
+
+    #[test]
+    fn preload_is_off_by_default_and_takes_defaults_when_on() {
+        assert_eq!(parse("").unwrap().preload, None);
+        let preload = parse("[preload]\npaths = [\"/Game/\"]")
+            .unwrap()
+            .preload
+            .unwrap();
+        assert_eq!(preload.paths, vec!["/Game".to_owned()]);
+        assert_eq!(
+            preload.classes,
+            DEFAULT_PRELOAD_CLASSES.map(str::to_owned).to_vec()
+        );
+        assert_eq!(preload.max_assets, DEFAULT_PRELOAD_MAX_ASSETS);
+        assert_eq!(preload.batch, DEFAULT_PRELOAD_BATCH);
+        assert_eq!(preload.timeout_seconds, DEFAULT_PRELOAD_TIMEOUT_SECONDS);
+    }
+
+    #[test]
+    fn preload_reads_every_key_and_a_star_means_every_class() {
+        let text = "[preload]\npaths = [\"/Game/Maps\", \"/MyPlugin\"]\nclasses = [\"*\"]\nmax_assets = 5\nbatch = 2\ntimeout_seconds = 9";
+        let preload = parse(text).unwrap().preload.unwrap();
+        assert_eq!(
+            preload.paths,
+            vec!["/Game/Maps".to_owned(), "/MyPlugin".to_owned()]
+        );
+        assert!(preload.classes.is_empty());
+        assert_eq!(
+            (preload.max_assets, preload.batch, preload.timeout_seconds),
+            (5, 2, 9)
+        );
+    }
+
+    #[test]
+    fn preload_values_out_of_range_are_refused() {
+        for (text, key) in [
+            ("[preload]", "preload.paths"),
+            ("[preload]\npaths = []", "preload.paths"),
+            ("[preload]\npaths = [\"Game\"]", "preload.paths"),
+            (
+                "[preload]\npaths = [\"/Game\"]\nclasses = []",
+                "preload.classes",
+            ),
+            (
+                "[preload]\npaths = [\"/Game\"]\nmax_assets = 0",
+                "preload.max_assets",
+            ),
+            (
+                "[preload]\npaths = [\"/Game\"]\nbatch = 1000",
+                "preload.batch",
+            ),
+            (
+                "[preload]\npaths = [\"/Game\"]\ntimeout_seconds = -1",
+                "preload.timeout_seconds",
+            ),
+        ] {
+            let error = parse(text).unwrap_err().to_string();
+            assert!(error.contains(key), "{text}: {error}");
+        }
+        assert!(parse("[preload]\npaths = [\"/Game\"]\nlimit = 3").is_err());
     }
 }

@@ -432,6 +432,7 @@ fn the_cli_talks_to_a_real_service_end_to_end() {
             reader: Arc::new(fx.memory.clone()),
             thread_start: None,
             config_source: ConfigSource::Defaults,
+            game: None,
         },
     )
     .unwrap();

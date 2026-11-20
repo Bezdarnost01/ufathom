@@ -27,6 +27,9 @@ use crate::limits::{
 };
 use crate::names::{Names, load_table};
 
+#[cfg(test)]
+mod tests;
+
 /// A sampled object and its first bytes.
 #[derive(Debug, Clone)]
 pub(crate) struct Sample {
@@ -160,7 +163,11 @@ fn column(samples: &[Sample], offset: u32) -> Vec<u32> {
         .collect()
 }
 
-/// Whether the values look like instance numbers: small, and not all zero.
+/// Some builds generate a small number of suffixes just below the signed
+/// 32-bit limit. Treat that band as plausible, not arbitrary large values.
+const HIGH_INSTANCE_NUMBERS: std::ops::RangeInclusive<u32> = 0x7fff_0000..=0x7fff_ffff;
+
+/// Whether the values look like instance numbers: mostly small, not all zero.
 fn looks_like_number(values: &[u32], samples: &[Sample]) -> bool {
     if values.is_empty() {
         return false;
@@ -172,6 +179,10 @@ fn looks_like_number(values: &[u32], samples: &[Sample]) -> bool {
         return false;
     }
     let small = values.iter().filter(|&&v| v <= 0xFFFF).count();
+    let high = values
+        .iter()
+        .filter(|v| HIGH_INSTANCE_NUMBERS.contains(v))
+        .count();
     let nonzero = values.iter().filter(|&&v| v != 0).count();
     let equals_index = values
         .iter()
@@ -179,9 +190,10 @@ fn looks_like_number(values: &[u32], samples: &[Sample]) -> bool {
         .filter(|&(&v, s)| v == s.index)
         .count();
     // Strict on purpose: the bytes just past the end of an object are other
-    // objects' headers, whose halves are small now and then, and only a field
-    // that is small in (nearly) every object is a number.
-    small * 100 >= values.len() * 99
+    // objects' headers, whose halves are small now and then. Keep a high
+    // small-number share and reject large values outside the observed band.
+    small * 100 >= values.len() * 95
+        && (small + high) * 100 >= values.len() * 99
         && nonzero >= 2.max(values.len() / 100)
         && equals_index * 2 < values.len()
 }
@@ -215,11 +227,11 @@ fn comparison_is_lower(table: &NameTable, a: &[u32], b: &[u32]) -> Option<bool> 
 
 /// Decides the fields of `FName` from the offsets that decode.
 fn solve_fname(
-    ctx: &Ctx<'_>,
     table: &NameTable,
     decoding: &[(u32, usize)],
     samples: &[Sample],
     index_offset: u32,
+    class_candidates: &[u32],
 ) -> Result<(FNameLayout, u32), ScanError> {
     let mut offsets: Vec<u32> = decoding.iter().map(|&(offset, _)| offset).collect();
     offsets.sort_unstable();
@@ -253,10 +265,15 @@ fn solve_fname(
     };
     let low = *offsets.first().unwrap_or(&comparison);
     let high = *offsets.last().unwrap_or(&comparison);
-    let known = [Some(comparison), display];
     let mut number_candidates: Vec<u32> = Vec::new();
     for at in (low.saturating_sub(4)..=high + 4).step_by(4) {
-        if at >= 8 && at != index_offset && !known.contains(&Some(at)) && !offsets.contains(&at) {
+        // The upper word of a class pointer can look like a small, varying
+        // instance number. A word belonging to a known object pointer is
+        // not an independent FName field.
+        let overlaps_pointer = class_candidates
+            .iter()
+            .any(|&ptr| (ptr..ptr + 8).contains(&at));
+        if at >= 8 && at != index_offset && !offsets.contains(&at) && !overlaps_pointer {
             number_candidates.push(at);
         }
     }
@@ -292,7 +309,6 @@ fn solve_fname(
         display_index: display.map(|d| d - start),
         number: number.map(|n| n - start),
     };
-    let _ = ctx;
     Ok((fname, start))
 }
 
@@ -420,7 +436,10 @@ pub(crate) fn solve_object_fields(
         },
     )?;
 
-    let (fname, name_offset) = solve_fname(ctx, &table, &decoding, &samples, index_offset)?;
+    let object_set: HashSet<u64> = slots.iter().map(|&(_, addr)| addr).collect();
+    let class_candidates = object_pointer_offsets(&samples, &object_set, false);
+    let (fname, name_offset) =
+        solve_fname(&table, &decoding, &samples, index_offset, &class_candidates)?;
     let table = if fname.number.is_none() {
         load_table(ctx, &names_layout, &fname)?
     } else {
@@ -460,16 +479,16 @@ pub(crate) fn solve_object_fields(
         Some(number) => ctx.evidence(
             "fname.number",
             u64::from(number),
-            "adjacent 32-bit field holding small values, mostly zero, never the index",
+            "adjacent 32-bit field of plausible instance numbers, outside known object pointers",
             first.total,
             first.total,
         ),
-        None => ctx.warn("fname.number: no adjacent field holds instance numbers; the build keeps the number outside the FName"),
+        None => {
+            ctx.warn("fname.number: no adjacent field was confirmed as an inline instance number")
+        }
     }
 
     // Class and outer, from the pointer offsets.
-    let object_set: HashSet<u64> = slots.iter().map(|&(_, addr)| addr).collect();
-    let class_candidates = object_pointer_offsets(&samples, &object_set, false);
     let mut class_scores: Vec<(u32, usize, u64)> = Vec::new();
     for &offset in &class_candidates {
         let mut hits = 0usize;

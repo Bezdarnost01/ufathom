@@ -509,7 +509,10 @@ impl ArrayCandidate {
 /// Whether the object at `pointer` belongs to the array: it stores the index
 /// of a slot that holds it.
 fn in_array(ctx: &Ctx<'_>, source: Source, fit: &ItemFit, num: u32, pointer: u64) -> bool {
-    let Some(index) = ctx.u32(pointer + u64::from(fit.index_offset)) else {
+    let Some(index) = pointer
+        .checked_add(u64::from(fit.index_offset))
+        .and_then(|addr| ctx.u32(addr))
+    else {
         return false;
     };
     if index >= num {
@@ -518,7 +521,9 @@ fn in_array(ctx: &Ctx<'_>, source: Source, fit: &ItemFit, num: u32, pointer: u64
     let Some(item) = source.item(ctx, index, fit.item_size) else {
         return false;
     };
-    ctx.u64(item + u64::from(fit.item_object)) == Some(pointer)
+    item.checked_add(u64::from(fit.item_object))
+        .and_then(|addr| ctx.u64(addr))
+        == Some(pointer)
 }
 
 /// Checks that the objects form a class hierarchy, as `UObject`s do: at one
@@ -933,6 +938,22 @@ mod tests {
 
     use super::*;
     use crate::options::DiscoverOptions;
+
+    #[test]
+    fn overflowing_object_index_address_is_not_in_the_array() {
+        let (fx, _, _) = setup("ue4.25", 1);
+        let options = DiscoverOptions::default();
+        let ctx = Ctx::new(&fx.memory, &options).unwrap();
+        let source = Source::Fixed { base: 0 };
+        let fit = ItemFit {
+            item_size: 0x18,
+            item_object: 0,
+            index_offset: 0xc,
+            occupied: 0,
+            matched: 0,
+        };
+        assert!(!in_array(&ctx, source, &fit, 1, u64::MAX));
+    }
 
     /// The best object array of the primary module.
     fn find_object_array(ctx: &Ctx<'_>) -> Result<ObjectArrayFound, ScanError> {

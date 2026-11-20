@@ -13,13 +13,41 @@
 mod solve_common;
 
 use solve_common::{absolute, build, poke, rebuild};
-use ufathom_mem::{Perms, RegionKind};
+use ufathom_mem::{MemoryReaderExt, Perms, RegionKind};
 use ufathom_model::layout::NameTableLayout;
 use ufathom_scan::{DiscoverOptions, discover};
 use ufathom_testkit::{Part, PartKind, Profile};
 
 fn named(name: &str) -> Profile {
     Profile::by_name(name).unwrap_or_else(|| panic!("{name}"))
+}
+
+#[test]
+fn active_pool_cursor_is_found_even_with_name_shaped_bytes_after_it() {
+    let fx = build(named("ue4.25-cp"), 3, 300);
+    let NameTableLayout::Pool(truth) = &fx.layout.names else {
+        panic!("expected a name pool");
+    };
+    let cursor_address = absolute(&fx, &truth.location) + u64::from(truth.cursor);
+    let cursor = fx.memory.read_u32(cursor_address).unwrap();
+    let block = *fx.anchors.data.names.blocks.last().unwrap();
+    let unused = block + u64::from(cursor);
+    let snapshot = rebuild(&fx, |parts| {
+        let mut bytes = vec![0; truth.entry.string_offset as usize];
+        let header = truth.entry.header_offset as usize;
+        let encoded = 4u16 << truth.entry.len_shift;
+        bytes[header..header + 2].copy_from_slice(&encoded.to_le_bytes());
+        bytes.extend_from_slice(b"Junk");
+        poke(parts, unused, &bytes);
+    });
+    let d = discover(&snapshot, &DiscoverOptions::default()).unwrap();
+    let NameTableLayout::Pool(got) = &d.layout.names else {
+        panic!("expected a name pool");
+    };
+    assert_eq!(
+        absolute(&fx, &got.location) + u64::from(got.cursor),
+        cursor_address
+    );
 }
 
 #[test]

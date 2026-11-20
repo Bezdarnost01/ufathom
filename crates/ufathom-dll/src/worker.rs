@@ -7,17 +7,21 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use ufathom_agent::fsio::open_append;
+use ufathom_agent::game::GameThreadRunner as _;
 use ufathom_agent::{
     Config, ConfigSource, DumpTrigger, Environment, HotkeyTracker, LOG_FOLDER, Service,
     is_own_process_foreground, rfc3339, session_name,
 };
 use ufathom_mem::SelfMemory;
 
+use crate::game;
 use crate::logging::{LogSink, PanicHook};
 use crate::os::{self, MutexError, NamedMutex};
 
 /// How often the worker looks at the service and the keys.
 const TICK: Duration = Duration::from_millis(50);
+/// How long unloading waits for threads to leave the game thread hook.
+const HOOK_RELEASE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// What the entry point does when the worker is done.
 pub(crate) enum Exit {
@@ -153,6 +157,7 @@ fn drive(
         reader: Arc::new(SelfMemory::new()),
         thread_start: Some(Arc::new(os::lower_current_thread_priority)),
         config_source: source,
+        game: Some(Arc::new(game::InGame)),
     };
     let mut service = match Service::start(config.clone(), environment) {
         Ok(service) => service,
@@ -175,7 +180,14 @@ fn drive(
             sink.close();
         }
     });
-    if report.is_clean() {
+    // A preload may have left its hook; code of this module must not run
+    // after it is unmapped.
+    let released = game::InGame.detach(HOOK_RELEASE_TIMEOUT);
+    if !released {
+        // The log is closed by now.
+        os::debug_log("a thread is still inside the game thread hook; staying loaded");
+    }
+    if report.is_clean() && released {
         Exit::Unload
     } else {
         Exit::Stay

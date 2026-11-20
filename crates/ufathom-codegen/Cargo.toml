@@ -16,7 +16,7 @@ heck.workspace = true
 tempfile.workspace = true
 ufathom-testkit.workspace = true
 # Cross-checks the sizes the planner assumes for the runtime views.
-ufathom-runtime.workspace = true
+ufathom-runtime = { workspace = true, features = ["proxy-version"] }
 
 [lints]
 workspace = true

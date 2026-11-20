@@ -21,8 +21,11 @@
 //!    time the DLL stays loaded instead: unmapping code that still runs would
 //!    crash the host.
 //!
-//! The DLL reads the target only through `SelfMemory`, calls no game function
-//! and installs no hook.
+//! A dump reads the target only through `SelfMemory`, calls no game function
+//! and installs no hook. The one exception is `[preload]` in the config, off
+//! by default: it hooks `ProcessEvent` to load assets on the game thread
+//! before a dump and removes the hook afterwards. The worker unloads only when
+//! no thread is left inside that hook.
 //!
 //! # Unloading and reference counts
 //!
@@ -38,6 +41,7 @@
 #![cfg(windows)]
 
 mod entry;
+mod game;
 mod logging;
 mod os;
 mod worker;

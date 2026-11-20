@@ -143,6 +143,7 @@ impl Rig {
             reader,
             thread_start: None,
             config_source: ConfigSource::Defaults,
+            game: None,
         }
     }
 

@@ -20,12 +20,15 @@
 
 mod containers;
 mod desc;
+pub mod engine_mem;
 mod executor;
 #[cfg(feature = "inproc")]
 pub mod inproc;
 mod name;
 mod object;
 mod owned;
+#[cfg(all(feature = "proxy-version", windows))]
+pub mod proxy;
 mod ptr;
 mod session;
 mod traits;

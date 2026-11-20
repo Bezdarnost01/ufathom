@@ -15,11 +15,18 @@ thiserror.workspace = true
 # `InProcessExecutor`: calls game functions through ProcessEvent. Off by
 # default; without it the crate never runs game code.
 inproc = ["dep:libc", "dep:windows-sys"]
+# `proxy`: the exports of the system version.dll, forwarded to it, so a DLL
+# named version.dll beside the game is loaded at start-up. Windows only.
+proxy-version = ["dep:windows-sys"]
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, optional = true, features = [
     "Win32_Foundation",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_LibraryLoader",
     "Win32_System_Memory",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
 ] }
 
 [target.'cfg(unix)'.dependencies]

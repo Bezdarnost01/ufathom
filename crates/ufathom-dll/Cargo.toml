@@ -21,6 +21,8 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 ufathom-agent.workspace = true
 ufathom-mem.workspace = true
+ufathom-model.workspace = true
+ufathom-runtime = { workspace = true, features = ["inproc"] }
 
 [target.'cfg(windows)'.dependencies]
 # Module pinning and unloading, the worker thread, the per-process mutex, key

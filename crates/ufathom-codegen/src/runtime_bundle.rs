@@ -83,12 +83,24 @@ static EMBEDDED: &[(&str, &str)] = &[
         include_str!("../../ufathom-runtime/src/desc.rs"),
     ),
     (
+        "vendor/ufathom-runtime/src/engine_mem.rs",
+        include_str!("../../ufathom-runtime/src/engine_mem.rs"),
+    ),
+    (
         "vendor/ufathom-runtime/src/inproc/mod.rs",
         include_str!("../../ufathom-runtime/src/inproc/mod.rs"),
     ),
     (
         "vendor/ufathom-runtime/src/inproc/hook.rs",
         include_str!("../../ufathom-runtime/src/inproc/hook.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/inproc/native.rs",
+        include_str!("../../ufathom-runtime/src/inproc/native.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/inproc/os.rs",
+        include_str!("../../ufathom-runtime/src/inproc/os.rs"),
     ),
     (
         "vendor/ufathom-runtime/src/inproc/patch.rs",
@@ -113,6 +125,10 @@ static EMBEDDED: &[(&str, &str)] = &[
     (
         "vendor/ufathom-runtime/src/owned.rs",
         include_str!("../../ufathom-runtime/src/owned.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/proxy.rs",
+        include_str!("../../ufathom-runtime/src/proxy.rs"),
     ),
     (
         "vendor/ufathom-runtime/src/ptr.rs",
@@ -226,6 +242,35 @@ mod tests {
         }
         let mem_manifest = include_str!("../../ufathom-mem/Cargo.toml");
         assert!(mem_manifest.contains("tempfile = { workspace = true }"));
+    }
+
+    #[test]
+    fn every_runtime_and_mem_source_file_is_embedded() {
+        fn sources(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    sources(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    out.push(path);
+                }
+            }
+        }
+        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        for name in ["ufathom-runtime", "ufathom-mem"] {
+            let src = crates.join(name).join("src");
+            let mut files = Vec::new();
+            sources(&src, &mut files);
+            assert!(!files.is_empty());
+            for file in files {
+                let relative = file.strip_prefix(&src).unwrap().to_string_lossy();
+                let wanted = format!("vendor/{name}/src/{}", relative.replace('\\', "/"));
+                assert!(
+                    EMBEDDED.iter().any(|(path, _)| *path == wanted),
+                    "{wanted} is not bundled into generated SDKs"
+                );
+            }
+        }
     }
 
     #[test]

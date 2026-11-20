@@ -18,11 +18,12 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime};
 
+use crate::game::GameThreadRunner;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use tracing::Dispatch;
 use ufathom_mem::{MemoryReader, PageCache};
 use ufathom_model::Severity;
-use ufathom_reflect::{ReflectError, ReflectOptions, build_dump};
+use ufathom_reflect::{ReflectError, ReflectOptions, ReflectOutput, build_dump};
 use ufathom_scan::{DiscoverOptions, Discovery, discover};
 use ufathom_usmap::write_usmap;
 
@@ -68,6 +69,9 @@ pub struct Environment {
     pub thread_start: Option<ThreadHook>,
     /// Where the config came from, for the identity record.
     pub config_source: ConfigSource,
+    /// Runs code on the game thread, for `[preload]`. `None` outside the
+    /// game: a preload is then skipped with a warning.
+    pub game: Option<Arc<dyn GameThreadRunner>>,
 }
 
 /// The result of a dump that wrote its files.
@@ -556,7 +560,90 @@ impl Shared {
             if output.degraded { ", DEGRADED" } else { "" }
         ));
 
+        let output = self.preload(&mut run, &discovery, output, cancel)?;
         self.write_outputs(&mut run, &discovery, &output)
+    }
+
+    /// Loads the assets `[preload]` asks for and reads the dump again. Any
+    /// failure is logged and leaves the first dump in place.
+    fn preload(
+        &self,
+        run: &mut Run<'_>,
+        discovery: &Discovery,
+        output: ReflectOutput,
+        cancel: &AtomicBool,
+    ) -> Result<ReflectOutput, DumpError> {
+        let Some(config) = &self.config.preload else {
+            return Ok(output);
+        };
+        let runner = match &self.environment.game {
+            Some(runner) if self.environment.pid == std::process::id() => runner,
+            _ => {
+                run.log
+                    .warn("preload skipped: assets can be loaded only by the DLL inside the game");
+                return Ok(output);
+            }
+        };
+        let step = Instant::now();
+        let reader = Arc::clone(&self.environment.reader);
+        let result = crate::preload::run(&output.dump, config, &**runner, reader, cancel);
+        let report = match result {
+            Ok(report) => report,
+            Err(message) => {
+                run.log.error(format!("preload failed: {message}"));
+                return Ok(output);
+            }
+        };
+        run.log.info(format!(
+            "preload: {} assets listed, {} matched, {} loaded{} ({} returned an object, {} failed) in {} ms",
+            report.listed,
+            report.matched,
+            report.attempted,
+            if report.truncated { ", limited by max_assets" } else { "" },
+            report.returned,
+            report.failed,
+            millis(step.elapsed())
+        ));
+        if let Some(error) = &report.first_error {
+            run.log.warn(format!("preload: first failure: {error}"));
+        }
+        if let Some(warning) = &report.cleanup_warning {
+            run.log.warn(format!(
+                "preload: registry buffer release unconfirmed: {warning}"
+            ));
+        }
+        if !report.released {
+            run.log.warn(
+                "preload: a thread is still inside the game thread hook; the DLL will not unload",
+            );
+        }
+        check(cancel)?;
+        if report.attempted == 0 {
+            return Ok(output);
+        }
+        let before = output.stats.objects;
+        let options = ReflectOptions {
+            pool: Some(&self.pool),
+            cancel: Some(cancel),
+            ..ReflectOptions::default()
+        };
+        match build_dump(&*self.environment.reader, discovery, &options) {
+            Ok(again) => {
+                run.log.info(format!(
+                    "read again after the preload: {} objects (was {before}), {} classes and structs",
+                    again.stats.objects,
+                    again.stats.classes + again.stats.structs
+                ));
+                Ok(again)
+            }
+            Err(ReflectError::Cancelled) => Err(DumpError::Cancelled),
+            Err(error) => {
+                run.log.error(format!(
+                    "reading again after the preload failed: {error}; writing the first dump"
+                ));
+                Ok(output)
+            }
+        }
     }
 
     fn hash_files(&self, run: &mut Run<'_>, cancel: &AtomicBool) -> Result<(), DumpError> {

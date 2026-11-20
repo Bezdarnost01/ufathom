@@ -671,6 +671,7 @@ dependencies = [
  "ufathom-mem",
  "ufathom-model",
  "ufathom-reflect",
+ "ufathom-runtime",
  "ufathom-scan",
  "ufathom-testkit",
  "ufathom-usmap",
@@ -722,6 +723,7 @@ dependencies = [
  "ufathom-agent",
  "ufathom-mem",
  "ufathom-model",
+ "ufathom-runtime",
  "ufathom-testkit",
  "windows-sys",
 ]

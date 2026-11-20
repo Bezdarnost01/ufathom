@@ -17,6 +17,9 @@
 //!   and publishes `status.json`. The file protocol is described in
 //!   [`protocol`].
 //! - [`HotkeyTracker`] decides when a sampled key counts as a press.
+//! - [`preload`] loads assets before a dump when the config asks for it. It
+//!   is the only code that calls game functions, through a
+//!   [`game::GameThreadRunner`] the DLL supplies.
 //!
 //! # Safety model
 //!
@@ -32,11 +35,13 @@ mod config;
 mod control;
 mod error;
 pub mod fsio;
+pub mod game;
 mod hashing;
 mod hotkey;
 mod identity;
 mod output;
 pub mod paths;
+pub mod preload;
 pub mod protocol;
 mod sdk;
 mod service;
@@ -45,8 +50,11 @@ mod session;
 pub use clock::{compact, rfc3339};
 pub use config::{
     CONFIG_FILE_NAME, Config, ConfigSource, DEFAULT_HOTKEY_DUMP, DEFAULT_HOTKEY_UNLOAD,
-    DEFAULT_OUTPUT_FOLDER, DEFAULT_THREADS, DEFAULT_TRIGGER_DELAY_SECONDS, Format, LoadedConfig,
-    MAX_THREADS, MAX_TRIGGER_DELAY_SECONDS, MIN_THREADS,
+    DEFAULT_OUTPUT_FOLDER, DEFAULT_PRELOAD_BATCH, DEFAULT_PRELOAD_CLASSES,
+    DEFAULT_PRELOAD_MAX_ASSETS, DEFAULT_PRELOAD_TIMEOUT_SECONDS, DEFAULT_THREADS,
+    DEFAULT_TRIGGER_DELAY_SECONDS, Format, LoadedConfig, MAX_PRELOAD_ASSETS, MAX_PRELOAD_BATCH,
+    MAX_PRELOAD_TIMEOUT_SECONDS, MAX_THREADS, MAX_TRIGGER_DELAY_SECONDS, MIN_THREADS,
+    PreloadConfig,
 };
 pub use control::{ControlDir, SETTLE_TIME, is_settled};
 pub use error::{ConfigError, DumpError, HotkeyError, ServiceError, SessionError};
