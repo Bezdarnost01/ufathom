@@ -1,0 +1,44 @@
+# Example config for ufathom.dll. Copy it next to the game executable as
+# ufathom.toml. Every key is optional; an unknown key is an error, so a typo
+# is reported instead of ignored. The full list of keys and their limits is in
+# crates/ufathom-agent/src/config.rs.
+
+# Where dumps and the control folder go. A relative path is relative to this
+# file. Without it, a folder named "ufathom" next to the game is used.
+# output = "D:/dumps"
+
+# What a dump writes: "json", "usmap", "rust-sdk".
+formats = ["json", "usmap", "rust-sdk"]
+
+# Dump once by itself, trigger_delay_seconds after the DLL started.
+auto_dump = false
+trigger_delay_seconds = 30
+
+# Keys that work while a window of the game is in the foreground.
+# "none" switches a key off.
+hotkey_dump = "F8"
+hotkey_unload = "F6"
+
+# Unload after the automatic dump has ended, whatever its result.
+auto_unload = false
+
+# Threads of the dump pool, 1 to 4.
+threads = 2
+
+# File name of the module that holds the engine globals. Normally found by
+# itself; set it only if discovery asks for it.
+# module = "Game-Win64-Shipping.exe"
+
+# Steps that decode an obfuscated object array pointer. Only if you know them.
+# pointer_transform = [{ Xor = 255 }, "Not"]
+
+# Load Blueprint assets before each dump, so classes the game has not loaded
+# yet reach the dump and the SDK. This calls game functions on the game
+# thread, and the game stalls while a batch loads. Remove the comment signs
+# to switch it on.
+# [preload]
+# paths = ["/Game"]        # content paths, listed recursively
+# classes = ["*"]          # every asset; the default is Blueprint asset classes only
+# max_assets = 2000        # at most this many per dump
+# batch = 8                # assets per game thread call; the game runs between calls
+# timeout_seconds = 60     # longest wait for one game thread call

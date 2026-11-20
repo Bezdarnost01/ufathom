@@ -63,9 +63,9 @@ jobs:
       - run: cargo build -p ufathom-dll -p ufathom-testkit --bins --lib
       - run: cargo test --workspace
 
-      # Two invocations on purpose: while the CLI bin and the DLL lib share the file stem
-      # `ufathom`, building them together collides on ufathom.pdb and intermediate objects
-      # and fails the link at random.
+      # Two invocations on purpose. The DLL library is named `ufathom_dll` so that its
+      # debug symbols no longer collide with the CLI's ufathom.pdb, but separate builds
+      # keep each package's features and link apart.
       - name: Build the release DLL
         run: cargo build --release --locked --target $env:TARGET -p ufathom-dll
       - name: Build the release CLI
