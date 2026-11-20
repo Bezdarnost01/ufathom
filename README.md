@@ -95,7 +95,13 @@ cargo build --release --lib
 The result is `target/release/ufathom_sdk.dll`. Loading it starts `run` once on a worker thread with `SelfMemory`. By default the DLL stays loaded until the game exits. Two features change this:
 
 - `--features hot-unload`: when `run` returns, the DLL removes its hooks and unloads itself. It stays loaded if a thread is still inside a hook.
-- `--features proxy-version`: rename the DLL to `version.dll` and put it next to the game executable. The game loads it at start-up, with no injector. The DLL exports every function of the system `version.dll` and forwards each one to the real DLL. `run` waits until the engine has objects and a `GEngine`.
+- Proxy features: the DLL poses as a system DLL, so the game loads it at start-up with no injector. Enable **one** of them and give the built DLL that name, next to the game executable. It exports every function of the system DLL, at the same ordinals, and forwards each call to the real DLL in the system folder (loaded on the first call). `run` waits until the engine has objects and a `GEngine`.
+  - `--features proxy-version`: name it `version.dll`.
+  - `--features proxy-dsound`: name it `dsound.dll`.
+  - `--features proxy-dinput8`: name it `dinput8.dll`.
+  - `--features proxy-winmm`: name it `winmm.dll`.
+
+  Which name a game loads is a property of the game. The forwarding works for any signature, because the stubs pass arguments and the stack through untouched. A function whose real DLL cannot be loaded returns 0 with `ERROR_MOD_NOT_FOUND`, which is a faithful failure only for functions whose failure value is 0. Proxy DLLs are x86-64 Windows only (`x86_64-pc-windows-msvc`).
 
 **External Windows executable:**
 
@@ -190,6 +196,32 @@ A few more parts of the hook:
 - **`before_native` and `after_native`** hook the `UFunction::Func` pointer. Blueprint code reaches native functions through it without `ProcessEvent`. `before_native_fn::<Marker>` and `after_native_fn::<Marker>` name the function by type and accept only functions the dump marks native; a script function does not compile.
 - **`start_auto_rescan(interval)`** hooks the virtual tables of classes that get their first instance later.
 - **`uninstall()`** puts the slots back. `uninstall_and_wait(timeout)` also waits until no thread is inside a hook, so the module can be unloaded.
+
+### Hook any native function
+
+Many game functions are plain C++ with no `UFunction`, so `ProcessEvent` never sees them. Build with `--features detour` (Windows x86-64 only) to patch one inline. `Detour::install` refuses unless the bytes at the address match the signature you give, so a game update is an error, not a crash:
+
+```rust
+use ufathom_runtime::detour::{Detour, Signature, find_in_module};
+static ORIGINAL: AtomicUsize = AtomicUsize::new(0);
+ufathom_runtime::detour_fn! {
+    fn on_score(this: *mut c_void, points: i32) -> i32 {
+        // SAFETY: `ORIGINAL` holds the trampoline, same signature as the target.
+        let original: extern "system" fn(*mut c_void, i32) -> i32 = unsafe { std::mem::transmute(ORIGINAL.load(Ordering::Acquire)) };
+        original(this, points * 2)
+    }
+}
+let signature = Signature::parse("48 89 5C 24 ?? 57 48 83 EC 20")?; // must also cover the bytes the patch overwrites
+let target = find_in_module(None, &signature)?; // exactly one match, or an error
+// SAFETY: `target` is the function, `on_score` has its signature and stays loaded.
+let detour = unsafe { Detour::install_with_original(target, &signature, on_score as *const (), &ORIGINAL) }?;
+// Later: restore the bytes and free the memory once no thread is inside.
+detour.uninstall_and_wait(Duration::from_secs(5))?;
+```
+
+The start of the function is decoded with `iced-x86`. The detour is refused when it contains a `ret`, an `int3`, or a branch into the bytes it would overwrite; RIP-relative operands and relative branches are moved into a trampoline within 2 GB of the target. The patch is written with all other threads suspended. A panic in `detour_fn!` is caught and returns `Default::default()` (or the `on_panic = ...;` value). With `hot-unload`, the DLL removes every detour that is still installed and stays loaded if a thread is still inside one. `detour` is the only part of ufathom that patches code; the dump never uses it.
+
+Status: tested on hand-written machine code in the test suite; not yet run in a real game.
 
 The file and target names above use the default `ufathom-sdk` crate name. If you customize it, replace hyphens with underscores in the DLL file name and append `-external` to the package name for the binary target.
 

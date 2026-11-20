@@ -10,19 +10,31 @@ repository.workspace = true
 [dependencies]
 ufathom-mem.workspace = true
 thiserror.workspace = true
+iced-x86 = { workspace = true, optional = true }
 
 [features]
 # `InProcessExecutor`: calls game functions through ProcessEvent. Off by
 # default; without it the crate never runs game code.
 inproc = ["dep:libc", "dep:windows-sys"]
-# `proxy`: the exports of the system version.dll, forwarded to it, so a DLL
-# named version.dll beside the game is loaded at start-up. Windows only.
+# Proxy exports: a DLL named after a system DLL, put beside the game, is
+# loaded at start-up and forwards each call to the real one. One feature per
+# system DLL; a DLL takes the exports of exactly one of them. Windows x86-64
+# only.
 proxy-version = ["dep:windows-sys"]
+proxy-dsound = ["dep:windows-sys"]
+proxy-dinput8 = ["dep:windows-sys"]
+proxy-winmm = ["dep:windows-sys"]
+# `detour`: inline detours of plain native functions, checked against the
+# bytes the author expects. The one module that patches code; opt-in and for
+# mods only. Windows x86-64 only: on other targets the module is absent.
+detour = ["inproc", "dep:iced-x86"]
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, optional = true, features = [
     "Win32_Foundation",
+    "Win32_System_Diagnostics_Debug",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Kernel",
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",
     "Win32_System_SystemInformation",
