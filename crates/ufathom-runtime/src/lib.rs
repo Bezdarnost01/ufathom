@@ -27,7 +27,15 @@ pub mod inproc;
 mod name;
 mod object;
 mod owned;
-#[cfg(all(feature = "proxy-version", windows))]
+#[cfg(all(
+    windows,
+    any(
+        feature = "proxy-version",
+        feature = "proxy-dsound",
+        feature = "proxy-dinput8",
+        feature = "proxy-winmm"
+    )
+))]
 pub mod proxy;
 mod ptr;
 mod session;

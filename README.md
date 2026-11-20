@@ -95,7 +95,13 @@ cargo build --release --lib
 The result is `target/release/ufathom_sdk.dll`. Loading it starts `run` once on a worker thread with `SelfMemory`. By default the DLL stays loaded until the game exits. Two features change this:
 
 - `--features hot-unload`: when `run` returns, the DLL removes its hooks and unloads itself. It stays loaded if a thread is still inside a hook.
-- `--features proxy-version`: rename the DLL to `version.dll` and put it next to the game executable. The game loads it at start-up, with no injector. The DLL exports every function of the system `version.dll` and forwards each one to the real DLL. `run` waits until the engine has objects and a `GEngine`.
+- Proxy features: the DLL poses as a system DLL, so the game loads it at start-up with no injector. Enable **one** of them and give the built DLL that name, next to the game executable. It exports every function of the system DLL, at the same ordinals, and forwards each call to the real DLL in the system folder (loaded on the first call). `run` waits until the engine has objects and a `GEngine`.
+  - `--features proxy-version`: name it `version.dll`.
+  - `--features proxy-dsound`: name it `dsound.dll`.
+  - `--features proxy-dinput8`: name it `dinput8.dll`.
+  - `--features proxy-winmm`: name it `winmm.dll`.
+
+  Which name a game loads is a property of the game. The forwarding works for any signature, because the stubs pass arguments and the stack through untouched. A function whose real DLL cannot be loaded returns 0 with `ERROR_MOD_NOT_FOUND`, which is a faithful failure only for functions whose failure value is 0. Proxy DLLs are x86-64 Windows only (`x86_64-pc-windows-msvc`).
 
 **External Windows executable:**
 

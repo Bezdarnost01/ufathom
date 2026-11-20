@@ -25,6 +25,7 @@ mod header;
 mod names;
 mod output;
 mod planner;
+mod proxy;
 mod report;
 mod runtime_bundle;
 mod scaffold;
@@ -171,7 +172,12 @@ pub fn generate(
         },
         output::OutFile {
             path: "src/dll.rs".to_owned(),
-            content: scaffold::dll_source().to_owned(),
+            content: scaffold::dll_source(),
+            preserve_existing: false,
+        },
+        output::OutFile {
+            path: "build.rs".to_owned(),
+            content: proxy::build_source(),
             preserve_existing: false,
         },
         output::OutFile {
@@ -187,6 +193,7 @@ pub fn generate(
             preserve_existing: false,
         });
     }
+    files.extend(proxy::def_files());
     if bundled {
         files.extend(runtime_bundle::files());
     }

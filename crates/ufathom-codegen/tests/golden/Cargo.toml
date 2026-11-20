@@ -25,9 +25,13 @@ all = ["mods", "core_pkg", "core_uobject", "engine", "main_pkg", "std_pkg"]
 inproc = ["ufathom-runtime/inproc"]
 # The DLL unloads itself when `run` returns, after removing its hooks.
 hot-unload = []
-# Name the DLL version.dll and put it beside the game: it forwards the system
-# version.dll's exports and waits for the engine before `run`. Windows only.
+# Name the DLL after a system DLL and put it beside the game: it exports that
+# DLL's functions, forwards them to the real one and waits for the engine
+# before `run`. Enable one of these, not several. Windows x86-64 only.
 proxy-version = ["ufathom-runtime/proxy-version"]
+proxy-dsound = ["ufathom-runtime/proxy-dsound"]
+proxy-dinput8 = ["ufathom-runtime/proxy-dinput8"]
+proxy-winmm = ["ufathom-runtime/proxy-winmm"]
 mods = ["core_uobject", "engine"]
 core_pkg = ["core_uobject"]
 core_uobject = []

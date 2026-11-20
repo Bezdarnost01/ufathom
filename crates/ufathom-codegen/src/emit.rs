@@ -173,15 +173,9 @@ pub(crate) fn cargo_source(
         "# The DLL unloads itself when `run` returns, after removing its hooks."
     );
     wl!(out, "hot-unload = []");
-    wl!(
-        out,
-        "# Name the DLL version.dll and put it beside the game: it forwards the system"
-    );
-    wl!(
-        out,
-        "# version.dll's exports and waits for the engine before `run`. Windows only."
-    );
-    wl!(out, "proxy-version = [\"ufathom-runtime/proxy-version\"]");
+    for line in crate::proxy::feature_lines() {
+        wl!(out, "{line}");
+    }
     for m in &built.modules {
         let deps: Vec<String> = m.deps.iter().map(|d| toml_string(d)).collect();
         wl!(out, "{} = [{}]", m.name, deps.join(", "));
