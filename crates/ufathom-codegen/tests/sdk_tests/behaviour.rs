@@ -188,3 +188,36 @@ fn wrapper_reports_an_executor_error() {
     let result = AActor::set_health(Ptr::new(BASE), &exec, 1.0, false);
     assert!(matches!(result, Err(CallError::Refused(_))));
 }
+
+/// Each function names itself by its parameter struct, with the path its
+/// wrapper calls and the `FUNC_Native` flag from the dump.
+#[cfg(feature = "inproc")]
+#[test]
+fn typed_hook_markers_carry_the_path_and_the_native_flag() {
+    use ufathom_runtime::inproc::{GameFunction, NativeFunction};
+    use ufathom_sdk::engine::{AActor_GetActorCount_Params, AActor_SetHealth_Params};
+
+    fn requires_native<F: NativeFunction>() -> &'static str {
+        F::PATH
+    }
+
+    assert_eq!(
+        <AActor_SetHealth_Params as GameFunction>::PATH,
+        "/Script/Engine.Actor:SetHealth"
+    );
+    assert!(<AActor_SetHealth_Params as GameFunction>::IS_NATIVE);
+    // Compiles only because the dump marks the function native.
+    assert_eq!(
+        requires_native::<AActor_SetHealth_Params>(),
+        "/Script/Engine.Actor:SetHealth"
+    );
+    assert_eq!(
+        <AActor_GetActorCount_Params as GameFunction>::PATH,
+        "/Script/Engine.Actor:GetActorCount"
+    );
+    assert!(!<AActor_GetActorCount_Params as GameFunction>::IS_NATIVE);
+    assert_eq!(
+        size_of::<<AActor_SetHealth_Params as GameFunction>::Params>(),
+        0x10
+    );
+}

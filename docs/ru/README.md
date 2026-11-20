@@ -219,17 +219,24 @@ game.run(|ctx| {
     // ctx.executor() передаётся в обёртки, ctx.session() даёт поиск
 });
 
-// Перехват функции: до вызова можно читать и менять входные параметры или пропустить оригинал
-let id = game.before("/Script/Engine.Actor:ReceiveTick", |ctx| {
+// Перехват функции: до вызова можно читать и менять входные параметры или пропустить оригинал.
+// Функция задаётся типом, то есть сгенерированной структурой её параметров: опечатка не
+// скомпилируется, а колбэк получает блок параметров сразу как эту структуру.
+let id = game.before_fn::<sdk::engine::AActor_ReceiveTick_Params>(|ctx, params| {
     let actor = ctx.object();
-    if let Some(params) = ctx.params_as::<sdk::engine::AActor_ReceiveTick_Params>() {
-        params.delta_seconds *= 0.5;
-    }
+    params.delta_seconds *= 0.5;
 })?;
 
 // После вызова: выходные параметры и возвращаемое значение
-game.after("/Script/Engine.PlayerController:GetHitResultUnderCursor", |ctx| {
-    let _ = ctx.params();
+game.after_fn::<sdk::engine::AActor_K2_GetActorLocation_Params>(|_ctx, params| {
+    let _location = params.return_value;
+})?;
+
+// Запасной вариант по строке пути и сырым байтам, если структуры для функции нет
+game.before("/Script/Engine.Actor:ReceiveTick", |ctx| {
+    if let Some(params) = ctx.params_as::<sdk::engine::AActor_ReceiveTick_Params>() {
+        params.delta_seconds *= 0.5;
+    }
 })?;
 
 game.remove(id);
@@ -241,6 +248,10 @@ game.start_auto_rescan(Duration::from_secs(2))?;
 
 // Перехват нативной функции, которую Blueprint вызывает мимо ProcessEvent
 game.before_native("/Script/Engine.KismetSystemLibrary:PrintString", |ctx| {
+    let _ = ctx.object();
+})?;
+// То же по типу: принимаются только функции, которые дамп помечает нативными
+game.before_native_fn::<sdk::engine::UKismetSystemLibrary_PrintString_Params>(|ctx| {
     let _ = ctx.object();
 })?;
 
@@ -325,5 +336,5 @@ ctx.executor().free_array(&mut array)?;               // только сам б�
 | `UEngine::GetEngine()` | `sdk::gengine(&session)` |
 | `obj->Func(args)` | `Class::func(obj, &exec, args)` |
 | `UClass::StaticFunc(args)` | `Class::static_func(&exec, args)` |
-| хук ProcessEvent (вручную) | `game.before(path, ...)`, `game.after(path, ...)` |
+| хук ProcessEvent (вручную) | `game.before_fn::<Params>(...)`, `game.after_fn::<Params>(...)`; по пути: `game.before(path, ...)`, `game.after(path, ...)` |
 | выполнение на игровом потоке (вручную) | `game.run(...)`, `game.call(timeout, ...)` |

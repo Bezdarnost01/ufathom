@@ -107,6 +107,10 @@ static EMBEDDED: &[(&str, &str)] = &[
         include_str!("../../ufathom-runtime/src/inproc/patch.rs"),
     ),
     (
+        "vendor/ufathom-runtime/src/inproc/typed.rs",
+        include_str!("../../ufathom-runtime/src/inproc/typed.rs"),
+    ),
+    (
         "vendor/ufathom-runtime/src/session.rs",
         include_str!("../../ufathom-runtime/src/session.rs"),
     ),

@@ -90,3 +90,10 @@ const _: () = {
     assert!(::core::mem::align_of::<ABP_Thing_C_GetHome_Params>() == 4);
     assert!(::core::mem::offset_of!(ABP_Thing_C_GetHome_Params, return_value) == 0x0);
 };
+
+#[cfg(feature = "inproc")]
+impl rt::inproc::GameFunction for ABP_Thing_C_GetHome_Params {
+    const PATH: &'static str = "/Game/Mods.BP_Thing_C:GetHome";
+    type Kind = rt::inproc::Script;
+    type Params = Self;
+}

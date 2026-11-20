@@ -41,6 +41,7 @@ pub(crate) fn module_source(built: &Built, module: &ModuleInfo) -> String {
         for f in &s.functions {
             wl!(out);
             emit_params(&mut out, f);
+            emit_game_function(&mut out, f);
         }
     }
     out
@@ -764,4 +765,23 @@ fn emit_params(out: &mut String, f: &PlannedFunction) {
         emit_bit_accessors(out, &f.fields);
         wl!(out, "}}");
     }
+}
+
+/// The `GameFunction` impl that names the function by its parameter struct,
+/// for typed hooks. Behind `inproc`, like the runtime item it implements.
+/// Every planned function has a parameter struct (one whose block cannot be
+/// placed is not planned at all), so there is no byte-array fallback.
+fn emit_game_function(out: &mut String, f: &PlannedFunction) {
+    let kind = if f.is_native { "Native" } else { "Script" };
+    wl!(out);
+    wl!(out, "#[cfg(feature = \"inproc\")]");
+    wl!(
+        out,
+        "impl rt::inproc::GameFunction for {} {{",
+        f.params_struct
+    );
+    wl!(out, "    const PATH: &'static str = {:?};", f.path);
+    wl!(out, "    type Kind = rt::inproc::{kind};");
+    wl!(out, "    type Params = Self;");
+    wl!(out, "}}");
 }

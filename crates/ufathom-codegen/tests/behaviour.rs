@@ -40,4 +40,14 @@ fn generated_sdk_reads_objects_and_calls_wrappers() {
         run.stdout
     );
     eprintln!("behaviour test: cargo test {:.1?}", run.elapsed);
+    // With `inproc` the functions also name themselves for typed hooks: one
+    // more test, which exists only in that build.
+    let run = run_cargo(dir.path(), &["test", "--features", "inproc"]);
+    assert!(
+        run.stdout.contains("test result: ok. 10 passed; 0 failed"),
+        "unexpected output with inproc:
+{}",
+        run.stdout
+    );
+    eprintln!("behaviour test (inproc): cargo test {:.1?}", run.elapsed);
 }

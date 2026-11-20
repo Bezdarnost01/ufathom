@@ -10,9 +10,11 @@ mod hook;
 mod native;
 mod os;
 mod patch;
+mod typed;
 
 pub use hook::{CallContext, GameContext, GameThread, HookError, HookId, MIN_RESCAN_INTERVAL};
 pub use native::NativeContext;
+pub use typed::{FunctionKind, GameFunction, Native, NativeFunction, Script};
 
 use core::ffi::c_void;
 use core::marker::PhantomData;
