@@ -1,6 +1,7 @@
 //! The [`MemoryReader`] trait and its typed helpers.
 //!
-//! This crate has no write path: nothing here can modify the target.
+//! The only write in this crate is [`SelfMemory::write_exact`](crate::SelfMemory::write_exact),
+//! which is not part of [`MemoryReader`].
 
 use std::mem::{MaybeUninit, size_of};
 use std::ptr;

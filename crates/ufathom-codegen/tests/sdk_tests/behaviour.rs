@@ -221,3 +221,116 @@ fn typed_hook_markers_carry_the_path_and_the_native_flag() {
         0x10
     );
 }
+
+/// Writes through generated `FIELD` constants into a fake engine placed in
+/// this process's memory, then reads the result back through the same
+/// constants.
+#[cfg(feature = "inproc")]
+#[test]
+fn fields_are_written_through_live_object_and_read_back() {
+    use ufathom_runtime::mem::SelfMemory;
+    use ufathom_runtime::{
+        EngineDesc, FNameDesc, NamePoolDesc, NamesDesc, ObjectArrayDesc, ObjectDesc, Place,
+        Session, WriteError,
+    };
+
+    const ARRAY: u64 = 0x00;
+    const ITEMS: u64 = 0x40;
+    const PAWN_AT: u64 = 0x100;
+    const CLASS_AT: u64 = 0x200;
+    const ITEM_SIZE: u64 = 16;
+
+    let mut words = vec![0u64; 0x400 / 8];
+    let base = words.as_ptr() as u64;
+    let mut bytes = vec![0u8; 0x400];
+    let mut put = |at: u64, data: &[u8]| {
+        bytes[at as usize..at as usize + data.len()].copy_from_slice(data);
+    };
+    // Object array: flat storage with two items, count 2.
+    put(ARRAY, &(base + ITEMS).to_le_bytes());
+    put(ARRAY + 8, &2u32.to_le_bytes());
+    put(ITEMS, &(base + CLASS_AT).to_le_bytes());
+    put(ITEMS + ITEM_SIZE, &(base + PAWN_AT).to_le_bytes());
+    // The pawn is in slot 1 and its class is in slot 0.
+    let mut pawn = pawn_bytes();
+    pawn[0x0C..0x10].copy_from_slice(&1u32.to_le_bytes());
+    pawn[0x10..0x18].copy_from_slice(&(base + CLASS_AT).to_le_bytes());
+    put(PAWN_AT, &pawn);
+    // The class: slot 0, `PropertiesSize` (0x40 in this layout) of the pawn.
+    put(CLASS_AT + 0x0C, &0u32.to_le_bytes());
+    put(CLASS_AT + 0x40, &0x48u32.to_le_bytes());
+    for (word, chunk) in words.iter_mut().zip(bytes.chunks_exact(8)) {
+        *word = u64::from_le_bytes(chunk.try_into().unwrap());
+    }
+    let desc: &'static EngineDesc = Box::leak(Box::new(EngineDesc {
+        names: NamesDesc::Pool(NamePoolDesc {
+            location: Place::Absolute(base),
+            blocks: 0x10,
+            stride: 2,
+            block_offset_bits: 16,
+            header_offset: 0,
+            string_offset: 2,
+            len_shift: 6,
+            wide_mask: 1,
+        }),
+        objects: ObjectArrayDesc {
+            location: Place::Absolute(base + ARRAY),
+            elements_per_chunk: None,
+            objects: 0,
+            num_elements: 8,
+            item_size: ITEM_SIZE as u32,
+            item_object: 0,
+            item_serial: None,
+            pointer_transform: &[],
+        },
+        fname: FNameDesc {
+            size: 8,
+            comparison_index: 0,
+            display_index: None,
+            number: Some(4),
+        },
+        object: ObjectDesc {
+            flags: 8,
+            index: 0x0C,
+            class: 0x10,
+            name: 0x18,
+            outer: 0x20,
+            super_struct: 0x30,
+            properties_size: 0x40,
+            default_object: None,
+        },
+        process_event_index: None,
+        gworld: None,
+        gengine: None,
+    }));
+    let session = Session::new(SelfMemory::new(), desc).unwrap();
+    let pawn = session.live_object(Ptr::<APawn>::new(base + PAWN_AT));
+
+    // A field of the pawn itself and fields declared on its parent.
+    pawn.set(APawn::SPEED, 900.0).unwrap();
+    pawn.set(AActor::HEALTH, 110.0).unwrap();
+    pawn.set(AActor::MODE, EMode(1)).unwrap();
+    pawn.set(AActor::LOCATION, FVector { x: 4.0, y: 5.0, z: 6.0 })
+        .unwrap();
+    pawn.set_bit(AActor::B_HIDDEN, true).unwrap();
+    pawn.set_bit(AActor::B_CAN_TICK, false).unwrap();
+    let old = pawn.modify(AActor::HEALTH, |health| *health += 1.0).unwrap();
+    assert_eq!(old, 110.0);
+
+    let read = session.object(Ptr::<APawn>::new(base + PAWN_AT));
+    assert_eq!(read.get(APawn::SPEED).unwrap(), 900.0);
+    assert_eq!(read.get(AActor::HEALTH).unwrap(), 111.0);
+    assert_eq!(read.get(AActor::MODE).unwrap(), EMode(1));
+    let location = read.get(AActor::LOCATION).unwrap();
+    assert_eq!((location.x, location.y, location.z), (4.0, 5.0, 6.0));
+    assert!(read.get_bit(AActor::B_HIDDEN).unwrap());
+    assert!(!read.get_bit(AActor::B_CAN_TICK).unwrap());
+
+    // An object that is not in the array is refused and nothing is written.
+    let stray = session.live_object(Ptr::<APawn>::new(base + PAWN_AT + 8));
+    assert!(matches!(
+        stray.set(AActor::HEALTH, 1.0),
+        Err(WriteError::DeadObject { .. })
+    ));
+    drop(words);
+}

@@ -109,6 +109,22 @@ pub(crate) fn regions_from_maps(entries: &[MapsEntry]) -> Vec<MemoryRegion> {
     regions
 }
 
+/// Whether every byte of `addr..end` lies in mappings that are writable,
+/// with no gap between them. An empty range is writable.
+pub(crate) fn range_writable(entries: &[MapsEntry], addr: u64, end: u64) -> bool {
+    let mut cursor = addr;
+    while cursor < end {
+        let covering = entries
+            .iter()
+            .find(|entry| entry.start <= cursor && cursor < entry.end);
+        match covering {
+            Some(entry) if entry.perms.write => cursor = entry.end,
+            _ => return false,
+        }
+    }
+    true
+}
+
 /// Whether a path names a file that can plausibly be a loaded image.
 fn is_module_path(path: &str) -> bool {
     path.starts_with('/')
@@ -171,6 +187,24 @@ mod tests {
 7ffd4a1f4000-7ffd4a1f6000 r-xp 00000000 00:00 0 [vdso]
 ffffffffff600000-ffffffffff601000 --xp 00000000 00:00 0 [vsyscall]
 ";
+
+    #[test]
+    fn writable_ranges_need_every_byte_writable_without_gaps() {
+        let entries = parse_maps(SAMPLE);
+        // Inside one rw mapping, and ending exactly at its end.
+        assert!(range_writable(&entries, 0x55d0c9f2c000, 0x55d0c9f2c010));
+        assert!(range_writable(&entries, 0x55d0c9f4c000, 0x55d0c9f4d000));
+        assert!(range_writable(&entries, 0x55d0c9f2c000, 0x55d0c9f2c000));
+        // Past the end of the mapping: unmapped.
+        assert!(!range_writable(&entries, 0x55d0c9f4c000, 0x55d0c9f4d001));
+        // Read-only and read-execute mappings, and one that touches a writable one.
+        assert!(!range_writable(&entries, 0x55d0c8a00000, 0x55d0c8a00004));
+        assert!(!range_writable(&entries, 0x55d0c8a02000, 0x55d0c8a02004));
+        assert!(!range_writable(&entries, 0x55d0c8a0a000, 0x55d0c8a0b004));
+        // Unmapped.
+        assert!(!range_writable(&entries, 0x10, 0x14));
+        assert!(!range_writable(&entries, 0x7f2a14e15000, 0x7f2a14e15004));
+    }
 
     #[test]
     fn parses_every_well_formed_line() {

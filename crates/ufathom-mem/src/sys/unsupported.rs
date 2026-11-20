@@ -33,6 +33,12 @@ impl Target {
         })
     }
 
+    pub(crate) fn write(&self, _addr: Addr, _bytes: &[u8]) -> Result<(), MemError> {
+        Err(MemError::Unsupported {
+            operation: "write_exact",
+        })
+    }
+
     pub(crate) fn regions(&self) -> Result<Vec<MemoryRegion>, MemError> {
         Err(MemError::Unsupported {
             operation: "regions",
