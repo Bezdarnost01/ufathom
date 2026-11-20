@@ -20,6 +20,8 @@
 
 mod containers;
 mod desc;
+#[cfg(all(feature = "detour", windows, target_arch = "x86_64"))]
+pub mod detour;
 pub mod engine_mem;
 mod executor;
 #[cfg(feature = "inproc")]
@@ -27,7 +29,15 @@ pub mod inproc;
 mod name;
 mod object;
 mod owned;
-#[cfg(all(feature = "proxy-version", windows))]
+#[cfg(all(
+    windows,
+    any(
+        feature = "proxy-version",
+        feature = "proxy-dsound",
+        feature = "proxy-dinput8",
+        feature = "proxy-winmm"
+    )
+))]
 pub mod proxy;
 mod ptr;
 mod session;

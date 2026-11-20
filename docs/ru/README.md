@@ -107,7 +107,13 @@ cargo build --release --lib
 Получится `target/release/ufathom_sdk.dll`. После загрузки `run` один раз запускается в отдельном рабочем потоке с `SelfMemory`. По умолчанию DLL остаётся в памяти до выхода из игры. Две фичи это меняют:
 
 - **`hot-unload`.** Когда `run` вернёт управление, DLL уберёт свои колбэки и задачи (`remove_owned_by_current_module`), снимет хуки (`uninstall_and_wait`) и выгрузит себя. Если какой-то поток ещё внутри хука или другой мод перехватил тот же слот после вас, DLL останется загруженной: иначе игра упадёт.
-- **`proxy-version`.** Переименуйте DLL в `version.dll` и положите рядом с exe игры. Игра загрузит её сама при старте, инжектор не нужен. DLL экспортирует все 17 функций системной `version.dll` и передаёт каждый вызов настоящей. Настоящая библиотека загружается из системной папки при первом вызове. `run` ждёт, пока движок запустится: появятся объекты и `GEngine`.
+- **Прокси-фичи.** DLL выдаёт себя за системную, и игра загружает её сама при старте, инжектор не нужен. Включите **одну** фичу и назовите собранную DLL так, как указано, положив её рядом с exe игры. DLL экспортирует все функции системной DLL с теми же порядковыми номерами и передаёт каждый вызов настоящей, которая загружается из системной папки при первом вызове. `run` ждёт, пока движок запустится: появятся объекты и `GEngine`.
+  - `proxy-version`: назовите `version.dll`.
+  - `proxy-dsound`: назовите `dsound.dll`.
+  - `proxy-dinput8`: назовите `dinput8.dll`.
+  - `proxy-winmm`: назовите `winmm.dll`.
+
+  Какое имя загружает игра, зависит от игры. Сигнатуры функций не важны: заглушки передают аргументы и стек без изменений. Если настоящую DLL загрузить не удалось, функция вернёт 0 и `ERROR_MOD_NOT_FOUND`; это верный признак ошибки только для функций, у которых ошибка равна 0. Только x86-64 Windows (`x86_64-pc-windows-msvc`).
 
 ```bat
 cargo build --release --lib --features "inproc hot-unload"
@@ -219,17 +225,24 @@ game.run(|ctx| {
     // ctx.executor() передаётся в обёртки, ctx.session() даёт поиск
 });
 
-// Перехват функции: до вызова можно читать и менять входные параметры или пропустить оригинал
-let id = game.before("/Script/Engine.Actor:ReceiveTick", |ctx| {
+// Перехват функции: до вызова можно читать и менять входные параметры или пропустить оригинал.
+// Функция задаётся типом, то есть сгенерированной структурой её параметров: опечатка не
+// скомпилируется, а колбэк получает блок параметров сразу как эту структуру.
+let id = game.before_fn::<sdk::engine::AActor_ReceiveTick_Params>(|ctx, params| {
     let actor = ctx.object();
-    if let Some(params) = ctx.params_as::<sdk::engine::AActor_ReceiveTick_Params>() {
-        params.delta_seconds *= 0.5;
-    }
+    params.delta_seconds *= 0.5;
 })?;
 
 // После вызова: выходные параметры и возвращаемое значение
-game.after("/Script/Engine.PlayerController:GetHitResultUnderCursor", |ctx| {
-    let _ = ctx.params();
+game.after_fn::<sdk::engine::AActor_K2_GetActorLocation_Params>(|_ctx, params| {
+    let _location = params.return_value;
+})?;
+
+// Запасной вариант по строке пути и сырым байтам, если структуры для функции нет
+game.before("/Script/Engine.Actor:ReceiveTick", |ctx| {
+    if let Some(params) = ctx.params_as::<sdk::engine::AActor_ReceiveTick_Params>() {
+        params.delta_seconds *= 0.5;
+    }
 })?;
 
 game.remove(id);
@@ -252,6 +265,10 @@ game.remove_owned_by_current_module();
 
 // Перехват нативной функции, которую Blueprint вызывает мимо ProcessEvent
 game.before_native("/Script/Engine.KismetSystemLibrary:PrintString", |ctx| {
+    let _ = ctx.object();
+})?;
+// То же по типу: принимаются только функции, которые дамп помечает нативными
+game.before_native_fn::<sdk::engine::UKismetSystemLibrary_PrintString_Params>(|ctx| {
     let _ = ctx.object();
 })?;
 
@@ -310,6 +327,32 @@ ctx.executor().free_array(&mut array)?;               // только сам б�
 - **`FText` в текст** — через `UKismetTextLibrary::Conv_TextToString`.
 - **Обратно в текст:** `fname_text` и `fstring`.
 
+## Хук любой нативной функции
+
+Многие функции игры это обычный C++ без `UFunction`, и `ProcessEvent` их не видит. Соберите с `--features detour` (только Windows x86-64), и функцию можно перехватить инлайн. `Detour::install` откажется патчить, если байты по адресу не совпадают с вашей сигнатурой: обновление игры станет ошибкой, а не падением.
+
+```rust
+use ufathom_runtime::detour::{Detour, Signature, find_in_module};
+static ORIGINAL: AtomicUsize = AtomicUsize::new(0);
+ufathom_runtime::detour_fn! {
+    fn on_score(this: *mut c_void, points: i32) -> i32 {
+        // SAFETY: в `ORIGINAL` лежит трамплин с сигнатурой цели.
+        let original: extern "system" fn(*mut c_void, i32) -> i32 = unsafe { std::mem::transmute(ORIGINAL.load(Ordering::Acquire)) };
+        original(this, points * 2)
+    }
+}
+let signature = Signature::parse("48 89 5C 24 ?? 57 48 83 EC 20")?; // должна покрывать и перезаписываемые байты
+let target = find_in_module(None, &signature)?; // ровно одно совпадение, иначе ошибка
+// SAFETY: `target` это нужная функция, у `on_score` её сигнатура, модуль остаётся загруженным.
+let detour = unsafe { Detour::install_with_original(target, &signature, on_score as *const (), &ORIGINAL) }?;
+// Потом: вернуть байты и освободить память, когда внутри не осталось потоков.
+detour.uninstall_and_wait(Duration::from_secs(5))?;
+```
+
+Начало функции разбирает `iced-x86`. Хук отклоняется, если в начале есть `ret`, `int3` или переход внутрь перезаписываемых байтов. Операнды относительно RIP и относительные переходы переносятся в трамплин в пределах 2 ГБ от цели. Патч пишется при остановленных остальных потоках. Паника в `detour_fn!` перехватывается, функция возвращает `Default::default()` (или значение `on_panic = ...;`). С `hot-unload` DLL снимет все ещё стоящие детуры и останется в памяти, если какой-то поток внутри. `detour` единственная часть ufathom, которая патчит код; дамп её не использует.
+
+Статус: проверено на написанном вручную машинном коде в тестах; в настоящей игре пока не запускалось.
+
 ## Ограничения и безопасность
 
 - **Память движка надо освобождать самим.** Пользуйтесь `take_string` и `free_array` (см. выше), иначе строки и массивы будут утекать.
@@ -337,5 +380,5 @@ ctx.executor().free_array(&mut array)?;               // только сам б�
 | `UEngine::GetEngine()` | `sdk::gengine(&session)` |
 | `obj->Func(args)` | `Class::func(obj, &exec, args)` |
 | `UClass::StaticFunc(args)` | `Class::static_func(&exec, args)` |
-| хук ProcessEvent (вручную) | `game.before(path, ...)`, `game.after(path, ...)` |
+| хук ProcessEvent (вручную) | `game.before_fn::<Params>(...)`, `game.after_fn::<Params>(...)`; по пути: `game.before(path, ...)`, `game.after(path, ...)` |
 | выполнение на игровом потоке (вручную) | `game.run(...)`, `game.call(timeout, ...)` |

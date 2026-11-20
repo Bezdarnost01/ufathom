@@ -25,6 +25,7 @@ repository = "https://github.com/Bezdarnost01/ufathom"
 
 [workspace.dependencies]
 ufathom-mem = {{ path = "vendor/ufathom-mem" }}
+iced-x86 = {{ version = "1.21.0", default-features = false, features = ["std", "decoder", "block_encoder", "instr_info"] }}
 libc = "0.2.191"
 memmap2 = "0.9.12"
 tempfile = "3.27.0"
@@ -115,6 +116,42 @@ static EMBEDDED: &[(&str, &str)] = &[
         include_str!("../../ufathom-runtime/src/inproc/patch.rs"),
     ),
     (
+        "vendor/ufathom-runtime/src/detour/analyze.rs",
+        include_str!("../../ufathom-runtime/src/detour/analyze.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/detour/error.rs",
+        include_str!("../../ufathom-runtime/src/detour/error.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/detour/image.rs",
+        include_str!("../../ufathom-runtime/src/detour/image.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/detour/inflight.rs",
+        include_str!("../../ufathom-runtime/src/detour/inflight.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/detour/memory.rs",
+        include_str!("../../ufathom-runtime/src/detour/memory.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/detour/mod.rs",
+        include_str!("../../ufathom-runtime/src/detour/mod.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/detour/signature.rs",
+        include_str!("../../ufathom-runtime/src/detour/signature.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/detour/threads.rs",
+        include_str!("../../ufathom-runtime/src/detour/threads.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/inproc/typed.rs",
+        include_str!("../../ufathom-runtime/src/inproc/typed.rs"),
+    ),
+    (
         "vendor/ufathom-runtime/src/session.rs",
         include_str!("../../ufathom-runtime/src/session.rs"),
     ),
@@ -135,8 +172,20 @@ static EMBEDDED: &[(&str, &str)] = &[
         include_str!("../../ufathom-runtime/src/owned.rs"),
     ),
     (
-        "vendor/ufathom-runtime/src/proxy.rs",
-        include_str!("../../ufathom-runtime/src/proxy.rs"),
+        "vendor/ufathom-runtime/src/proxy/mod.rs",
+        include_str!("../../ufathom-runtime/src/proxy/mod.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/proxy/resolve.rs",
+        include_str!("../../ufathom-runtime/src/proxy/resolve.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/proxy/stubs.rs",
+        include_str!("../../ufathom-runtime/src/proxy/stubs.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/proxy/tables.rs",
+        include_str!("../../ufathom-runtime/src/proxy/tables.rs"),
     ),
     (
         "vendor/ufathom-runtime/src/ptr.rs",
@@ -236,6 +285,7 @@ mod tests {
     fn workspace_metadata_stays_in_sync_with_the_real_workspace() {
         let root = include_str!("../../../Cargo.toml");
         for dependency in [
+            r#"iced-x86 = { version = "1.21.0", default-features = false, features = ["std", "decoder", "block_encoder", "instr_info"] }"#,
             r#"libc = "0.2.191""#,
             r#"memmap2 = "0.9.12""#,
             r#"thiserror = "2.0.21""#,

@@ -112,6 +112,7 @@ const RESERVED_MODULES: &[&str] = &[
     "default",
     "all",
     "inproc",
+    "detour",
     "app",
     "dll",
 ];

@@ -14,11 +14,13 @@ mod modload;
 mod native;
 mod os;
 mod patch;
+mod typed;
 
 pub use guard::HookGuard;
 pub use hook::{CallContext, GameContext, GameThread, HookError, HookId, MIN_RESCAN_INTERVAL};
 pub use modload::{FIRST_RESCAN, SECOND_RESCAN};
 pub use native::NativeContext;
+pub use typed::{FunctionKind, GameFunction, Native, NativeFunction, Script};
 
 use core::ffi::c_void;
 use core::marker::PhantomData;
