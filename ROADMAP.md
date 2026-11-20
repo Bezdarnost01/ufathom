@@ -70,7 +70,7 @@ Requires the user to start each game and to load the DLL or allow attaching.
 
 - [ ] `diff` command, documentation, performance numbers measured on real dumps
 - [x] Rust mod toolkit, so new mods need no C++: ProcessEvent and native function hooks, proxy DLL exports, game thread dispatch, engine allocator. Tested on a fake engine and, for the proxy exports, against the system `version.dll`; not yet run in a real game.
-- [x] Opt-in asset loading in DLL mode (`[preload]`). Tested against a fake engine; not yet run in a real game.
+- [x] Opt-in asset loading in DLL mode (`[preload]`). Tested against a fake engine and in a UE 4.25 editor; not yet run in a shipping game.
 - [ ] More engine versions, added as each is verified on a real build, using any game without anti-cheat
 
 ## Risks and external dependencies

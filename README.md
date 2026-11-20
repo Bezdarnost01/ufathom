@@ -54,7 +54,7 @@ paths = ["/Game"]        # content paths, listed recursively
 # batch = 8              # assets per game thread call; the game runs between calls
 ```
 
-This is the only time ufathom calls game functions. It is off by default, and the game stalls while each batch loads. It has not yet been run on a real game. The rest of the keys are listed in `crates/ufathom-agent/src/config.rs`.
+This is the only time ufathom calls game functions. It is off by default, and the game stalls while each batch loads. It has been checked in a UE 4.25 editor, not yet in a shipping game. The rest of the keys are listed in `crates/ufathom-agent/src/config.rs`.
 
 `cargo build -p ufathom-dll` produces `target/<profile>/ufathom_dll.dll`; copy it next to the game as `ufathom.dll`. The library is not called `ufathom`, so that its debug symbols do not clash with the command line tool's on Windows.
 
