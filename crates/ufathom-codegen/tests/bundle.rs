@@ -29,6 +29,7 @@ fn bundled_sdk_compiles_without_an_ufathom_checkout() {
     );
     assert!(manifest.contains(r#"crate-type = ["rlib", "cdylib"]"#));
     for file in [
+        ".cargo/config.toml",
         "src/main.rs",
         "src/dll.rs",
         "vendor/ufathom-runtime/Cargo.toml",
@@ -75,12 +76,29 @@ fn bundled_sdk_compiles_without_an_ufathom_checkout() {
     // of the system version.dll, or the game would fail to start with it.
     #[cfg(windows)]
     {
-        let dll = common::workspace_root().join("target/sdk-check/debug/ufathom_sdk.dll");
+        let debug = common::workspace_root().join("target/sdk-check/debug");
+        let dll = debug.join("ufathom_sdk.dll");
         let exports = common::pe_exports(&std::fs::read(&dll).unwrap());
         for name in ufathom_runtime::proxy::EXPORTS {
             assert!(
                 exports.iter().any(|e| e == name),
                 "{name} is not exported: {exports:?}"
+            );
+        }
+
+        // The generated `.cargo/config.toml` links the C runtime statically, so
+        // neither the DLL nor the executable needs VCRUNTIME140.dll or the
+        // universal CRT on the machine that loads them.
+        for binary in ["ufathom_sdk.dll", "ufathom-sdk-external.exe"] {
+            let imports = common::pe_imports(&std::fs::read(debug.join(binary)).unwrap());
+            assert!(!imports.is_empty(), "no imports read from {binary}");
+            let runtime: Vec<_> = imports
+                .iter()
+                .filter(|dll| common::is_c_runtime_import(dll))
+                .collect();
+            assert!(
+                runtime.is_empty(),
+                "{binary} imports the C runtime {runtime:?}: {imports:?}"
             );
         }
     }

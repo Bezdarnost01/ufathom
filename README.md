@@ -25,7 +25,7 @@ The same pipeline also runs **without a DLL**, reading a running process from ou
 ufathom quick
 ```
 
-Choose a process by its list number or PID. ufathom writes `dump.json`, `Mappings.usmap` and a self-contained Rust SDK into a new folder, without overwriting earlier results:
+Choose a process by its list number or PID. If a number is both, such as list number 128 and a different process with PID 128 under `--all`, ufathom asks again: type `#128` for the list number or `pid:128` for the PID. ufathom writes `dump.json`, `Mappings.usmap` and a self-contained Rust SDK into a new folder, without overwriting earlier results:
 
 ```
 ufathom-dumps/<timestamp>-p<PID>/
@@ -36,7 +36,7 @@ ufathom-dumps/<timestamp>-p<PID>/
 
 Use `ufathom quick --all` if the game is not in the probable-target list, or `ufathom quick --output D:/dumps` to change the parent folder. Empty input cancels before anything is written.
 
-**As a DLL.** Put `ufathom.toml` next to the game executable, load `ufathom.dll` with your loader of choice, press F8 to dump and F6 to unload.
+**As a DLL.** Put `ufathom.toml` next to the game executable (start from [`ufathom.example.toml`](ufathom.example.toml), also in the release archive), load `ufathom.dll` with your loader of choice, press F8 to dump and F6 to unload.
 
 ```toml
 output = "D:/dumps"
@@ -83,7 +83,7 @@ Use `--runtime-path PATH` or `--runtime-version VERSION` only when you want to o
 
 ### Build the generated application
 
-Every SDK includes an editable `src/main.rs`. Put your logic in its `run` function and import generated types through the SDK crate, for example `ufathom_sdk::core_uobject::UObject`. Later SDK generation preserves this file; other generated files may be refreshed.
+Every SDK includes an editable `src/main.rs`. Put your logic in its `run` function and import generated types through the SDK crate, for example `ufathom_sdk::core_uobject::UObject`. Later SDK generation preserves this file; other generated files may be refreshed. The SDK also gets a `.cargo/config.toml` that links the C runtime statically on `x86_64-pc-windows-msvc`, so the built DLL and executable run on machines without the Visual C++ Redistributable.
 
 **Windows DLL (the default library configuration):**
 

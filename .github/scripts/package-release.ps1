@@ -8,7 +8,8 @@
     Fails if either package or target is missing, or the built file does not exist.
 
     Assets written to -OutDir (which must be empty or absent):
-      ufathom-<tag>-<target>.zip   exe, dll, README.md, LICENSE-*, THIRD_PARTY.md, CHANGELOG.md
+      ufathom-<tag>-<target>.zip   exe, dll, README.md, LICENSE-*, THIRD_PARTY.md, CHANGELOG.md,
+                                   ufathom.example.toml
       ufathom.exe, ufathom.dll     the raw binaries
       SHA256SUMS                   sha256sum format, covering every asset above
 
@@ -63,7 +64,7 @@ foreach ($path in @($exeSource, $dllSource)) {
 Write-Host "CLI: $exeSource"
 Write-Host "DLL: $dllSource"
 
-$docs = @('README.md', 'LICENSE-MIT', 'LICENSE-APACHE', 'THIRD_PARTY.md', 'CHANGELOG.md')
+$docs = @('README.md', 'LICENSE-MIT', 'LICENSE-APACHE', 'THIRD_PARTY.md', 'CHANGELOG.md', 'ufathom.example.toml')
 foreach ($doc in $docs) {
     if (-not (Test-Path -LiteralPath (Join-Path $Root $doc) -PathType Leaf)) {
         throw "Required file is missing from the repository root: $doc"

@@ -35,7 +35,7 @@ fn modified(dir: &std::path::Path, files: &[String]) -> Vec<std::time::SystemTim
 fn unchanged_dump_writes_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let first = generate(&golden_dump(), &options(), dir.path()).unwrap();
-    assert_eq!(first.files_written.len(), 10);
+    assert_eq!(first.files_written.len(), 11);
     let before = read_tree(dir.path());
     let times = modified(dir.path(), &first.files_written);
     let second = generate(&golden_dump(), &options(), dir.path()).unwrap();
@@ -44,7 +44,7 @@ fn unchanged_dump_writes_nothing() {
         "{:?}",
         second.files_written
     );
-    assert_eq!(second.files_unchanged.len(), 10);
+    assert_eq!(second.files_unchanged.len(), 11);
     assert_eq!(read_tree(dir.path()), before);
     assert_eq!(
         times,
@@ -74,7 +74,7 @@ fn one_changed_package_rewrites_only_its_file() {
     pawn.size = 0x58;
     let second = generate(&dump, &options(), dir.path()).unwrap();
     assert_eq!(second.files_written, vec!["src/engine.rs".to_owned()]);
-    assert_eq!(second.files_unchanged.len(), 9);
+    assert_eq!(second.files_unchanged.len(), 10);
     let text = fs::read_to_string(dir.path().join("src/engine.rs")).unwrap();
     assert!(text.contains("pub extra: i32"));
 }
@@ -90,6 +90,26 @@ fn regeneration_preserves_the_application_entry_point() {
     assert_eq!(fs::read_to_string(&main).unwrap(), "// application code\n");
     assert!(!second.files_written.contains(&"src/main.rs".to_owned()));
     assert!(second.files_unchanged.contains(&"src/main.rs".to_owned()));
+}
+
+#[test]
+fn regeneration_refreshes_the_cargo_config() {
+    let dir = tempfile::tempdir().unwrap();
+    generate(&golden_dump(), &options(), dir.path()).unwrap();
+    let config = dir.path().join(".cargo/config.toml");
+    let generated = fs::read_to_string(&config).unwrap();
+    // A stale or edited file is replaced, so SDKs generated before the file
+    // existed or with other flags still end up linking the runtime statically.
+    fs::write(
+        &config,
+        "# edited, different length
+",
+    )
+    .unwrap();
+
+    let second = generate(&golden_dump(), &options(), dir.path()).unwrap();
+    assert_eq!(fs::read_to_string(&config).unwrap(), generated);
+    assert_eq!(second.files_written, vec![".cargo/config.toml".to_owned()]);
 }
 
 #[test]

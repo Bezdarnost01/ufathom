@@ -12,11 +12,17 @@ All notable changes are recorded here, in the [Keep a Changelog](https://keepach
 - **Hook upkeep.** `start_auto_rescan` hooks the virtual tables of classes that get their first instance after `install`. `uninstall_and_wait` restores everything and reports when no thread is still inside a hook, so the module can be unloaded.
 - **`hot-unload` SDK feature.** When `run` returns, the DLL removes its hooks and unloads itself. It stays loaded if a thread is still inside a hook.
 - **`proxy-version` SDK feature.** Rename the built DLL to `version.dll` and put it next to the game, and the game loads it at start-up with no injector. It exports all 17 functions of the system `version.dll` and forwards each one to the real DLL, which is loaded from the system folder on first use. `run` waits until the engine has started.
+- **Example config.** `ufathom.example.toml` lists every DLL key with its default, and ships in the release archive. A test keeps it valid.
 
 ### Changed
 
 - **Game thread choice.** The game thread is now chosen by OS thread id: first a thread named with `set_game_thread`, then the process main thread, and only then the first thread to make 64 hooked calls. Before, any busy worker thread could win.
 - **Faster hook.** Callbacks live in a copy-on-write table behind a bit filter. Calls of unhooked functions take no lock, and no call allocates.
+
+### Fixed
+
+- **Generated SDKs link the C runtime statically.** Every SDK now includes a `.cargo/config.toml` with `+crt-static` for `x86_64-pc-windows-msvc`. Before, the built DLL and external executable imported `VCRUNTIME140.dll` and failed to load on machines without the Visual C++ Redistributable. The file is refreshed on every generation.
+- **`ufathom quick` list number versus PID.** A number that is both a list number and the PID of another process (easy to hit with `--all`) is no longer taken as the list number silently. `quick` names both processes and asks again. `#N` selects a list number and `pid:N` a PID.
 
 ## [0.3.0] - 2026-11-14
 

@@ -775,4 +775,29 @@ mod tests {
         }
         assert!(parse("[preload]\npaths = [\"/Game\"]\nlimit = 3").is_err());
     }
+
+    /// The example shipped in the repository and the release archive must
+    /// stay a valid config, with its commented-out keys valid too.
+    #[test]
+    fn the_shipped_example_config_parses() {
+        let example = include_str!("../../../ufathom.example.toml");
+        let config = parse(example).unwrap();
+        assert!(config.preload.is_none());
+        assert!(config.pointer_transform.is_empty());
+
+        // Remove the comment sign from every commented key and section.
+        let uncommented = example
+            .lines()
+            .map(|line| line.strip_prefix("# ").unwrap_or(line))
+            .filter(|line| line.starts_with('[') || line.contains(" = "))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let config = parse(&uncommented).unwrap();
+        assert_eq!(config.pointer_transform.len(), 2);
+        assert_eq!(config.module.as_deref(), Some("Game-Win64-Shipping.exe"));
+        let preload = config.preload.unwrap();
+        assert_eq!(preload.paths, ["/Game"]);
+        // `["*"]` is stored as "no filter".
+        assert!(preload.classes.is_empty());
+    }
 }

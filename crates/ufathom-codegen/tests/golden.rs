@@ -108,3 +108,23 @@ fn report_lists_every_degradation_case() {
     assert!(report.degraded_fields() > 10);
     assert!(report.types() > 20);
 }
+
+#[test]
+fn generated_cargo_config_links_the_c_runtime_statically() {
+    let dir = tempfile::tempdir().unwrap();
+    let report = generate(&golden_dump(), &golden_options(), dir.path()).unwrap();
+    assert!(
+        report
+            .files_written
+            .contains(&".cargo/config.toml".to_owned())
+    );
+    let text = std::fs::read_to_string(dir.path().join(".cargo/config.toml")).unwrap();
+    // The flag must sit under the Windows MSVC target table, not elsewhere.
+    let mut lines = text.lines().filter(|l| !l.starts_with('#'));
+    assert_eq!(lines.next(), Some("[target.x86_64-pc-windows-msvc]"));
+    assert_eq!(
+        lines.next(),
+        Some(r#"rustflags = ["-C", "target-feature=+crt-static"]"#)
+    );
+    assert_eq!(lines.next(), None);
+}
