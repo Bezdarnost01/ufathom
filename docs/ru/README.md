@@ -298,6 +298,32 @@ ctx.executor().free_array(&mut array)?;               // только сам б�
 - **`FText` в текст** — через `UKismetTextLibrary::Conv_TextToString`.
 - **Обратно в текст:** `fname_text` и `fstring`.
 
+## Хук любой нативной функции
+
+Многие функции игры это обычный C++ без `UFunction`, и `ProcessEvent` их не видит. Соберите с `--features detour` (только Windows x86-64), и функцию можно перехватить инлайн. `Detour::install` откажется патчить, если байты по адресу не совпадают с вашей сигнатурой: обновление игры станет ошибкой, а не падением.
+
+```rust
+use ufathom_runtime::detour::{Detour, Signature, find_in_module};
+static ORIGINAL: AtomicUsize = AtomicUsize::new(0);
+ufathom_runtime::detour_fn! {
+    fn on_score(this: *mut c_void, points: i32) -> i32 {
+        // SAFETY: в `ORIGINAL` лежит трамплин с сигнатурой цели.
+        let original: extern "system" fn(*mut c_void, i32) -> i32 = unsafe { std::mem::transmute(ORIGINAL.load(Ordering::Acquire)) };
+        original(this, points * 2)
+    }
+}
+let signature = Signature::parse("48 89 5C 24 ?? 57 48 83 EC 20")?; // должна покрывать и перезаписываемые байты
+let target = find_in_module(None, &signature)?; // ровно одно совпадение, иначе ошибка
+// SAFETY: `target` это нужная функция, у `on_score` её сигнатура, модуль остаётся загруженным.
+let detour = unsafe { Detour::install_with_original(target, &signature, on_score as *const (), &ORIGINAL) }?;
+// Потом: вернуть байты и освободить память, когда внутри не осталось потоков.
+detour.uninstall_and_wait(Duration::from_secs(5))?;
+```
+
+Начало функции разбирает `iced-x86`. Хук отклоняется, если в начале есть `ret`, `int3` или переход внутрь перезаписываемых байтов. Операнды относительно RIP и относительные переходы переносятся в трамплин в пределах 2 ГБ от цели. Патч пишется при остановленных остальных потоках. Паника в `detour_fn!` перехватывается, функция возвращает `Default::default()` (или значение `on_panic = ...;`). С `hot-unload` DLL снимет все ещё стоящие детуры и останется в памяти, если какой-то поток внутри. `detour` единственная часть ufathom, которая патчит код; дамп её не использует.
+
+Статус: проверено на написанном вручную машинном коде в тестах; в настоящей игре пока не запускалось.
+
 ## Ограничения и безопасность
 
 - **Память движка надо освобождать самим.** Пользуйтесь `take_string` и `free_array` (см. выше), иначе строки и массивы будут утекать.

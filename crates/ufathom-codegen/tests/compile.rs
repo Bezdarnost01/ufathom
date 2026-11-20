@@ -43,6 +43,12 @@ fn golden_dump_compiles() {
         "compile test golden inproc: cargo check {:.1?}",
         run.elapsed
     );
+    // The opt-in inline detour module compiles in the generated SDK too.
+    let run = run_cargo(dir.path(), &["check", "--features", "detour"]);
+    eprintln!(
+        "compile test golden detour: cargo check {:.1?}",
+        run.elapsed
+    );
 }
 
 #[test]

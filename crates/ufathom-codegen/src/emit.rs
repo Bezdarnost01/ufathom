@@ -170,6 +170,15 @@ pub(crate) fn cargo_source(
     wl!(out, "inproc = [\"ufathom-runtime/inproc\"]");
     wl!(
         out,
+        "# Inline detours of plain native functions (`ufathom_runtime::detour`), for mods."
+    );
+    wl!(
+        out,
+        "# The one part that patches code. Windows x86-64 only."
+    );
+    wl!(out, "detour = [\"ufathom-runtime/detour\", \"inproc\"]");
+    wl!(
+        out,
         "# The DLL unloads itself when `run` returns, after removing its hooks."
     );
     wl!(out, "hot-unload = []");
