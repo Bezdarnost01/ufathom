@@ -4,14 +4,20 @@
 //! runtime that runs game code.
 //!
 //! [`GameThread`] hooks `ProcessEvent` to run code on the game thread: queued
-//! tasks, and callbacks before and after chosen game functions.
+//! tasks, and callbacks before and after chosen game functions. A callback can
+//! be owned by a [`HookGuard`] and removed when it drops, or removed with
+//! everything else its module registered.
 
+mod guard;
 mod hook;
+mod modload;
 mod native;
 mod os;
 mod patch;
 
+pub use guard::HookGuard;
 pub use hook::{CallContext, GameContext, GameThread, HookError, HookId, MIN_RESCAN_INTERVAL};
+pub use modload::{FIRST_RESCAN, SECOND_RESCAN};
 pub use native::NativeContext;
 
 use core::ffi::c_void;

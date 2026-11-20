@@ -105,6 +105,43 @@ pub(crate) fn main_thread_id() -> Option<u64> {
     None
 }
 
+/// The base address of the module (DLL or executable) that holds the code or
+/// data at `address`, which is also its `HMODULE`. 0 when no loaded module
+/// holds it. Adds no reference to the module.
+#[cfg(windows)]
+pub(crate) fn module_of_address(address: usize) -> usize {
+    use windows_sys::Win32::Foundation::HMODULE;
+    use windows_sys::Win32::System::LibraryLoader::{
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        GetModuleHandleExW,
+    };
+
+    let mut module: HMODULE = core::ptr::null_mut();
+    // SAFETY: with FROM_ADDRESS the "name" is an address the loader only
+    // compares with the ranges of loaded modules, never dereferences;
+    // UNCHANGED_REFCOUNT adds no reference; `module` is a valid out pointer.
+    let found = unsafe {
+        GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            address as *const u16,
+            &mut module,
+        )
+    };
+    if found == 0 { 0 } else { module as usize }
+}
+
+/// The base address of the module that holds this crate's code: the DLL or
+/// executable the runtime is linked into. 0 when it cannot be told.
+pub(crate) fn current_module() -> usize {
+    module_of_address(current_module as *const () as usize)
+}
+
+/// This platform has no module handles: every address is in module 0.
+#[cfg(not(windows))]
+pub(crate) fn module_of_address(_address: usize) -> usize {
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -126,5 +163,38 @@ mod tests {
         }
         let fresh = std::thread::spawn(current_thread_id).join().unwrap_or(0);
         assert_ne!(main, Some(fresh));
+    }
+
+    #[test]
+    fn an_address_belongs_to_the_module_that_holds_it() {
+        let mine = module_of_address(module_of_address as *const () as usize);
+        if !cfg!(windows) {
+            assert_eq!(mine, 0);
+            return;
+        }
+        assert_ne!(mine, 0);
+        assert_eq!(
+            mine,
+            module_of_address(current_thread_id as *const () as usize)
+        );
+        assert_eq!(module_of_address(0), 0);
+        #[cfg(windows)]
+        {
+            use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
+            let name: Vec<u16> = "kernel32.dll\0".encode_utf16().collect();
+            // SAFETY: `name` is NUL-terminated; kernel32 is loaded in every
+            // process, and `GetProcAddress` gets a NUL-terminated name.
+            let (kernel, function) = unsafe {
+                let kernel = GetModuleHandleW(name.as_ptr());
+                (
+                    kernel as usize,
+                    GetProcAddress(kernel, c"Sleep".as_ptr().cast()),
+                )
+            };
+            let function = function.map_or(0, |f| f as usize);
+            assert_ne!(function, 0);
+            assert_eq!(module_of_address(function), kernel);
+            assert_ne!(kernel, mine);
+        }
     }
 }

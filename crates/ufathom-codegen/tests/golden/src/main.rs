@@ -20,6 +20,9 @@ use ufathom_sdk as sdk;
 ///
 /// ```text
 /// let game = unsafe { sdk::game_thread() }?;
+/// // Hook the classes of modules the game loads later, a moment after each
+/// // load. Not needed when everything you hook is loaded at start-up.
+/// game.start_rescan_on_module_load()?;
 /// let name = game.call(std::time::Duration::from_secs(5), |ctx| {
 ///     // On the game thread: pass `ctx.executor()` to generated wrappers.
 ///     ctx.session().gworld().ok().flatten().map(|w| ctx.session().full_name_of(w))
@@ -28,6 +31,10 @@ use ufathom_sdk as sdk;
 ///     // Runs before every Actor tick event; may read or change parameters.
 ///     let _ = ctx.object();
 /// })?;
+/// // Or keep the id as a guard: the callback is removed when it drops.
+/// let _guard = game
+///     .after("/Script/Engine.Actor:ReceiveBeginPlay", |_| {})?
+///     .into_guard(game);
 /// ```
 pub(crate) fn run(memory: &dyn MemoryReader) -> Result<(), Box<dyn std::error::Error>> {
     let session = sdk::session(memory)?;

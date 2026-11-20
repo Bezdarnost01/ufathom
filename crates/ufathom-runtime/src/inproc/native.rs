@@ -21,10 +21,12 @@ use std::sync::{Arc, OnceLock, RwLock};
 use ufathom_mem::{MemoryReader, MemoryReaderExt, SelfMemory};
 
 use super::InProcessExecutor;
+use super::guard::owner_of_val;
 use super::hook::{
-    Active, Busy, Callbacks, GameThread, HookError, HookId, Registered, lock, with_executor,
+    Active, Busy, Callbacks, GameThread, HookError, HookId, Registered, RestoreReport, lock,
+    with_executor,
 };
-use super::patch;
+use super::patch::{self, Restored};
 use crate::object::UObjectBase;
 use crate::ptr::Ptr;
 use crate::session::Session;
@@ -142,6 +144,10 @@ impl NativeHooks {
 
     /// Removes a native callback, and unhooks its function when it was the
     /// last one. Returns `false` when `id` is not a native callback.
+    ///
+    /// When another module hooked the same `Func` afterwards the field cannot
+    /// be restored; the thunk stays in place and forwards, and the next
+    /// [`restore_all`](Self::restore_all) tries again.
     pub(super) fn remove(&self, id: HookId) -> bool {
         let Some((function, left)) = self.callbacks.remove(id) else {
             return false;
@@ -152,33 +158,57 @@ impl NativeHooks {
         true
     }
 
-    /// Puts the original `Func` back into `function`.
-    fn restore(&self, function: u64) -> Result<(), HookError> {
-        let Some((slot, original)) = lock(&self.patched).remove(&function) else {
-            return Ok(());
+    /// Removes every native callback registered by code in `module`, and
+    /// unhooks the functions left with none. Returns how many were removed.
+    pub(super) fn remove_owned_by(&self, module: usize) -> usize {
+        let (removed, emptied) = self.callbacks.remove_owned_by(module);
+        for function in emptied {
+            let _ = self.restore(function);
+        }
+        removed
+    }
+
+    /// Puts the original `Func` back into `function`. The entry is forgotten
+    /// only when the field no longer leads to the thunk; a `Func` that holds
+    /// something else, or cannot be written, stays recorded.
+    fn restore(&self, function: u64) -> Result<Restored, HookError> {
+        let mut patched = lock(&self.patched);
+        let Some(&(slot, original)) = patched.get(&function) else {
+            return Ok(Restored::Done);
         };
         let thunk = native_thunk as *const () as usize;
         // SAFETY: `slot` is the `Func` field of a live `UFunction` this module
         // wrote the thunk into; `original` is what it held before.
-        unsafe { patch::swap_slot(slot, thunk, original) }
-            .map(|_| ())
-            .map_err(|reason| HookError::Patch {
+        let restored = unsafe { patch::restore_slot(slot, thunk, original) }.map_err(|reason| {
+            HookError::Patch {
                 slot: slot as u64,
                 reason,
-            })
+            }
+        })?;
+        if restored == Restored::Done {
+            patched.remove(&function);
+        }
+        Ok(restored)
     }
 
     /// Puts every original `Func` back. Callbacks stay registered; hooking
     /// the same function again re-patches it.
-    pub(super) fn restore_all(&self) -> Result<(), HookError> {
-        let functions: Vec<u64> = lock(&self.patched).keys().copied().collect();
-        let mut first_error = None;
-        for function in functions {
-            if let Err(error) = self.restore(function) {
-                first_error.get_or_insert(error);
+    pub(super) fn restore_all(&self) -> RestoreReport {
+        let functions: Vec<(u64, u64)> = lock(&self.patched)
+            .iter()
+            .map(|(&function, &(slot, _))| (function, slot as u64))
+            .collect();
+        let mut report = RestoreReport::default();
+        for (function, slot) in functions {
+            match self.restore(function) {
+                Ok(Restored::Done) => {}
+                Ok(Restored::Chained { holder }) => report.chained.push((slot, holder as u64)),
+                Err(error) => {
+                    report.error.get_or_insert(error);
+                }
             }
         }
-        first_error.map_or(Ok(()), Err)
+        report
     }
 
     /// The function a frame runs and its original `Func`.
@@ -221,7 +251,8 @@ impl GameThread {
         path: &str,
         callback: impl Fn(&mut NativeContext<'_>) + Send + Sync + 'static,
     ) -> Result<HookId, HookError> {
-        self.register_native(path, false, Arc::new(callback))
+        let module = owner_of_val(&callback);
+        self.register_native(path, false, Arc::new(callback), module)
     }
 
     /// Like [`before_native`](Self::before_native), after the function
@@ -235,7 +266,8 @@ impl GameThread {
         path: &str,
         callback: impl Fn(&mut NativeContext<'_>) + Send + Sync + 'static,
     ) -> Result<HookId, HookError> {
-        self.register_native(path, true, Arc::new(callback))
+        let module = owner_of_val(&callback);
+        self.register_native(path, true, Arc::new(callback), module)
     }
 
     /// The offset of `UFunction::Func` in this build, solved on first use.
@@ -256,6 +288,7 @@ impl GameThread {
         path: &str,
         after: bool,
         callback: Arc<NativeCallback>,
+        module: usize,
     ) -> Result<HookId, HookError> {
         let function = self.function(path)?;
         let offset = self.func_offset()?;
@@ -266,6 +299,7 @@ impl GameThread {
             Registered {
                 id,
                 after,
+                module,
                 callback,
             },
         );

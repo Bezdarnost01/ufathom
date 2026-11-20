@@ -28,6 +28,9 @@ use ufathom_sdk as sdk;
 ///
 /// ```text
 /// let game = unsafe { sdk::game_thread() }?;
+/// // Hook the classes of modules the game loads later, a moment after each
+/// // load. Not needed when everything you hook is loaded at start-up.
+/// game.start_rescan_on_module_load()?;
 /// let name = game.call(std::time::Duration::from_secs(5), |ctx| {
 ///     // On the game thread: pass `ctx.executor()` to generated wrappers.
 ///     ctx.session().gworld().ok().flatten().map(|w| ctx.session().full_name_of(w))
@@ -36,6 +39,10 @@ use ufathom_sdk as sdk;
 ///     // Runs before every Actor tick event; may read or change parameters.
 ///     let _ = ctx.object();
 /// })?;
+/// // Or keep the id as a guard: the callback is removed when it drops.
+/// let _guard = game
+///     .after("/Script/Engine.Actor:ReceiveBeginPlay", |_| {})?
+///     .into_guard(game);
 /// ```
 pub(crate) fn run(memory: &dyn MemoryReader) -> Result<(), Box<dyn std::error::Error>> {
     let session = sdk::session(memory)?;
@@ -84,9 +91,11 @@ pub(crate) fn dll_source() -> &'static str {
 //!   (`ufathom_runtime::proxy`). `run` is held until the engine has started
 //!   (objects loaded and, when this build has one, `GEngine` set).
 //! - `hot-unload`: when `run` returns, the DLL unloads itself. With `inproc`,
-//!   the `ProcessEvent` and native hooks are removed first, and the DLL stays
-//!   loaded if a thread is still inside them. Without this feature the DLL
-//!   stays loaded until the game exits.
+//!   the callbacks and queued tasks this DLL registered are removed, then the
+//!   `ProcessEvent` and native hooks. The DLL stays loaded if a thread is
+//!   still inside them, or if another mod hooked the same slot after this
+//!   one and still forwards into it (`HookError::Chained`). Without this
+//!   feature the DLL stays loaded until the game exits.
 
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -214,12 +223,16 @@ fn unload(own_module: HMODULE) {
 
     #[cfg(feature = "inproc")]
     if let Some(game) = ufathom_runtime::inproc::GameThread::get() {
+        // Callbacks and tasks hold code of this module: drop them first.
+        game.remove_owned_by_current_module();
         match game.uninstall_and_wait(HOOK_DRAIN) {
             Ok(true) => {}
             Ok(false) => {
                 debug("ufathom SDK: a thread is still inside a hook; staying loaded");
                 return;
             }
+            // Includes a slot another mod hooked after this one: its hook
+            // forwards here, so this module must stay mapped.
             Err(error) => {
                 debug(&format!(
                     "ufathom SDK: cannot remove the hooks ({error}); staying loaded"

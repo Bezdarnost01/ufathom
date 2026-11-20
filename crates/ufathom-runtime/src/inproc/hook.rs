@@ -35,15 +35,34 @@
 //!
 //! A virtual table is found through a live object of its class, so a native
 //! class with no instance at install time is not hooked yet.
-//! [`GameThread::rescan`] hooks what appeared since, and
-//! [`GameThread::start_auto_rescan`] does that periodically on a background
-//! thread of its own.
+//! [`GameThread::rescan`] hooks what appeared since. Two background threads
+//! can call it for you: [`GameThread::start_rescan_on_module_load`] does so
+//! shortly after the loader maps a module, which is when new native classes
+//! appear; [`GameThread::start_auto_rescan`] does so on a fixed interval, for
+//! classes that get their first instance with no module load, and on
+//! platforms without load notifications.
+//!
+//! # Owning a hook
+//!
+//! [`HookId::into_guard`] turns an id into a [`HookGuard`](super::HookGuard)
+//! that removes the callback when dropped. Every callback and queued task also
+//! records the module that holds its code, so
+//! [`GameThread::remove_owned_by`] can remove everything one module
+//! registered before that module is unloaded.
 //!
 //! # Unloading
 //!
 //! [`GameThread::uninstall_and_wait`] restores every slot and then waits
 //! until no thread runs inside the hook, so the module that holds it can be
 //! unloaded.
+//!
+//! Mods that each link their own copy of this crate can hook the same slot:
+//! the one that hooked second saved the first one's hook as its original. The
+//! first one then cannot restore the slot, and unloading it would leave the
+//! second one forwarding into unmapped code. Such a slot is left as it is and
+//! reported as [`HookError::Chained`]; the hook keeps forwarding, and
+//! [`uninstall`](GameThread::uninstall) can be called again once the other
+//! module has removed its hook.
 
 use core::ffi::c_void;
 use std::cell::{Cell, RefCell};
@@ -57,7 +76,10 @@ use std::time::{Duration, Instant};
 
 use ufathom_mem::{MemoryReaderExt, Pod, SelfMemory};
 
+use super::guard::owner_of_val;
+use super::modload::ModuleLoadWatch;
 use super::native::NativeHooks;
+use super::patch::Restored;
 use super::{InProcessExecutor, ProcessEventFn, os, patch};
 use crate::desc::EngineDesc;
 use crate::object::UObjectBase;
@@ -114,6 +136,63 @@ pub enum HookError {
     /// because the offset of `UFunction::Func` could not be solved.
     #[error("native function hook: {0}")]
     Native(String),
+    /// A slot could not be restored because another module patched it after
+    /// this one, and its hook forwards into this one. The slot is left as it
+    /// is and this module's hook keeps forwarding to the original, but this
+    /// module must stay loaded until the other one has removed its hook; then
+    /// [`GameThread::uninstall`] can be called again.
+    #[error(
+        "{blocked} slot(s) cannot be restored because another module hooked them after this one \
+         (the first, {slot:#x}, holds {holder:#x}); keep this module loaded"
+    )]
+    Chained {
+        /// Address of the first slot left unrestored.
+        slot: u64,
+        /// What that slot holds: the other module's hook.
+        holder: u64,
+        /// Slots left unrestored, `ProcessEvent` slots and `UFunction::Func`
+        /// fields together.
+        blocked: usize,
+    },
+    /// The notification that reports module loads could not be registered or
+    /// removed.
+    #[error("module load notification: {0}")]
+    ModuleNotification(String),
+}
+
+/// Slots that could not be put back by an uninstall.
+#[derive(Debug, Default)]
+pub(super) struct RestoreReport {
+    /// (slot, what it holds) of each slot another module patched afterwards.
+    pub(super) chained: Vec<(u64, u64)>,
+    /// The first slot that could not be written at all.
+    pub(super) error: Option<HookError>,
+}
+
+impl RestoreReport {
+    /// Adds what `other` found.
+    pub(super) fn merge(&mut self, other: Self) {
+        self.chained.extend(other.chained);
+        if self.error.is_none() {
+            self.error = other.error;
+        }
+    }
+
+    /// `Ok` when every slot was restored; a write error first, else
+    /// [`HookError::Chained`].
+    pub(super) fn into_result(self) -> Result<(), HookError> {
+        if let Some(error) = self.error {
+            return Err(error);
+        }
+        match self.chained.first() {
+            Some(&(slot, holder)) => Err(HookError::Chained {
+                slot,
+                holder,
+                blocked: self.chained.len(),
+            }),
+            None => Ok(()),
+        }
+    }
 }
 
 /// What a task receives on the game thread.
@@ -230,7 +309,8 @@ impl core::fmt::Debug for CallContext<'_> {
     }
 }
 
-/// Identifies a registered callback, for [`GameThread::remove`].
+/// Identifies a registered callback, for [`GameThread::remove`]. Use
+/// [`into_guard`](Self::into_guard) to have it removed automatically.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct HookId(u64);
 
@@ -241,6 +321,9 @@ type Callback = dyn Fn(&mut CallContext<'_>) + Send + Sync;
 pub(super) struct Registered<C: ?Sized> {
     pub(super) id: HookId,
     pub(super) after: bool,
+    /// Base address of the module that holds the callback's code, see
+    /// [`GameThread::remove_owned_by`].
+    pub(super) module: usize,
     pub(super) callback: Arc<C>,
 }
 
@@ -249,6 +332,7 @@ impl<C: ?Sized> Clone for Registered<C> {
         Self {
             id: self.id,
             after: self.after,
+            module: self.module,
             callback: Arc::clone(&self.callback),
         }
     }
@@ -361,6 +445,33 @@ impl<C: ?Sized> Callbacks<C> {
         Some((function, left))
     }
 
+    /// Removes every callback registered by code in `module`. Returns how
+    /// many were removed and the functions left with no callback.
+    pub(super) fn remove_owned_by(&self, module: usize) -> (usize, Vec<u64>) {
+        let mut guard = write(&self.table);
+        if !guard.values().flatten().any(|r| r.module == module) {
+            return (0, Vec::new());
+        }
+        let mut table = Table::clone(&guard);
+        let mut removed = 0usize;
+        let mut emptied = Vec::new();
+        table.retain(|&function, list| {
+            let had = list.len();
+            list.retain(|r| r.module != module);
+            removed += had - list.len();
+            if list.is_empty() {
+                emptied.push(function);
+            }
+            !list.is_empty()
+        });
+        let any = !table.is_empty();
+        let functions: Vec<u64> = table.keys().copied().collect();
+        *guard = Arc::new(table);
+        self.filter.rebuild(functions.into_iter());
+        self.any.store(any, Ordering::Release);
+        (removed, emptied)
+    }
+
     /// The table, when `function` may have callbacks. `None` is certain.
     pub(super) fn lookup(&self, function: u64) -> Option<Arc<Table<C>>> {
         if !self.any() || !self.filter.may_contain(function) {
@@ -388,9 +499,10 @@ pub struct GameThread {
     patched: Mutex<Vec<usize>>,
     /// Virtual tables already looked at since the last uninstall.
     seen: Mutex<HashSet<u64>>,
-    tasks: Mutex<VecDeque<Task>>,
+    /// Queued tasks with the module that holds each one's code.
+    pub(super) tasks: Mutex<VecDeque<(usize, Task)>>,
     has_tasks: AtomicBool,
-    callbacks: Callbacks<Callback>,
+    pub(super) callbacks: Callbacks<Callback>,
     pub(super) next_id: AtomicU64,
     /// Operating system id of the game thread, 0 while unknown.
     game_thread: AtomicU64,
@@ -398,6 +510,7 @@ pub struct GameThread {
     main_thread: Option<u64>,
     votes: Mutex<Vec<(u64, u32)>>,
     rescanner: Mutex<Option<Rescanner>>,
+    pub(super) modload: ModuleLoadWatch,
     pub(super) native: NativeHooks,
 }
 
@@ -460,6 +573,7 @@ impl GameThread {
             main_thread: os::main_thread_id(),
             votes: Mutex::new(Vec::new()),
             rescanner: Mutex::new(None),
+            modload: ModuleLoadWatch::new(),
             native: NativeHooks::new(),
         };
         let state = STATE.get_or_init(|| fresh);
@@ -481,7 +595,8 @@ impl GameThread {
     /// Only virtual tables not seen since the last uninstall are read, but
     /// the whole object array is walked: this takes milliseconds on a large
     /// game, so prefer a background thread
-    /// ([`start_auto_rescan`](Self::start_auto_rescan)) to the game thread.
+    /// ([`start_rescan_on_module_load`](Self::start_rescan_on_module_load) or
+    /// [`start_auto_rescan`](Self::start_auto_rescan)) to the game thread.
     ///
     /// # Errors
     ///
@@ -564,6 +679,7 @@ impl GameThread {
             }
         }
         lock(&self.seen).extend(looked_at);
+        self.modload.count_rescan();
         Ok(count)
     }
 
@@ -572,6 +688,14 @@ impl GameThread {
     /// their first instance later are hooked too. Returns `false` when one
     /// is already running. [`stop_auto_rescan`](Self::stop_auto_rescan) and
     /// [`uninstall`](Self::uninstall) stop it.
+    ///
+    /// Prefer [`start_rescan_on_module_load`](Self::start_rescan_on_module_load)
+    /// on Windows: a native class a module adds is registered shortly after
+    /// that module loads, and Blueprint classes reuse the virtual tables of
+    /// their native parents, so a rescan after each load finds what a timer
+    /// finds, at no cost between loads. Use this one on other platforms, or in
+    /// addition when a class can get its first instance with no module load,
+    /// for example a native class registered lazily by the game itself.
     ///
     /// # Errors
     ///
@@ -617,37 +741,61 @@ impl GameThread {
         lock(&self.rescanner).is_some()
     }
 
-    /// Stops [`auto rescans`](Self::start_auto_rescan), then puts every
-    /// patched slot and every [native function](Self::before_native) back. A
-    /// thread already inside the hook finishes its call normally. Queued
-    /// tasks and callbacks are kept and run again after
-    /// [`rescan`](Self::rescan).
+    /// Stops the [background rescans](Self::start_rescan_on_module_load), then
+    /// puts every patched slot and every [native function](Self::before_native)
+    /// back. A thread already inside the hook finishes its call normally.
+    /// Queued tasks and callbacks are kept and run again after
+    /// [`rescan`](Self::rescan); use [`remove_owned_by`](Self::remove_owned_by)
+    /// to drop those of a module that is about to be unloaded.
+    ///
+    /// A slot that another module hooked after this one is not touched, see
+    /// the module docs. It stays registered with this hook, which
+    /// keeps forwarding (and running its callbacks) until the other module
+    /// removes its own hook; call `uninstall` again after that.
     ///
     /// # Errors
     ///
-    /// [`HookError::Patch`] for a slot that cannot be written; the remaining
-    /// slots are still restored.
+    /// [`HookError::Patch`] for a slot that cannot be written,
+    /// [`HookError::Chained`] for slots another module hooked afterwards,
+    /// [`HookError::ModuleNotification`] when the module load notification
+    /// cannot be removed. The remaining slots are still restored; the module
+    /// must not be unloaded after any of these errors.
     pub fn uninstall(&self) -> Result<(), HookError> {
         self.stop_auto_rescan();
+        let notification = self.modload.stop();
         let _scan = lock(&self.scan);
         let original = ORIGINAL.load(Ordering::Acquire);
         let hook = hooked_process_event as *const () as usize;
-        let mut first_error = None;
-        for slot in lock(&self.patched).drain(..) {
-            // SAFETY: the slot was patched by `rescan` and holds the hook;
-            // the original is what it held before.
-            if let Err(reason) = unsafe { patch::swap_slot(slot, hook, original) } {
-                first_error.get_or_insert(HookError::Patch {
-                    slot: slot as u64,
-                    reason,
-                });
+        let mut report = RestoreReport::default();
+        {
+            let mut patched = lock(&self.patched);
+            let mut kept = Vec::new();
+            for slot in patched.drain(..) {
+                // SAFETY: the slot was patched by `rescan` and holds the hook
+                // unless another module patched it since; the original is what
+                // it held before.
+                match unsafe { patch::restore_slot(slot, hook, original) } {
+                    Ok(Restored::Done) => {}
+                    Ok(Restored::Chained { holder }) => {
+                        report.chained.push((slot as u64, holder as u64));
+                        kept.push(slot);
+                    }
+                    Err(reason) => {
+                        report.error.get_or_insert(HookError::Patch {
+                            slot: slot as u64,
+                            reason,
+                        });
+                        kept.push(slot);
+                    }
+                }
             }
+            // A slot not restored is still ours: a later call retries it.
+            *patched = kept;
         }
         lock(&self.seen).clear();
-        if let Err(error) = self.native.restore_all() {
-            first_error.get_or_insert(error);
-        }
-        first_error.map_or(Ok(()), Err)
+        report.merge(self.native.restore_all());
+        notification?;
+        report.into_result()
     }
 
     /// [`uninstall`](Self::uninstall)s, then waits up to `timeout` until no
@@ -728,7 +876,8 @@ impl GameThread {
     /// Queues `task` to run on the game thread at its next hooked
     /// `ProcessEvent` call. A panic inside the task is caught.
     pub fn run(&self, task: impl FnOnce(&GameContext<'_>) + Send + 'static) {
-        lock(&self.tasks).push_back(Box::new(task));
+        let module = owner_of_val(&task);
+        lock(&self.tasks).push_back((module, Box::new(task)));
         self.has_tasks.store(true, Ordering::Release);
     }
 
@@ -767,6 +916,11 @@ impl GameThread {
     /// at `path`, such as `/Script/Engine.Actor:ReceiveTick`. The callback
     /// may read and change the parameters and skip the function.
     ///
+    /// The module that holds the callback's code becomes its owner, see
+    /// [`remove_owned_by`](Self::remove_owned_by). Turn the id into a
+    /// [`HookGuard`](super::HookGuard) with [`HookId::into_guard`] to remove
+    /// the callback automatically.
+    ///
     /// # Errors
     ///
     /// [`HookError::FunctionNotFound`] or [`HookError::Session`].
@@ -775,7 +929,8 @@ impl GameThread {
         path: &str,
         callback: impl Fn(&mut CallContext<'_>) + Send + Sync + 'static,
     ) -> Result<HookId, HookError> {
-        self.register(path, false, Arc::new(callback))
+        let module = owner_of_val(&callback);
+        self.register(path, false, Arc::new(callback), module)
     }
 
     /// Calls `callback` on the game thread after each call of the function at
@@ -789,7 +944,8 @@ impl GameThread {
         path: &str,
         callback: impl Fn(&mut CallContext<'_>) + Send + Sync + 'static,
     ) -> Result<HookId, HookError> {
-        self.register(path, true, Arc::new(callback))
+        let module = owner_of_val(&callback);
+        self.register(path, true, Arc::new(callback), module)
     }
 
     /// Removes a callback, of `ProcessEvent` or of a native function.
@@ -818,6 +974,7 @@ impl GameThread {
         path: &str,
         after: bool,
         callback: Arc<Callback>,
+        module: usize,
     ) -> Result<HookId, HookError> {
         let function = self.function(path)?;
         let id = self.new_id();
@@ -826,6 +983,7 @@ impl GameThread {
             Registered {
                 id,
                 after,
+                module,
                 callback,
             },
         );
@@ -902,7 +1060,7 @@ impl GameThread {
         if !self.has_tasks.swap(false, Ordering::AcqRel) {
             return;
         }
-        let tasks: Vec<Task> = lock(&self.tasks).drain(..).collect();
+        let tasks: Vec<Task> = lock(&self.tasks).drain(..).map(|(_, task)| task).collect();
         let context = GameContext { exec };
         for task in tasks {
             let _ = catch_unwind(AssertUnwindSafe(|| task(&context)));
@@ -953,6 +1111,10 @@ impl core::fmt::Debug for GameThread {
             .field("hooked_slots", &self.hooked_slots())
             .field("game_thread", &self.game_thread_id())
             .field("auto_rescan", &self.auto_rescan_running())
+            .field(
+                "rescan_on_module_load",
+                &self.rescan_on_module_load_running(),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -1073,4 +1235,49 @@ fn read<T>(lock: &RwLock<T>) -> std::sync::RwLockReadGuard<'_, T> {
 
 fn write<T>(lock: &RwLock<T>) -> std::sync::RwLockWriteGuard<'_, T> {
     lock.write().unwrap_or_else(PoisonError::into_inner)
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, reason = "tests may panic")]
+
+    use super::*;
+
+    /// A callback table over plain values, since only the bookkeeping is
+    /// under test.
+    fn entry(id: u64, module: usize) -> Registered<u32> {
+        Registered {
+            id: HookId(id),
+            after: false,
+            module,
+            callback: Arc::new(0),
+        }
+    }
+
+    #[test]
+    fn removing_by_module_leaves_other_modules_alone() {
+        const A: usize = 0x1000_0000;
+        const B: usize = 0x2000_0000;
+        let callbacks = Callbacks::<u32>::new();
+        callbacks.add(0x10, entry(1, A));
+        callbacks.add(0x10, entry(2, B));
+        callbacks.add(0x20, entry(3, A));
+        callbacks.add(0x30, entry(4, B));
+
+        assert_eq!(callbacks.remove_owned_by(0x3000_0000), (0, Vec::new()));
+        let (removed, mut emptied) = callbacks.remove_owned_by(A);
+        emptied.sort_unstable();
+        assert_eq!(removed, 2);
+        assert_eq!(emptied, vec![0x20], "0x10 still has B's callback");
+        assert!(callbacks.any());
+        let table = callbacks.lookup(0x10).expect("B's callback is left");
+        assert_eq!(table.get(&0x10).map(Vec::len), Some(1));
+        assert!(callbacks.lookup(0x20).is_none());
+
+        assert_eq!(callbacks.remove_owned_by(B).0, 2);
+        assert!(!callbacks.any());
+        assert!(callbacks.lookup(0x10).is_none());
+        // Removing an id of a removed callback finds nothing.
+        assert_eq!(callbacks.remove(HookId(1)), None);
+    }
 }
