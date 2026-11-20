@@ -40,7 +40,12 @@ fn main() {
 
     let target_env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    if target_os != "windows" || target_env != "msvc" {
+    // The DLL scaffold and the proxy exports exist only on Windows. Elsewhere
+    // the features are inert, so there is nothing to say.
+    if target_os != "windows" {
+        return;
+    }
+    if target_env != "msvc" {
         println!(
             "cargo::warning=the proxy features export from a .def file and need the x86_64-pc-windows-msvc target; this DLL exports nothing extra"
         );
