@@ -442,12 +442,26 @@ mod unix_pages {
 
     #[test]
     fn unmapped_page_is_an_error() {
-        let mut map = Map::new(1, libc::PROT_READ | libc::PROT_WRITE);
-        let addr = map.addr();
-        let mut buf = [0u8; 16];
-        SelfMemory::new().read_exact(addr, &mut buf).unwrap();
-        map.unmap();
-        assert_unreadable(SelfMemory::new().read_exact(addr, &mut buf), "unmapped");
+        // Other tests run in parallel threads and map pages too, so the
+        // kernel may hand the freed page to one of them before the read
+        // and the read then succeeds. A real bug succeeds every time, a
+        // reuse does not, so retry a successful read and require an error
+        // to be the right kind.
+        let mem = SelfMemory::new();
+        for _ in 0..16 {
+            let mut map = Map::new(1, libc::PROT_READ | libc::PROT_WRITE);
+            let addr = map.addr();
+            let mut buf = [0u8; 16];
+            mem.read_exact(addr, &mut buf).unwrap();
+            map.unmap();
+            let result = mem.read_exact(addr, &mut buf);
+            if result.is_ok() {
+                continue;
+            }
+            assert_unreadable(result, "unmapped");
+            return;
+        }
+        panic!("reads of a freed page succeeded 16 times in a row");
     }
 
     #[test]
