@@ -9,43 +9,43 @@ Each milestone lands through feature branches and pull requests. A milestone is 
 Research, naming, architecture, workspace, memory reading.
 
 - [x] `RESEARCH.md`, `IDEAS.md`, `ARCHITECTURE.md`, `CONTRIBUTING.md`
-- [ ] Cargo workspace with all crates, shared lints and CI on Windows and Linux
-- [ ] `ufathom-mem`: `Snapshot`, `PageCache`, `SelfMemory`, `ProcessMemory`, `MinidumpMemory`, `list_processes`
-- [ ] `ufathom-model`: `EngineLayout`, `Dump`, `diff`
+- [x] Cargo workspace with all crates, shared lints and CI on Windows and Linux
+- [x] `ufathom-mem`: `Snapshot`, `PageCache`, `SelfMemory`, `ProcessMemory`, `MinidumpMemory`, `list_processes`
+- [x] `ufathom-model`: `EngineLayout`, `Dump`, `diff`
 
 **Done when:** fmt, clippy and tests pass in CI. `SelfMemory` returns errors for unmapped and guarded addresses without faulting. `ProcessMemory` reads a child process in a test. A minidump written by the OS for a child process is parsed in a test on Windows.
 
 ## M1: Engine layer and fixtures (stage 5)
 
-- [ ] `ufathom-testkit`: images for each layout era from UE 4.11 to 5.8, the measured calibration builds, shuffled layouts, corruption injection, a fake PE module, a `fake-host` process
-- [ ] `ufathom-engine`: names (array and pool), objects (fixed and chunked), legacy and modern properties
+- [x] `ufathom-testkit`: images for each layout era from UE 4.11 to 5.8, the measured calibration builds, shuffled layouts, corruption injection, a fake PE module, a `fake-host` process
+- [x] `ufathom-engine`: names (array and pool), objects (fixed and chunked), legacy and modern properties
 
 **Done when:** views read every target-shaped image correctly and every corruption mode returns errors with no panic.
 
 ## M2: Discovery (stage 7)
 
-- [ ] PE parsing and version detection
-- [ ] Object array, name table and layout solvers
-- [ ] Evidence, invariants, overrides, globals, `pointer_transform`
+- [x] PE parsing and version detection
+- [x] Object array, name table and layout solvers
+- [x] Evidence, invariants, overrides, globals, `pointer_transform`
 
 **Done when:** `discover` recovers the exact `EngineLayout` on every era's image and on shuffled ones with no hints. Wrong overrides are rejected. `inspect-exe` reports the right version on real executables that carry one.
 
 ## M3: Reflection and the DLL (stages 6, 10)
 
-- [ ] `ufathom-reflect`, with re-validation for objects changing during a read
-- [ ] `ufathom-usmap` with `compare`
-- [ ] `ufathom-agent`: config, sessions, identity, commands, long paths
-- [ ] `ufathom-dll`: lifecycle, containment, hotkeys, double-load guard
-- [ ] CLI: `ps`, `inspect-exe`, `probe`, `doctor`, `dump`, interactive `quick`, `status`, `command`, `check-oracle`, `usmap`
+- [x] `ufathom-reflect`, with re-validation for objects changing during a read
+- [x] `ufathom-usmap` with `compare`
+- [x] `ufathom-agent`: config, sessions, identity, commands, long paths
+- [x] `ufathom-dll`: lifecycle, containment, hotkeys, double-load guard
+- [x] CLI: `ps`, `inspect-exe`, `probe`, `doctor`, `dump`, interactive `quick`, `status`, `command`, `check-oracle`, `usmap`
 
 **Done when:** on `fake-host`, the real DLL dumps a synthetic image matching ground truth, dumps again, unloads with no threads left, survives corrupted images with the host still running, and works from a path over 260 characters. Host stall during a dump is measured and reported. The usmap reader parses real files locally.
 
 ## M4: Rust SDK and runtime (stages 8, 9)
 
-- [ ] `ufathom-codegen` with golden and compile tests
+- [x] `ufathom-codegen` with golden and compile tests
 - [x] `ufathom-runtime`: containers, `Session`, `ObjectRef`, `Executor`, `inproc` (tested against fake objects and a fake vtable; not yet run in a real game)
-- [ ] DLL and CLI: SDK output
-- [ ] Self-contained SDK output: matching runtime sources and licenses under `vendor/`, with no ufathom checkout or published runtime package required
+- [x] DLL and CLI: SDK output
+- [x] Self-contained SDK output: matching runtime sources and licenses under `vendor/`, with no ufathom checkout or published runtime package required
 - [x] Editable `main.rs` scaffold that links as a resident DLL or an external read-only executable and survives SDK regeneration
 
 **Done when:** the SDK generated from each fixture passes `cargo check`, including the default self-contained SDK in a directory independent of the ufathom checkout, and a test reads a synthetic object through the generated types. In-process call mechanics are tested against a fake object with a fake vtable.
@@ -55,10 +55,10 @@ Research, naming, architecture, workspace, memory reading.
 Requires the user to start each game and to load the DLL or allow attaching.
 
 - [ ] UE 4.13 build: DLL dump, the first real check of the fixed object array era
-- [ ] UE 4.21 build: DLL dump, compared with existing Dumper-7 output
+- [x] UE 4.21 build: DLL dump, compared with existing Dumper-7 output
 - [ ] UE 4.22 build: DLL dump, `check-oracle` against a Dumper-7 usmap, `GWorld` and name table found
-- [ ] UE 4.25: DLL dump on a real build, checked against known layout values
-- [ ] Stock UE 4.25 from an engine install, with no game involved
+- [x] UE 4.25: DLL dump on a real build, checked against known layout values
+- [x] Stock UE 4.25 from an engine install, with no game involved
 - [ ] UE5 build: see the risk below
 - [ ] External dump for at least one game
 - [ ] Generated SDK for each game compiles
@@ -68,7 +68,7 @@ Requires the user to start each game and to load the DLL or allow attaching.
 
 ## M6: Polish and wider support (stage 12)
 
-- [ ] `diff` command, documentation, performance numbers measured on real dumps
+- [ ] `diff` command, documentation, performance numbers measured on real dumps. Done: the `diff` command.
 - [ ] Rust mod toolkit, so new mods need no C++: ProcessEvent and native function hooks, proxy DLL exports, game thread dispatch, engine allocator. Done: the ProcessEvent hook with game thread dispatch and per-function callbacks (`GameThread`), tested on a fake engine.
 - [ ] Opt-in asset loading in DLL mode
 - [ ] More engine versions, added as each is verified on a real build, using any game without anti-cheat

@@ -14,7 +14,11 @@ ufathom.local.toml
 /reports/
 /dumps/
 /sdk-out/
+# Default output folder of `ufathom quick`
+ufathom-dumps/
 *.dump.json
+/dump.json
+/identity.json
 
 # Tool artifacts
 .vscode/
