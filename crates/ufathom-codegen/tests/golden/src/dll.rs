@@ -13,8 +13,10 @@
 //!   them is on.
 //! - `hot-unload`: when `run` returns, the DLL unloads itself. With `inproc`,
 //!   the `ProcessEvent` and native hooks are removed first, and the DLL stays
-//!   loaded if a thread is still inside them. Without this feature the DLL
-//!   stays loaded until the game exits.
+//!   loaded if a thread is still inside them. With `detour`, every inline
+//!   detour still installed is removed too, and the DLL stays loaded if a
+//!   thread is still inside a replacement or its trampoline. Without this
+//!   feature the DLL stays loaded until the game exits.
 
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -166,6 +168,20 @@ fn unload(own_module: HMODULE) {
                 ));
                 return;
             }
+        }
+    }
+    #[cfg(feature = "detour")]
+    match ufathom_runtime::detour::uninstall_all_and_wait(HOOK_DRAIN) {
+        Ok(true) => {}
+        Ok(false) => {
+            debug("ufathom SDK: a thread is still inside a detour; staying loaded");
+            return;
+        }
+        Err(error) => {
+            debug(&format!(
+                "ufathom SDK: cannot remove the detours ({error}); staying loaded"
+            ));
+            return;
         }
     }
     if cfg!(ufathom_proxy) {

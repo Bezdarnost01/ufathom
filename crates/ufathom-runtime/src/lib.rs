@@ -20,6 +20,8 @@
 
 mod containers;
 mod desc;
+#[cfg(all(feature = "detour", windows, target_arch = "x86_64"))]
+pub mod detour;
 pub mod engine_mem;
 mod executor;
 #[cfg(feature = "inproc")]
