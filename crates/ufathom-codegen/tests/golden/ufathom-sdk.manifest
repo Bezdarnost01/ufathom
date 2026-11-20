@@ -1,4 +1,5 @@
 ufathom-codegen manifest 1
+499e75c0c732486a	.cargo/config.toml
 63afd0c0ae0d1989	Cargo.toml
 169c3e68cbd3d762	src/core_pkg.rs
 154393fd1b21f096	src/core_uobject.rs

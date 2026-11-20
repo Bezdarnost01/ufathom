@@ -2,8 +2,9 @@
 //!
 //! [`generate`] turns a [`Dump`] into one Cargo crate: `src/lib.rs`, an editable
 //! `src/main.rs` shared by DLL and external-executable entry points, one module
-//! per package behind a Cargo feature of the same name, and a manifest. The
-//! crate depends on `ufathom-runtime`.
+//! per package behind a Cargo feature of the same name, and a manifest. A
+//! `.cargo/config.toml` links the C runtime statically on Windows. The crate
+//! depends on `ufathom-runtime`.
 //!
 //! Every generated type is `#[repr(C, align(N))]` with explicit padding and
 //! asserts its size, alignment and field offsets at compile time. What cannot
@@ -151,6 +152,11 @@ pub fn generate(
                 &runtime,
                 &workspace,
             ),
+            preserve_existing: false,
+        },
+        output::OutFile {
+            path: ".cargo/config.toml".to_owned(),
+            content: emit::cargo_config_source().to_owned(),
             preserve_existing: false,
         },
         output::OutFile {

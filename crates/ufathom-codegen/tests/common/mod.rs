@@ -79,6 +79,9 @@ pub struct CargoRun {
 /// Runs `cargo <args>` on the crate in `dir`, offline, with a target directory
 /// shared by every test under `target/`.
 ///
+/// Cargo runs with `dir` as its working directory, so the crate's own
+/// `.cargo/config.toml` applies, not the one of this workspace.
+///
 /// Panics with the full output if cargo cannot be started or fails, so a test
 /// never passes without having checked the crate.
 pub fn run_cargo(dir: &Path, args: &[&str]) -> CargoRun {
@@ -95,6 +98,7 @@ pub fn run_cargo(dir: &Path, args: &[&str]) -> CargoRun {
         .arg("--offline")
         .arg("--manifest-path")
         .arg(dir.join("Cargo.toml"))
+        .current_dir(dir)
         .env("CARGO_TARGET_DIR", &target)
         .env_remove("RUSTFLAGS")
         .env_remove("CARGO_ENCODED_RUSTFLAGS")
@@ -204,4 +208,57 @@ pub fn pe_exports(bytes: &[u8]) -> Vec<String> {
             String::from_utf8(bytes[start..end].to_vec()).unwrap()
         })
         .collect()
+}
+
+/// Names of the DLLs a PE file imports, lower-cased, read from its import
+/// directory. Delay-load imports are not included.
+#[allow(dead_code, reason = "used by some test binaries only")]
+pub fn pe_imports(bytes: &[u8]) -> Vec<String> {
+    let u16_at = |o: usize| u16::from_le_bytes(bytes[o..o + 2].try_into().unwrap());
+    let u32_at = |o: usize| u32::from_le_bytes(bytes[o..o + 4].try_into().unwrap());
+    let pe = u32_at(0x3c) as usize;
+    let sections = usize::from(u16_at(pe + 6));
+    let optional = pe + 24;
+    let table = optional + usize::from(u16_at(pe + 20));
+    let file_offset = |rva: u32| -> usize {
+        (0..sections)
+            .map(|i| table + i * 40)
+            .find_map(|s| {
+                let size = u32_at(s + 8).max(u32_at(s + 16));
+                let (va, raw) = (u32_at(s + 12), u32_at(s + 20));
+                (va..va + size)
+                    .contains(&rva)
+                    .then(|| (rva - va + raw) as usize)
+            })
+            .expect("RVA inside a section")
+    };
+    // The import directory is the second data directory, after the exports.
+    let directory_rva = u32_at(optional + 112 + 8);
+    if directory_rva == 0 {
+        return Vec::new();
+    }
+    let mut names = Vec::new();
+    let mut descriptor = file_offset(directory_rva);
+    // Each descriptor is 20 bytes; a zero name RVA ends the table.
+    while u32_at(descriptor + 12) != 0 {
+        let start = file_offset(u32_at(descriptor + 12));
+        let end = start + bytes[start..].iter().position(|&b| b == 0).unwrap();
+        names.push(
+            String::from_utf8(bytes[start..end].to_vec())
+                .unwrap()
+                .to_lowercase(),
+        );
+        descriptor += 20;
+    }
+    names
+}
+
+/// Whether `dll` is a C or C++ runtime that the game or the system may lack:
+/// the Visual C++ runtime, the C++ standard library or the universal CRT.
+pub fn is_c_runtime_import(dll: &str) -> bool {
+    dll.starts_with("vcruntime")
+        || dll.starts_with("msvcp")
+        || dll.starts_with("msvcr")
+        || dll.starts_with("ucrtbase")
+        || dll.starts_with("api-ms-win-crt-")
 }
