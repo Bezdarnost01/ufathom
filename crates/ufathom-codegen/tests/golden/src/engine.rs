@@ -343,6 +343,13 @@ const _: () = {
     assert!(::core::mem::offset_of!(AActor_GetActorCount_Params, return_value) == 0x0);
 };
 
+#[cfg(feature = "inproc")]
+impl rt::inproc::GameFunction for AActor_GetActorCount_Params {
+    const PATH: &'static str = "/Script/Engine.Actor:GetActorCount";
+    type Kind = rt::inproc::Script;
+    type Params = Self;
+}
+
 /// Parameter block of `/Script/Engine.Actor:GetLabel`.
 ///
 /// Size 0x10, alignment 16.
@@ -362,6 +369,13 @@ const _: () = {
     assert!(::core::mem::align_of::<AActor_GetLabel_Params>() == 16);
     assert!(::core::mem::offset_of!(AActor_GetLabel_Params, return_value) == 0x0);
 };
+
+#[cfg(feature = "inproc")]
+impl rt::inproc::GameFunction for AActor_GetLabel_Params {
+    const PATH: &'static str = "/Script/Engine.Actor:GetLabel";
+    type Kind = rt::inproc::Script;
+    type Params = Self;
+}
 
 /// Parameter block of `/Script/Engine.Actor:GetLocation`.
 ///
@@ -383,6 +397,13 @@ const _: () = {
     assert!(::core::mem::offset_of!(AActor_GetLocation_Params, return_value) == 0x0);
 };
 
+#[cfg(feature = "inproc")]
+impl rt::inproc::GameFunction for AActor_GetLocation_Params {
+    const PATH: &'static str = "/Script/Engine.Actor:GetLocation";
+    type Kind = rt::inproc::Native;
+    type Params = Self;
+}
+
 /// Parameter block of `/Script/Engine.Actor:K2_DestroyActor`.
 ///
 /// Size 0x1, alignment 1.
@@ -403,6 +424,13 @@ const _: () = {
     assert!(::core::mem::offset_of!(AActor_K2_DestroyActor_Params, return_value) == 0x0);
 };
 
+#[cfg(feature = "inproc")]
+impl rt::inproc::GameFunction for AActor_K2_DestroyActor_Params {
+    const PATH: &'static str = "/Script/Engine.Actor:K2_DestroyActor";
+    type Kind = rt::inproc::Script;
+    type Params = Self;
+}
+
 /// Parameter block of `/Script/Engine.Actor:Ping`.
 ///
 /// Size 0x0, alignment 16.
@@ -419,6 +447,13 @@ const _: () = {
     assert!(::core::mem::size_of::<AActor_Ping_Params>() == 0x0);
     assert!(::core::mem::align_of::<AActor_Ping_Params>() == 16);
 };
+
+#[cfg(feature = "inproc")]
+impl rt::inproc::GameFunction for AActor_Ping_Params {
+    const PATH: &'static str = "/Script/Engine.Actor:Ping";
+    type Kind = rt::inproc::Script;
+    type Params = Self;
+}
 
 /// Parameter block of `/Script/Engine.Actor:SetHealth`.
 ///
@@ -453,6 +488,13 @@ const _: () = {
     assert!(::core::mem::offset_of!(AActor_SetHealth_Params, return_value) == 0xc);
 };
 
+#[cfg(feature = "inproc")]
+impl rt::inproc::GameFunction for AActor_SetHealth_Params {
+    const PATH: &'static str = "/Script/Engine.Actor:SetHealth";
+    type Kind = rt::inproc::Script;
+    type Params = Self;
+}
+
 /// Parameter block of `/Script/Engine.Actor:TakesOptional`.
 ///
 /// Size 0x8, alignment 8.
@@ -472,6 +514,13 @@ const _: () = {
     assert!(::core::mem::align_of::<AActor_TakesOptional_Params>() == 8);
     assert!(::core::mem::offset_of!(AActor_TakesOptional_Params, value) == 0x0);
 };
+
+#[cfg(feature = "inproc")]
+impl rt::inproc::GameFunction for AActor_TakesOptional_Params {
+    const PATH: &'static str = "/Script/Engine.Actor:TakesOptional";
+    type Kind = rt::inproc::Script;
+    type Params = Self;
+}
 
 /// Parameter block of `/Script/Engine.Actor:TeleportTo`.
 ///
@@ -525,6 +574,13 @@ impl AActor_TeleportTo_Params {
         }
     }
 
+}
+
+#[cfg(feature = "inproc")]
+impl rt::inproc::GameFunction for AActor_TeleportTo_Params {
+    const PATH: &'static str = "/Script/Engine.Actor:TeleportTo";
+    type Kind = rt::inproc::Script;
+    type Params = Self;
 }
 
 /// Class `/Script/Engine.BitShare`.
@@ -1494,6 +1550,13 @@ const _: () = {
     assert!(::core::mem::offset_of!(UKeywords_Loop_Params, self_) == 0x4);
 };
 
+#[cfg(feature = "inproc")]
+impl rt::inproc::GameFunction for UKeywords_Loop_Params {
+    const PATH: &'static str = "/Script/Engine.Keywords:Loop";
+    type Kind = rt::inproc::Script;
+    type Params = Self;
+}
+
 /// Parameter block of `/Script/Engine.Keywords:Type`.
 ///
 /// Size 0x1, alignment 1.
@@ -1529,6 +1592,13 @@ impl UKeywords_Type_Params {
         }
     }
 
+}
+
+#[cfg(feature = "inproc")]
+impl rt::inproc::GameFunction for UKeywords_Type_Params {
+    const PATH: &'static str = "/Script/Engine.Keywords:Type";
+    type Kind = rt::inproc::Script;
+    type Params = Self;
 }
 
 /// Struct `/Script/Engine.LowAlign`.

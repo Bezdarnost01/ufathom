@@ -146,7 +146,8 @@ impl core::fmt::Debug for GameContext<'_> {
 pub struct CallContext<'a> {
     object: Ptr<UObjectBase>,
     function: Ptr<UObjectBase>,
-    params: &'a mut [u8],
+    /// Taken out and put back by the typed hooks, which lend it as a `P`.
+    pub(super) params: &'a mut [u8],
     exec: &'a InProcessExecutor,
     after: bool,
     skip: bool,
@@ -187,14 +188,7 @@ impl CallContext<'_> {
     /// The parameter block as the generated parameter struct `P`. `None`
     /// when the block is smaller than `P` or not aligned for it.
     pub fn params_as<P: Pod>(&mut self) -> Option<&mut P> {
-        if self.params.len() < size_of::<P>()
-            || self.params.as_ptr().align_offset(align_of::<P>()) != 0
-        {
-            return None;
-        }
-        // SAFETY: the block is large enough and aligned for `P`, uniquely
-        // borrowed through `self`, and `P: Pod` accepts every byte pattern.
-        Some(unsafe { &mut *self.params.as_mut_ptr().cast::<P>() })
+        super::typed::cast_block(self.params)
     }
 
     /// In a `before` callback: do not run the game function. The parameter

@@ -147,8 +147,24 @@ let world = game.call(Duration::from_secs(5), |ctx| {
     ctx.session().gworld().ok().flatten()
 })?;
 // Intercept a game function: read or change its parameters, or skip it.
+// The function is named by its generated parameter struct, so a typo does not compile,
+// and the callback gets the parameter block as that struct.
+game.before_fn::<sdk::engine::AActor_ReceiveTick_Params>(|ctx, params| {
+    let _actor = ctx.object();
+    params.delta_seconds *= 0.5;
+})?;
+// After the call: the outputs and the return value.
+game.after_fn::<sdk::engine::AActor_K2_GetActorLocation_Params>(|_ctx, params| {
+    let _location = params.return_value;
+})?;
+```
+
+Every generated function has such a marker (with the `inproc` feature). If the live parameter block is smaller than the struct, the SDK was generated for another build, and the callback is not called. The untyped form takes a path and raw bytes. Use it when the SDK has no struct for the function:
+
+```rust
 game.before("/Script/Engine.Actor:ReceiveTick", |ctx| {
     let _actor = ctx.object();
+    let _bytes = ctx.params_mut();
 })?;
 ```
 
@@ -177,7 +193,7 @@ Tasks and callbacks get an executor, and calls made through that executor do not
 
 A few more parts of the hook:
 
-- **`before_native` and `after_native`** hook the `UFunction::Func` pointer. Blueprint code reaches native functions through it without `ProcessEvent`.
+- **`before_native` and `after_native`** hook the `UFunction::Func` pointer. Blueprint code reaches native functions through it without `ProcessEvent`. `before_native_fn::<Marker>` and `after_native_fn::<Marker>` name the function by type and accept only functions the dump marks native; a script function does not compile.
 - **`start_auto_rescan(interval)`** hooks the virtual tables of classes that get their first instance later.
 - **`uninstall()`** puts the slots back. `uninstall_and_wait(timeout)` also waits until no thread is inside a hook, so the module can be unloaded.
 
