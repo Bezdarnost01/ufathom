@@ -23,6 +23,9 @@ default = ["all"]
 all = ["mods", "core_pkg", "core_uobject", "engine", "main_pkg", "std_pkg"]
 # Calls game functions through ProcessEvent: `attach()`. Inside the game only.
 inproc = ["ufathom-runtime/inproc"]
+# Inline detours of plain native functions (`ufathom_runtime::detour`), for mods.
+# The one part that patches code. Windows x86-64 only.
+detour = ["ufathom-runtime/detour", "inproc"]
 # The DLL unloads itself when `run` returns, after removing its hooks.
 hot-unload = []
 # Name the DLL version.dll and put it beside the game: it forwards the system

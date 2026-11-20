@@ -34,6 +34,8 @@ fn bundled_sdk_compiles_without_an_ufathom_checkout() {
         "src/dll.rs",
         "vendor/ufathom-runtime/Cargo.toml",
         "vendor/ufathom-runtime/src/lib.rs",
+        "vendor/ufathom-runtime/src/detour/mod.rs",
+        "vendor/ufathom-runtime/src/detour/analyze.rs",
         "vendor/ufathom-mem/Cargo.toml",
         "vendor/ufathom-mem/src/lib.rs",
         "LICENSE-MIT",
@@ -56,12 +58,14 @@ fn bundled_sdk_compiles_without_an_ufathom_checkout() {
         &["test", "--no-run"][..],
         // The vendored hook and executor, with their OS dependencies.
         &["build", "--lib", "--features", "inproc"][..],
+        // The vendored inline-detour module and its decoder dependency.
+        &["build", "--lib", "--features", "detour"][..],
         // Every DLL feature together: hot-unload and the engine-wait gate.
         &[
             "build",
             "--lib",
             "--features",
-            "inproc hot-unload proxy-version",
+            "inproc detour hot-unload proxy-version",
         ][..],
     ] {
         let run = run_cargo(dir.path(), args);

@@ -33,3 +33,12 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## iced-x86
+
+The optional `detour` feature of `ufathom-runtime` depends on
+[iced-x86](https://github.com/icedland/iced) (MIT License, Copyright (C) 2018-present
+iced project contributors) to decode x86-64 instructions and to re-encode them at another
+address. It is used as a library, with default features off (`std`, `decoder`,
+`block_encoder`, `instr_info`); no source code was copied. The generated SDK vendors the
+runtime, so it pulls the same crate from the registry when `detour` is enabled.
