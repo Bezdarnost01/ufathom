@@ -16,9 +16,14 @@ iced-x86 = { workspace = true, optional = true }
 # `InProcessExecutor`: calls game functions through ProcessEvent. Off by
 # default; without it the crate never runs game code.
 inproc = ["dep:libc", "dep:windows-sys"]
-# `proxy`: the exports of the system version.dll, forwarded to it, so a DLL
-# named version.dll beside the game is loaded at start-up. Windows only.
+# Proxy exports: a DLL named after a system DLL, put beside the game, is
+# loaded at start-up and forwards each call to the real one. One feature per
+# system DLL; a DLL takes the exports of exactly one of them. Windows x86-64
+# only.
 proxy-version = ["dep:windows-sys"]
+proxy-dsound = ["dep:windows-sys"]
+proxy-dinput8 = ["dep:windows-sys"]
+proxy-winmm = ["dep:windows-sys"]
 # `detour`: inline detours of plain native functions, checked against the
 # bytes the author expects. The one module that patches code; opt-in and for
 # mods only. Windows x86-64 only: on other targets the module is absent.

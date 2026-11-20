@@ -2,11 +2,15 @@
 //!
 //! Features of this crate change what the DLL does:
 //!
-//! - `proxy-version`: rename the built DLL to `version.dll` and put it beside
-//!   the game executable; the game loads it at start-up. It exports every
-//!   function of the system `version.dll` and forwards each call to it
-//!   (`ufathom_runtime::proxy`). `run` is held until the engine has started
-//!   (objects loaded and, when this build has one, `GEngine` set).
+//! - `proxy-version`, `proxy-dsound`, `proxy-dinput8`, `proxy-winmm`: name the
+//!   built DLL after that system DLL (`version.dll`, `dsound.dll`,
+//!   `dinput8.dll`, `winmm.dll`) and put it beside the game executable; the
+//!   game loads it at start-up. It exports every function of the system DLL,
+//!   at the same ordinals, and forwards each call to the real one
+//!   (`ufathom_runtime::proxy`). Enable one of them, not several. `run` is
+//!   held until the engine has started (objects loaded and, when this build
+//!   has one, `GEngine` set). `build.rs` sets `cfg(ufathom_proxy)` when any of
+//!   them is on.
 //! - `hot-unload`: when `run` returns, the DLL unloads itself. With `inproc`,
 //!   the `ProcessEvent` and native hooks are removed first, and the DLL stays
 //!   loaded if a thread is still inside them. With `detour`, every inline
@@ -28,10 +32,22 @@ use windows_sys::Win32::System::Threading::CreateThread;
 
 use crate::app::run;
 
+#[cfg(any(
+    all(feature = "proxy-version", feature = "proxy-dsound"),
+    all(feature = "proxy-version", feature = "proxy-dinput8"),
+    all(feature = "proxy-version", feature = "proxy-winmm"),
+    all(feature = "proxy-dsound", feature = "proxy-dinput8"),
+    all(feature = "proxy-dsound", feature = "proxy-winmm"),
+    all(feature = "proxy-dinput8", feature = "proxy-winmm"),
+))]
+compile_error!(
+    "enable only one `proxy-*` feature: a DLL takes the exports of one system DLL"
+);
+
 static WORKER_HANDLE: AtomicUsize = AtomicUsize::new(0);
 
 /// How long a proxy DLL waits for the engine before it gives up.
-#[cfg(feature = "proxy-version")]
+#[cfg(ufathom_proxy)]
 const ENGINE_WAIT: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// How long `hot-unload` waits for threads to leave the hooks.
@@ -95,7 +111,7 @@ extern "system" fn worker_entry(_parameter: *mut c_void) -> u32 {
 
     match std::panic::catch_unwind(|| -> Result<(), Box<dyn std::error::Error>> {
         let memory = SelfMemory::new();
-        #[cfg(feature = "proxy-version")]
+        #[cfg(ufathom_proxy)]
         if !wait_for_engine(&memory) {
             return Err("the engine did not start in time".into());
         }
@@ -113,7 +129,7 @@ extern "system" fn worker_entry(_parameter: *mut c_void) -> u32 {
 
 /// Waits until the engine has objects and, when this build has one, a
 /// `GEngine`. A proxy DLL is loaded before the game's own code runs.
-#[cfg(feature = "proxy-version")]
+#[cfg(ufathom_proxy)]
 fn wait_for_engine(memory: &SelfMemory) -> bool {
     let deadline = std::time::Instant::now() + ENGINE_WAIT;
     while std::time::Instant::now() < deadline {
@@ -168,7 +184,7 @@ fn unload(own_module: HMODULE) {
             return;
         }
     }
-    if cfg!(feature = "proxy-version") {
+    if cfg!(ufathom_proxy) {
         // The game imports this module; it cannot be unloaded.
         return;
     }

@@ -160,8 +160,20 @@ static EMBEDDED: &[(&str, &str)] = &[
         include_str!("../../ufathom-runtime/src/owned.rs"),
     ),
     (
-        "vendor/ufathom-runtime/src/proxy.rs",
-        include_str!("../../ufathom-runtime/src/proxy.rs"),
+        "vendor/ufathom-runtime/src/proxy/mod.rs",
+        include_str!("../../ufathom-runtime/src/proxy/mod.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/proxy/resolve.rs",
+        include_str!("../../ufathom-runtime/src/proxy/resolve.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/proxy/stubs.rs",
+        include_str!("../../ufathom-runtime/src/proxy/stubs.rs"),
+    ),
+    (
+        "vendor/ufathom-runtime/src/proxy/tables.rs",
+        include_str!("../../ufathom-runtime/src/proxy/tables.rs"),
     ),
     (
         "vendor/ufathom-runtime/src/ptr.rs",

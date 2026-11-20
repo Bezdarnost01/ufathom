@@ -32,6 +32,12 @@ fn bundled_sdk_compiles_without_an_ufathom_checkout() {
         ".cargo/config.toml",
         "src/main.rs",
         "src/dll.rs",
+        "build.rs",
+        "proxy/version.def",
+        "proxy/dsound.def",
+        "proxy/dinput8.def",
+        "proxy/winmm.def",
+        "vendor/ufathom-runtime/src/proxy/stubs.rs",
         "vendor/ufathom-runtime/Cargo.toml",
         "vendor/ufathom-runtime/src/lib.rs",
         "vendor/ufathom-runtime/src/detour/mod.rs",
@@ -83,7 +89,8 @@ fn bundled_sdk_compiles_without_an_ufathom_checkout() {
         let debug = common::workspace_root().join("target/sdk-check/debug");
         let dll = debug.join("ufathom_sdk.dll");
         let exports = common::pe_exports(&std::fs::read(&dll).unwrap());
-        for name in ufathom_runtime::proxy::EXPORTS {
+        for export in ufathom_runtime::proxy::VERSION.exports {
+            let name = export.name.unwrap();
             assert!(
                 exports.iter().any(|e| e == name),
                 "{name} is not exported: {exports:?}"
