@@ -12,11 +12,13 @@
 //!   has one, `GEngine` set). `build.rs` sets `cfg(ufathom_proxy)` when any of
 //!   them is on.
 //! - `hot-unload`: when `run` returns, the DLL unloads itself. With `inproc`,
-//!   the `ProcessEvent` and native hooks are removed first, and the DLL stays
-//!   loaded if a thread is still inside them. With `detour`, every inline
-//!   detour still installed is removed too, and the DLL stays loaded if a
-//!   thread is still inside a replacement or its trampoline. Without this
-//!   feature the DLL stays loaded until the game exits.
+//!   the callbacks and queued tasks this DLL registered are removed, then the
+//!   `ProcessEvent` and native hooks. The DLL stays loaded if a thread is
+//!   still inside them, or if another mod hooked the same slot after this
+//!   one and still forwards into it (`HookError::Chained`). With `detour`,
+//!   every inline detour still installed is removed too, and the DLL stays
+//!   loaded if a thread is still inside a replacement or its trampoline.
+//!   Without this feature the DLL stays loaded until the game exits.
 
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -156,12 +158,16 @@ fn unload(own_module: HMODULE) {
 
     #[cfg(feature = "inproc")]
     if let Some(game) = ufathom_runtime::inproc::GameThread::get() {
+        // Callbacks and tasks hold code of this module: drop them first.
+        game.remove_owned_by_current_module();
         match game.uninstall_and_wait(HOOK_DRAIN) {
             Ok(true) => {}
             Ok(false) => {
                 debug("ufathom SDK: a thread is still inside a hook; staying loaded");
                 return;
             }
+            // Includes a slot another mod hooked after this one: its hook
+            // forwards here, so this module must stay mapped.
             Err(error) => {
                 debug(&format!(
                     "ufathom SDK: cannot remove the hooks ({error}); staying loaded"

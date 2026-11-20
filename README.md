@@ -94,7 +94,7 @@ cargo build --release --lib
 
 The result is `target/release/ufathom_sdk.dll`. Loading it starts `run` once on a worker thread with `SelfMemory`. By default the DLL stays loaded until the game exits. Two features change this:
 
-- `--features hot-unload`: when `run` returns, the DLL removes its hooks and unloads itself. It stays loaded if a thread is still inside a hook.
+- `--features hot-unload`: when `run` returns, the DLL removes its callbacks and hooks and unloads itself. It stays loaded if a thread is still inside a hook, or if another mod hooked the same slot after it.
 - Proxy features: the DLL poses as a system DLL, so the game loads it at start-up with no injector. Enable **one** of them and give the built DLL that name, next to the game executable. It exports every function of the system DLL, at the same ordinals, and forwards each call to the real DLL in the system folder (loaded on the first call). `run` waits until the engine has objects and a `GEngine`.
   - `--features proxy-version`: name it `version.dll`.
   - `--features proxy-dsound`: name it `dsound.dll`.
@@ -194,8 +194,10 @@ Tasks and callbacks get an executor, and calls made through that executor do not
 A few more parts of the hook:
 
 - **`before_native` and `after_native`** hook the `UFunction::Func` pointer. Blueprint code reaches native functions through it without `ProcessEvent`. `before_native_fn::<Marker>` and `after_native_fn::<Marker>` name the function by type and accept only functions the dump marks native; a script function does not compile.
-- **`start_auto_rescan(interval)`** hooks the virtual tables of classes that get their first instance later.
+- **`start_rescan_on_module_load()`** (Windows) hooks the virtual tables of native classes that a module loaded later adds. The loader tells the hook when a DLL loads; a background thread then rescans one and five seconds later, and loads close together share their rescans. Nothing runs between loads. **`start_auto_rescan(interval)`** does the same on a timer: use it on other platforms, or as well when a class can get its first instance with no module load.
+- **`into_guard(game)`** turns the id a hook returns into a `HookGuard` that removes the callback when it drops; `forget()` keeps it. Every callback also records the module that holds its code, so `remove_owned_by(module_base)` and `remove_owned_by_current_module()` remove everything one module registered before it is unloaded.
 - **`uninstall()`** puts the slots back. `uninstall_and_wait(timeout)` also waits until no thread is inside a hook, so the module can be unloaded.
+- **Several mods hooking the same slots.** Two mods that each link this runtime can hook one virtual table slot, the second saving the first one's hook as its original. The first then cannot restore the slot, and unmapping it would crash the game. `uninstall` leaves such a slot alone and returns `HookError::Chained`; the hook keeps forwarding, and `hot-unload` keeps the DLL loaded. Call `uninstall` again once the other mod has removed its hook.
 
 ### Hook any native function
 

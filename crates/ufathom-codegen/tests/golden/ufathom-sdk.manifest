@@ -8,10 +8,10 @@ e39c1bec96eb90ce	proxy/version.def
 173d47a7a7ec427a	proxy/winmm.def
 169c3e68cbd3d762	src/core_pkg.rs
 154393fd1b21f096	src/core_uobject.rs
-21534d2fc35f53e4	src/dll.rs
+965e72dee3f216cc	src/dll.rs
 84d2c0b07919aa55	src/engine.rs
 f0a70ab3b1663580	src/lib.rs
-4d77fffdda18d438	src/main.rs
+45ab6da3e903bc90	src/main.rs
 c2d7ac9ea1a157f0	src/main_pkg.rs
 fe5619f1c20e7e84	src/mods.rs
 d33f4fe5a3652e2c	src/std_pkg.rs
