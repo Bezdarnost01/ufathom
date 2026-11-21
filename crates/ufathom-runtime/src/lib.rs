@@ -23,6 +23,7 @@
 //! with `MemoryReaderExt::read_pod` directly.
 #![deny(unsafe_op_in_unsafe_fn)]
 
+pub mod companions;
 mod containers;
 mod desc;
 #[cfg(all(feature = "detour", windows, target_arch = "x86_64"))]
