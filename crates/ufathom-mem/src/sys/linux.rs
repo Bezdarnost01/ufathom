@@ -33,6 +33,12 @@ impl Target {
         }
     }
 
+    /// The current process through the same copy call as [`Target::current`]:
+    /// this platform has no direct path.
+    pub(crate) fn current_os_copy() -> Self {
+        Self::current()
+    }
+
     /// Opens `pid`. Linux has no handle to open, so this checks that the
     /// process exists and that its memory map can be read.
     pub(crate) fn open(pid: u32) -> Result<Self, MemError> {

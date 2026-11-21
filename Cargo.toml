@@ -5,7 +5,7 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.3.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Bezdarnost01/ufathom"
 
@@ -57,6 +57,9 @@ print_stdout = "warn"
 todo = "warn"
 unimplemented = "warn"
 unwrap_used = "warn"
+# Style only. Enabled by the 1.88 MSRV; `chunks_exact(N)` stays readable and
+# needs no array conversion at each use.
+chunks_exact_to_as_chunks = "allow"
 
 [profile.release]
 debug = "line-tables-only"

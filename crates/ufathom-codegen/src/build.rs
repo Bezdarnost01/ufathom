@@ -650,10 +650,10 @@ fn dependency_order(defs: &[&StructDef], by_path: &BTreeMap<&str, usize>) -> Vec
             deps.insert(p);
         }
         for f in &def.fields {
-            if let PropertyType::Struct { path } = &f.ty {
-                if let Some(&p) = by_path.get(path.as_str()) {
-                    deps.insert(p);
-                }
+            if let PropertyType::Struct { path } = &f.ty
+                && let Some(&p) = by_path.get(path.as_str())
+            {
+                deps.insert(p);
             }
         }
         deps.remove(&i);
@@ -718,28 +718,28 @@ fn classify(f: &FieldDef, table: &TypeTable) -> Classified {
         complaint: Some((reason, detail)),
         doc: None,
     };
-    if let Some(bits) = f.ty.bool_bits() {
-        if bits.field_mask != 0xFF {
-            if count != 1 {
-                return opaque(
-                    DegradeReason::InvalidBitfield,
-                    format!("a bit-field bool with {count} elements"),
-                );
-            }
-            return Classified {
-                field: PlanField {
-                    offset: f.offset,
-                    kind: FieldKind::Bit {
-                        byte_offset: bits.byte_offset,
-                        mask: bits.byte_mask,
-                        field_size: bits.field_size,
-                    },
-                },
-                resolved: None,
-                complaint: None,
-                doc: None,
-            };
+    if let Some(bits) = f.ty.bool_bits()
+        && bits.field_mask != 0xFF
+    {
+        if count != 1 {
+            return opaque(
+                DegradeReason::InvalidBitfield,
+                format!("a bit-field bool with {count} elements"),
+            );
         }
+        return Classified {
+            field: PlanField {
+                offset: f.offset,
+                kind: FieldKind::Bit {
+                    byte_offset: bits.byte_offset,
+                    mask: bits.byte_mask,
+                    field_size: bits.field_size,
+                },
+            },
+            resolved: None,
+            complaint: None,
+            doc: None,
+        };
     }
     match table.resolve(&f.ty) {
         Ok(r) if r.size == f.element_size => Classified {
@@ -1022,10 +1022,10 @@ fn plan_struct(
 
     let mut refs = BTreeSet::new();
     for f in &fields {
-        if f.rust_field.is_some() {
-            if let Some(r) = &f.resolved {
-                refs.extend(r.refs.iter().cloned());
-            }
+        if f.rust_field.is_some()
+            && let Some(r) = &f.resolved
+        {
+            refs.extend(r.refs.iter().cloned());
         }
     }
     for a in &ancestors {

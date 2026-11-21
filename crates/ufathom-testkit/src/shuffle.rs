@@ -280,7 +280,7 @@ impl Profile {
         check_fields("FName", fname.size, &fname_fields)?;
 
         let obj = &layout.uobject;
-        if obj.size % 8 != 0 {
+        if !obj.size.is_multiple_of(8) {
             return Err("UObject size is not a multiple of 8".to_owned());
         }
         check_fields(
@@ -298,7 +298,7 @@ impl Profile {
         if [obj.class, obj.outer].iter().any(|offset| offset % 8 != 0) {
             return Err("UObject pointer is misaligned".to_owned());
         }
-        if obj.name % 4 != 0 {
+        if !obj.name.is_multiple_of(4) {
             return Err("UObject name is misaligned".to_owned());
         }
 

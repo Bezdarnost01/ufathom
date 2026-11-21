@@ -27,7 +27,7 @@ pub(crate) unsafe fn exchange_slot(
     expected: usize,
     new: usize,
 ) -> Result<Exchange, String> {
-    if slot == 0 || slot % align_of::<usize>() != 0 {
+    if slot == 0 || !slot.is_multiple_of(align_of::<usize>()) {
         return Err(format!("slot {slot:#x} is not a pointer-aligned address"));
     }
     // SAFETY: the caller promises a mapped slot; `writable` restores the

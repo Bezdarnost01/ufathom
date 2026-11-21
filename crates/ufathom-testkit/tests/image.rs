@@ -336,7 +336,9 @@ fn the_pe_parses_and_the_version_resource_is_reachable() {
             .expect("ProductVersion key");
         let value_start = (at + needle.len()).next_multiple_of(4);
         let units: Vec<u16> = blob[value_start..]
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|c| u16::from_le_bytes([c[0], c[1]]))
             .take_while(|&u| u != 0)
             .collect();

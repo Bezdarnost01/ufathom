@@ -17,6 +17,12 @@ impl Target {
         }
     }
 
+    /// The current process through the same copy call as [`Target::current`]:
+    /// this platform has no direct path.
+    pub(crate) fn current_os_copy() -> Self {
+        Self::current()
+    }
+
     pub(crate) fn open(_pid: u32) -> Result<Self, MemError> {
         Err(MemError::Unsupported {
             operation: "ProcessMemory::open",

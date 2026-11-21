@@ -41,7 +41,7 @@ mod types;
 
 pub use cache::{CacheStats, DEFAULT_MAX_PAGES, PAGE_SIZE, PageCache};
 pub use error::MemError;
-pub use live::{ProcessMemory, SelfMemory, list_processes};
+pub use live::{ProcessMemory, SelfMemory, fast_read_faults, list_processes};
 pub use minidump::MinidumpMemory;
 pub use pod::Pod;
 pub use reader::{
