@@ -44,6 +44,19 @@ pub(crate) fn perms_from_protect(protect: u32) -> Perms {
     Perms::new(read, write, execute)
 }
 
+/// Whether a `Protect` field is plain read-write memory that a write needs no
+/// protection change to reach: `PAGE_READWRITE` or `PAGE_EXECUTE_READWRITE`,
+/// without `PAGE_GUARD` or `PAGE_NOACCESS`. Copy-on-write pages are excluded
+/// because writing one silently makes a private copy.
+#[cfg_attr(
+    not(windows),
+    allow(dead_code, reason = "only the Windows backend checks writes this way")
+)]
+pub(crate) fn is_plain_read_write(protect: u32) -> bool {
+    protect & (PAGE_GUARD | PAGE_NOACCESS) == 0
+        && protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE) != 0
+}
+
 /// Decodes a `Type` field.
 pub(crate) fn kind_from_type(kind: u32) -> RegionKind {
     match kind {
@@ -70,6 +83,19 @@ mod tests {
             perms_from_protect(PAGE_EXECUTE),
             Perms::new(false, false, true)
         );
+    }
+
+    #[test]
+    fn only_plain_read_write_is_writable() {
+        assert!(is_plain_read_write(PAGE_READWRITE));
+        assert!(is_plain_read_write(PAGE_EXECUTE_READWRITE));
+        assert!(!is_plain_read_write(PAGE_READONLY));
+        assert!(!is_plain_read_write(PAGE_EXECUTE_READ));
+        assert!(!is_plain_read_write(PAGE_WRITECOPY));
+        assert!(!is_plain_read_write(PAGE_EXECUTE_WRITECOPY));
+        assert!(!is_plain_read_write(PAGE_NOACCESS));
+        assert!(!is_plain_read_write(PAGE_READWRITE | PAGE_GUARD));
+        assert!(!is_plain_read_write(0));
     }
 
     #[test]

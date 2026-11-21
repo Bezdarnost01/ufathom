@@ -1,4 +1,4 @@
-//! Memory readers: self, process, minidump and snapshot, plus a page cache. No write path exists.
+//! Memory readers: self, process, minidump and snapshot, plus a page cache. The only write is `SelfMemory::write_exact`.
 //!
 //! Everything is built on the [`MemoryReader`] trait. Code that analyses a
 //! target takes a reader and cannot tell whether it runs inside the game
@@ -13,7 +13,11 @@
 //! unreadable memory. Offline readers bounds-check every offset. A read either
 //! fills the whole buffer or returns an error, never a partial result.
 //!
-//! The crate has no write path: there is no way to modify a target.
+//! The only write is [`SelfMemory::write_exact`], which changes the current
+//! process and nothing else. It is not part of [`MemoryReader`], so code that
+//! takes a reader, such as the dump, cannot reach it. It refuses any range that
+//! is not committed read-write memory and never changes page protection.
+//! [`ProcessMemory`] is opened without the write right and stays read-only.
 #![deny(unsafe_op_in_unsafe_fn)]
 
 mod cache;

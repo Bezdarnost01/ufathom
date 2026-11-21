@@ -2,7 +2,9 @@
 //!
 //! Target memory is never dereferenced directly. Every byte comes from
 //! `ReadProcessMemory`, which reports an error for unmapped, `PAGE_NOACCESS`
-//! and `PAGE_GUARD` pages instead of raising an exception.
+//! and `PAGE_GUARD` pages instead of raising an exception. The one write,
+//! `Target::write`, goes through `WriteProcessMemory` and refuses anything but
+//! committed read-write memory.
 
 use std::ffi::c_void;
 use std::mem::size_of;
@@ -13,7 +15,7 @@ use windows_sys::Win32::Foundation::{
     ERROR_ACCESS_DENIED, ERROR_INVALID_HANDLE, ERROR_INVALID_PARAMETER, ERROR_NOACCESS,
     ERROR_PARTIAL_COPY, GetLastError, HANDLE, HMODULE, INVALID_HANDLE_VALUE, STILL_ACTIVE,
 };
-use windows_sys::Win32::System::Diagnostics::Debug::ReadProcessMemory;
+use windows_sys::Win32::System::Diagnostics::Debug::{ReadProcessMemory, WriteProcessMemory};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
@@ -29,7 +31,7 @@ use windows_sys::Win32::System::Threading::{
 };
 
 use crate::error::{MemError, range_end};
-use crate::protect::{kind_from_type, perms_from_protect};
+use crate::protect::{is_plain_read_write, kind_from_type, perms_from_protect};
 use crate::reader::Addr;
 use crate::types::{MemoryRegion, ModuleInfo, ProcessInfo, file_name};
 
@@ -40,6 +42,10 @@ pub const PROCESS_OPEN_ACCESS: u32 = PROCESS_QUERY_INFORMATION | PROCESS_VM_READ
 
 /// Upper bound on `VirtualQueryEx` calls in one region walk.
 const MAX_REGION_QUERIES: usize = 1 << 22;
+
+/// Upper bound on regions one write may span. A write is a field or a few
+/// bytes; one that crosses more regions than this is a bug in the caller.
+const MAX_WRITE_REGIONS: usize = 64;
 
 /// Upper bound on modules listed for one process.
 const MAX_MODULES: usize = 1 << 16;
@@ -173,6 +179,94 @@ impl Target {
             unsafe { GetLastError() }
         };
         Err(self.classify("ReadProcessMemory", code, addr, buf.len()))
+    }
+
+    /// Writes `bytes` at `addr` with `WriteProcessMemory`, after checking with
+    /// `VirtualQueryEx` that the whole range is committed, plain read-write
+    /// memory. Nothing is written otherwise.
+    ///
+    /// The check matters: `WriteProcessMemory` on a read-only page may lift
+    /// the protection for the copy. This never changes a page protection, so
+    /// it refuses such a page instead. Only the current process is ever
+    /// written (see `SelfMemory::write_exact`); the handle of a process opened
+    /// by `Target::open` has no write right and the OS refuses.
+    pub(crate) fn write(&self, addr: Addr, bytes: &[u8]) -> Result<(), MemError> {
+        let end = range_end(addr, bytes.len())?;
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        let Ok(remote) = usize::try_from(addr) else {
+            return Err(MemError::not_writable(addr, bytes.len()));
+        };
+        self.require_plain_read_write(addr, end, bytes.len())?;
+        let mut copied = 0usize;
+        // SAFETY: `bytes` is a valid readable buffer of `bytes.len()` bytes.
+        // `remote` is only an address value for the kernel, which validates it
+        // and returns failure for anything it cannot write; this process never
+        // dereferences it. The range was just checked to be read-write.
+        let ok = unsafe {
+            WriteProcessMemory(
+                self.handle(),
+                remote as *const c_void,
+                bytes.as_ptr().cast::<c_void>(),
+                bytes.len(),
+                &mut copied,
+            )
+        };
+        if ok != 0 && copied == bytes.len() {
+            return Ok(());
+        }
+        let code = if ok != 0 {
+            ERROR_PARTIAL_COPY
+        } else {
+            // SAFETY: reads the calling thread's last-error value.
+            unsafe { GetLastError() }
+        };
+        Err(
+            match self.classify("WriteProcessMemory", code, addr, bytes.len()) {
+                MemError::Unreadable { addr, len } => MemError::NotWritable { addr, len },
+                other => other,
+            },
+        )
+    }
+
+    /// Checks that every byte of `addr..end` is in committed, plain
+    /// read-write regions, walking the regions with `VirtualQueryEx`.
+    fn require_plain_read_write(&self, addr: Addr, end: u64, len: usize) -> Result<(), MemError> {
+        let refuse = || MemError::not_writable(addr, len);
+        let mut cursor = addr;
+        for _ in 0..MAX_WRITE_REGIONS {
+            let at = usize::try_from(cursor).map_err(|_| refuse())?;
+            let mut info = MEMORY_BASIC_INFORMATION::default();
+            // SAFETY: `info` is a valid out buffer of the size passed, and
+            // `at` is only an address value for the kernel to look up.
+            let written = unsafe {
+                VirtualQueryEx(
+                    self.handle(),
+                    at as *const c_void,
+                    &mut info,
+                    size_of::<MEMORY_BASIC_INFORMATION>(),
+                )
+            };
+            if written == 0 || info.State != MEM_COMMIT || !is_plain_read_write(info.Protect) {
+                return Err(refuse());
+            }
+            let region_end = (info.BaseAddress as u64)
+                .checked_add(info.RegionSize as u64)
+                .ok_or_else(refuse)?;
+            if region_end >= end {
+                return Ok(());
+            }
+            if region_end <= cursor {
+                return Err(refuse());
+            }
+            cursor = region_end;
+        }
+        Err(MemError::LimitExceeded {
+            what: "regions spanned by one write",
+            requested: MAX_WRITE_REGIONS as u64 + 1,
+            limit: MAX_WRITE_REGIONS as u64,
+        })
     }
 
     /// Walks the address space with `VirtualQueryEx` and returns committed regions.

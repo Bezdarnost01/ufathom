@@ -208,6 +208,10 @@ static EMBEDDED: &[(&str, &str)] = &[
         include_str!("../../ufathom-runtime/src/ubool.rs"),
     ),
     (
+        "vendor/ufathom-runtime/src/write.rs",
+        include_str!("../../ufathom-runtime/src/write.rs"),
+    ),
+    (
         "vendor/ufathom-mem/Cargo.toml",
         include_str!("../../ufathom-mem/Cargo.toml"),
     ),

@@ -2,13 +2,14 @@
 //!
 //! `process_vm_readv` reports `EFAULT` for unmapped or unreadable memory and
 //! never raises a signal in the caller, so target memory is never dereferenced
-//! directly, not even for the current process.
+//! directly, not even for the current process. The one write uses
+//! `process_vm_writev` the same way.
 
 use std::ffi::c_void;
 use std::fs;
 
 use crate::error::{MemError, range_end};
-use crate::maps::{modules_from_maps, parse_maps, regions_from_maps};
+use crate::maps::{modules_from_maps, parse_maps, range_writable, regions_from_maps};
 use crate::reader::Addr;
 use crate::types::{MemoryRegion, ModuleInfo, ProcessInfo};
 
@@ -110,6 +111,64 @@ impl Target {
                 libc::ESRCH => MemError::ProcessGone { pid: self.pid },
                 code => MemError::Os {
                     operation: "process_vm_readv",
+                    code,
+                },
+            });
+        }
+    }
+
+    /// Writes `bytes` at `addr` with `process_vm_writev`, after checking in
+    /// `/proc/<pid>/maps` that the whole range is writable. Nothing is written
+    /// otherwise.
+    ///
+    /// `process_vm_writev` honours the page permissions (unlike a write to
+    /// `/proc/<pid>/mem`, which can force a write into read-only memory), so
+    /// a read-only or `PROT_NONE` page fails with `EFAULT` even if the maps
+    /// check were raced. The maps check exists to refuse a range that spans a
+    /// writable and a read-only page before the first page is changed.
+    pub(crate) fn write(&self, addr: Addr, bytes: &[u8]) -> Result<(), MemError> {
+        let end = range_end(addr, bytes.len())?;
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        if bytes.len() > MAX_CHUNK || !range_writable(&self.read_maps()?, addr, end) {
+            return Err(MemError::not_writable(addr, bytes.len()));
+        }
+        let local = libc::iovec {
+            iov_base: bytes.as_ptr().cast_mut().cast::<c_void>(),
+            iov_len: bytes.len(),
+        };
+        let remote = libc::iovec {
+            iov_base: addr as usize as *mut c_void,
+            iov_len: bytes.len(),
+        };
+        loop {
+            // SAFETY: `local` points at a valid buffer of `iov_len` bytes that
+            // outlives the call; the kernel only reads it, so the `cast_mut`
+            // is never used to write. `remote` is only an address value for
+            // the kernel, which validates it and fails with EFAULT when it is
+            // not writable; this process never dereferences it. Both iovec
+            // arrays have length 1.
+            let copied = unsafe {
+                libc::process_vm_writev(self.pid as libc::pid_t, &local, 1, &remote, 1, 0)
+            };
+            if copied >= 0 {
+                return if copied as usize == bytes.len() {
+                    Ok(())
+                } else {
+                    Err(MemError::not_writable(addr, bytes.len()))
+                };
+            }
+            let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+            return Err(match errno {
+                libc::EINTR => continue,
+                libc::EFAULT => MemError::not_writable(addr, bytes.len()),
+                libc::EPERM => MemError::AccessDenied {
+                    context: format!("process_vm_writev of process {}", self.pid),
+                },
+                libc::ESRCH => MemError::ProcessGone { pid: self.pid },
+                code => MemError::Os {
+                    operation: "process_vm_writev",
                     code,
                 },
             });

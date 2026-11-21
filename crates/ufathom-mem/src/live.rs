@@ -29,6 +29,37 @@ impl SelfMemory {
     }
 }
 
+impl SelfMemory {
+    /// Writes `bytes` at `addr` in the current process. This is the only write
+    /// in the crate, and it is deliberately not part of [`MemoryReader`]: code
+    /// that takes a reader, such as the dump pipeline, cannot reach it.
+    ///
+    /// Like a read, it never faults. The range must lie entirely in committed,
+    /// plain read-write memory, which is checked before the first byte is
+    /// written (`VirtualQueryEx` on Windows, `/proc/self/maps` on Linux), so a
+    /// refused write changes nothing. Page protection is never changed:
+    /// read-only, no-access, guard, copy-on-write and unmapped pages are all
+    /// refused with [`MemError::NotWritable`]. An empty slice succeeds.
+    ///
+    /// The check and the write are two steps, so a page whose protection
+    /// another thread changes in between can still turn a write into an error
+    /// (the copy call itself never faults). Nothing here stops the game from
+    /// reading or writing the same bytes at the same time: the write is not
+    /// atomic against other threads. See `ufathom-runtime` for the checked,
+    /// object-level API built on this.
+    ///
+    /// # Errors
+    ///
+    /// [`MemError::NotWritable`] for a range that is not entirely writable,
+    /// [`MemError::AddressOverflow`] for a range that overflows,
+    /// [`MemError::LimitExceeded`] for a range spanning an absurd number of
+    /// regions, [`MemError::Unsupported`] on platforms without a backend, and
+    /// [`MemError::Os`] for other failures.
+    pub fn write_exact(&self, addr: Addr, bytes: &[u8]) -> Result<(), MemError> {
+        self.target.write(addr, bytes)
+    }
+}
+
 impl Default for SelfMemory {
     fn default() -> Self {
         Self::new()
