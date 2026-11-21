@@ -113,6 +113,25 @@ cargo build --release --bin ufathom-sdk-external
 
 The executable opens the PID with `ProcessMemory` and calls the same `run` function. Access is read-only and requires the same privileges as the target; access denial is reported, not bypassed. External mode does not provide a `ProcessEvent` executor.
 
+### Running an existing mod DLL next to the Rust one
+
+A team with a C++ mod DLL, perhaps loaded through its own `dsound.dll` proxy, can move to Rust one feature at a time: the Rust DLL loads the old DLL(s) too, so both run side by side. Put a plain text file `ufathom-companions.txt` in the **same folder as the built SDK DLL**. Any build reads it (proxy or not), on the worker thread and never in `DllMain`. With no file, nothing happens.
+
+```text
+# One DLL per line: a file name or a path relative to this folder.
+# A comment takes a whole line. Blank lines are ignored.
+legacy_mod.dll
+legacy\second.dll
+after-engine:needs_the_engine.dll
+unload-on-exit
+```
+
+- **Paths.** Absolute paths (a drive, a leading `\` or `/`, UNC) and any `..` component are refused: the line is logged with its line number (`OutputDebugString`, like the rest of the DLL's output) and skipped, and the other lines still load. A DLL that fails to load is logged and does not stop the rest. Each is loaded with `LoadLibraryExW(full_path, LOAD_WITH_ALTERED_SEARCH_PATH)`, so it finds its own dependencies in its own folder. The file may be UTF-8 with or without a byte order mark, with LF or CRLF line ends.
+- **Order.** Companions load in file order, at once when the worker thread starts, before the proxy build waits for the engine and before `run`, because legacy proxies often expect to run early. A line starting with `after-engine:` loads only once the engine is up (objects loaded and, when the build has one, `GEngine` set); a build that does not wait for the engine loads those right after the others.
+- **Unload.** With `hot-unload` the companions are **not** unloaded by default, because the old DLL may not support being unloaded. Add the line `unload-on-exit` to free them in reverse order, after the Rust hooks are removed, and only when the SDK DLL really unloads itself (it stays loaded, and so do they, when a thread is still inside a hook, and always in a proxy build).
+
+The parser is `ufathom_runtime::companions::parse`, a pure function with unit tests. The loading is tested with real DLLs on Windows; it has not been run next to a real game mod.
+
 ### Work with game objects
 
 `sdk::session(memory)` opens a `Session` for the build the SDK was generated from. It works in both modes:
