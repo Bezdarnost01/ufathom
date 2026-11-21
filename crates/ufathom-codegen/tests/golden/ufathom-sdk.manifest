@@ -1,17 +1,17 @@
 ufathom-codegen manifest 1
 499e75c0c732486a	.cargo/config.toml
-6023c8f8c07e222f	Cargo.toml
+32169f82eb3d4f7c	Cargo.toml
 6f6a3420519dd0d7	build.rs
 e99cbecb7b7b43dc	proxy/dinput8.def
 7c5100adf33949e1	proxy/dsound.def
 e39c1bec96eb90ce	proxy/version.def
 173d47a7a7ec427a	proxy/winmm.def
-169c3e68cbd3d762	src/core_pkg.rs
-154393fd1b21f096	src/core_uobject.rs
+4e012e36fad5ac2d	src/core_pkg.rs
+d45d5ef2fc0de5b1	src/core_uobject.rs
 be1e17ff79669e1d	src/dll.rs
-84d2c0b07919aa55	src/engine.rs
+c141a1690a5a78fa	src/engine.rs
 6b0bade07fba3a0a	src/lib.rs
 45ab6da3e903bc90	src/main.rs
-c2d7ac9ea1a157f0	src/main_pkg.rs
-fe5619f1c20e7e84	src/mods.rs
-d33f4fe5a3652e2c	src/std_pkg.rs
+95f737a15a4440e3	src/main_pkg.rs
+b97310c5ba9d93a5	src/mods.rs
+ebd89b4d3c9e7b67	src/std_pkg.rs

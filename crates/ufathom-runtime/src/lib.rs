@@ -14,6 +14,10 @@
 //! path of the crate and it checks the object before every write; external
 //! sessions cannot write.
 //!
+//! Generated SDKs add typed field chains on top of [`ObjectRef`] and
+//! `LiveObject` (`object.root_component()?.relative_location()?`); see
+//! [`ChainError`].
+//!
 //! # `Pod`
 //!
 //! [`Pod`] is re-exported from `ufathom-mem`. A trait of our own is not
@@ -23,6 +27,7 @@
 //! with `MemoryReaderExt::read_pod` directly.
 #![deny(unsafe_op_in_unsafe_fn)]
 
+mod chain;
 pub mod companions;
 mod containers;
 mod desc;
@@ -52,6 +57,9 @@ mod ubool;
 #[cfg(feature = "inproc")]
 mod write;
 
+#[cfg(feature = "inproc")]
+pub use chain::AsLive;
+pub use chain::{AsObject, ChainError};
 pub use containers::{
     FLazyObjectPtr, FMulticastInlineDelegate, FMulticastSparseDelegate, FScriptDelegate,
     FScriptInterface, FSoftObjectPath, FSoftObjectPtr, FString, FText, FWeakObjectPtr, TArray,

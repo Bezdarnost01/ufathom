@@ -175,6 +175,116 @@ impl Namespace {
     }
 }
 
+/// Method names the field accessors must not take.
+///
+/// An accessor is a trait method on `ObjectRef` or `LiveObject`. An inherent
+/// method of the same name would silently win over it, and a method of a
+/// prelude trait the handle implements would make the call ambiguous or be
+/// picked first. Such a field gets a `field_` prefix instead.
+const RESERVED_ACCESSORS: &[&str] = &[
+    // Inherent on `ObjectRef`.
+    "new",
+    "from_ptr",
+    "addr",
+    "ptr",
+    "upcast",
+    "get",
+    "get_bit",
+    "read",
+    "follow",
+    // Inherent on `LiveObject`.
+    "read_only",
+    "set",
+    "modify",
+    "set_bit",
+    // The handle traits the accessor traits are built on.
+    "object",
+    "live",
+    // Std traits the handles implement or that blanket-implement for them.
+    "clone",
+    "clone_from",
+    "clone_into",
+    "to_owned",
+    "into",
+    "try_into",
+    "borrow",
+    "borrow_mut",
+    "type_id",
+    "fmt",
+    "eq",
+    "ne",
+];
+
+/// The accessor methods of one field: the getter and the `set_` setter.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AccessorNames {
+    /// Reads the field, or follows it when it is an object pointer.
+    pub getter: String,
+    /// Writes the field.
+    pub setter: String,
+}
+
+/// Hands out accessor names that are unique in a class and in its ancestors,
+/// and that never take a reserved method name.
+///
+/// A class's accessor trait is implemented for every handle on a derived
+/// class, so two traits of one hierarchy can both apply to one handle. A name
+/// declared by both would make the call ambiguous: a child therefore starts
+/// with the names of its ancestors taken, and its duplicate gets a suffix.
+#[derive(Debug, Default)]
+pub(crate) struct AccessorNamespace {
+    used: BTreeSet<String>,
+}
+
+impl AccessorNamespace {
+    /// A namespace in which `inherited` names are already taken.
+    pub(crate) fn with_inherited(inherited: impl IntoIterator<Item = String>) -> Self {
+        Self {
+            used: inherited.into_iter().collect(),
+        }
+    }
+
+    /// Every name handed out so far, and the inherited ones.
+    pub(crate) fn names(&self) -> &BTreeSet<String> {
+        &self.used
+    }
+
+    /// Takes the names for a field called `raw` in the dump.
+    ///
+    /// The getter is the snake case name and the setter is `set_` and the same
+    /// word. If either is a reserved method name, the word is prefixed with
+    /// `field_`. If either is taken, the word gets `_1`, `_2`, ... until both
+    /// are free, so the two names always belong together.
+    pub(crate) fn claim(&mut self, raw: &str) -> AccessorNames {
+        let word = snake_raw(raw);
+        let reserved = |word: &str| {
+            RESERVED_ACCESSORS.contains(&word)
+                || RESERVED_ACCESSORS.contains(&format!("set_{word}").as_str())
+        };
+        let base = if reserved(&word) {
+            format!("field_{word}")
+        } else {
+            word
+        };
+        let mut n = 0u32;
+        loop {
+            let candidate = if n == 0 {
+                base.clone()
+            } else {
+                format!("{base}_{n}")
+            };
+            let getter = keyword_safe(&candidate);
+            let setter = keyword_safe(&format!("set_{candidate}"));
+            if !self.used.contains(&getter) && !self.used.contains(&setter) {
+                self.used.insert(getter.clone());
+                self.used.insert(setter.clone());
+                return AccessorNames { getter, setter };
+            }
+            n += 1;
+        }
+    }
+}
+
 /// Makes text safe for a `///` line: no newlines or control characters.
 pub(crate) fn doc_text(text: &str) -> String {
     text.chars()
@@ -255,5 +365,67 @@ mod tests {
     fn last_segment_of_package_paths() {
         assert_eq!(last_segment("/Script/Engine"), "Engine");
         assert_eq!(last_segment("/Game/Maps/Foo.Foo"), "Foo");
+    }
+
+    #[test]
+    fn accessor_names_pair_a_getter_with_a_setter() {
+        let mut ns = AccessorNamespace::default();
+        assert_eq!(
+            ns.claim("RootComponent"),
+            AccessorNames {
+                getter: "root_component".to_owned(),
+                setter: "set_root_component".to_owned()
+            }
+        );
+        assert_eq!(ns.claim("bHidden").getter, "b_hidden");
+        // A keyword is escaped on the finished identifier only.
+        let ty = ns.claim("Type");
+        assert_eq!(
+            (ty.getter.as_str(), ty.setter.as_str()),
+            ("r#type", "set_type")
+        );
+    }
+
+    #[test]
+    fn reserved_accessor_names_get_a_field_prefix() {
+        let mut ns = AccessorNamespace::default();
+        // Inherent methods of `ObjectRef` and `LiveObject`.
+        assert_eq!(ns.claim("Get").getter, "field_get");
+        assert_eq!(ns.claim("Read").getter, "field_read");
+        assert_eq!(ns.claim("Addr").getter, "field_addr");
+        assert_eq!(ns.claim("Ptr").getter, "field_ptr");
+        assert_eq!(ns.claim("Object").getter, "field_object");
+        assert_eq!(ns.claim("Clone").getter, "field_clone");
+        // The setter of a field named `Bit` would be `set_bit`, which is
+        // inherent on `LiveObject`; the whole pair moves.
+        let bit = ns.claim("Bit");
+        assert_eq!(
+            (bit.getter.as_str(), bit.setter.as_str()),
+            ("field_bit", "set_field_bit")
+        );
+        // `Set` has setter `set_set`, which is fine, but the getter is `set`.
+        assert_eq!(ns.claim("Set").getter, "field_set");
+        assert_eq!(ns.claim("Modify").getter, "field_modify");
+        // A name that merely contains a reserved word is untouched.
+        assert_eq!(ns.claim("Reader").getter, "reader");
+    }
+
+    #[test]
+    fn duplicate_and_inherited_accessor_names_get_a_suffix() {
+        let mut parent = AccessorNamespace::default();
+        assert_eq!(parent.claim("Health").getter, "health");
+        let mut child = AccessorNamespace::with_inherited(parent.names().iter().cloned());
+        let again = child.claim("Health");
+        assert_eq!(
+            (again.getter.as_str(), again.setter.as_str()),
+            ("health_1", "set_health_1")
+        );
+        // Two dump names that snake-case alike stay distinct.
+        assert_eq!(child.claim("bFoo").getter, "b_foo");
+        assert_eq!(child.claim("b_foo").getter, "b_foo_1");
+        // A getter can be taken by another field's setter-shaped name.
+        let mut ns = AccessorNamespace::default();
+        assert_eq!(ns.claim("SetX").getter, "set_x");
+        assert_eq!(ns.claim("X").getter, "x_1");
     }
 }

@@ -153,6 +153,41 @@ impl UClass {
     pub const CLASS_DEFAULT_OBJECT: rt::FieldRef<Self, rt::Ptr<crate::core_uobject::UObject>> = rt::FieldRef::new(0x128);
 }
 
+/// Typed accessors for the fields of the class [`UClass`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UClassFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UClass>,
+{
+    /// Reads `ClassCastFlags` (offset 0xd8).
+    fn class_cast_flags(&self) -> Result<u64, rt::MemError> { self.object().get(UClass::CLASS_CAST_FLAGS) }
+    /// Reads `ClassDefaultObject` (offset 0x128).
+    fn class_default_object(&self) -> Result<rt::ObjectRef<'m, crate::core_uobject::UObject>, rt::ChainError> { self.object().follow(UClass::CLASS_DEFAULT_OBJECT, "UClass::ClassDefaultObject") }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UClassFields<'m> for H where H::Class: rt::IsA<UClass> {}
+
+/// Typed writers for the fields of the class [`UClass`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UClassLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UClass>,
+{
+    /// Writes `ClassCastFlags` (offset 0xd8).
+    fn set_class_cast_flags(&self, value: u64) -> Result<(), rt::WriteError> { self.live().set(UClass::CLASS_CAST_FLAGS, value) }
+    /// Follows `ClassDefaultObject` to the object it points to.
+    fn class_default_object(&self) -> Result<rt::LiveObject<'s, crate::core_uobject::UObject>, rt::ChainError> { self.live().follow(UClass::CLASS_DEFAULT_OBJECT, "UClass::ClassDefaultObject") }
+    /// Writes `ClassDefaultObject` (offset 0x128).
+    fn set_class_default_object(&self, value: rt::Ptr<crate::core_uobject::UObject>) -> Result<(), rt::WriteError> { self.live().set(UClass::CLASS_DEFAULT_OBJECT, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UClassLiveFields<'s> for H where H::Class: rt::IsA<UClass> {}
+
 /// Class `/Script/CoreUObject.Field`.
 ///
 /// Size 0x38, alignment 8.
@@ -202,6 +237,37 @@ impl UField {
     /// Offset of `Next`: Offset 0x30, `next field in the owner's member list (from the engine layout)`.
     pub const NEXT: rt::FieldRef<Self, rt::Ptr<crate::core_uobject::UField>> = rt::FieldRef::new(0x30);
 }
+
+/// Typed accessors for the fields of the class [`UField`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UFieldFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UField>,
+{
+    /// Reads `Next` (offset 0x30).
+    fn next(&self) -> Result<rt::ObjectRef<'m, crate::core_uobject::UField>, rt::ChainError> { self.object().follow(UField::NEXT, "UField::Next") }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UFieldFields<'m> for H where H::Class: rt::IsA<UField> {}
+
+/// Typed writers for the fields of the class [`UField`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UFieldLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UField>,
+{
+    /// Follows `Next` to the object it points to.
+    fn next(&self) -> Result<rt::LiveObject<'s, crate::core_uobject::UField>, rt::ChainError> { self.live().follow(UField::NEXT, "UField::Next") }
+    /// Writes `Next` (offset 0x30).
+    fn set_next(&self, value: rt::Ptr<crate::core_uobject::UField>) -> Result<(), rt::WriteError> { self.live().set(UField::NEXT, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UFieldLiveFields<'s> for H where H::Class: rt::IsA<UField> {}
 
 /// Class `/Script/CoreUObject.Function`.
 ///
@@ -271,6 +337,41 @@ impl UFunction {
     pub const FUNC: rt::FieldRef<Self, rt::Ptr<u8>> = rt::FieldRef::new(0xe0);
 }
 
+/// Typed accessors for the fields of the class [`UFunction`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UFunctionFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UFunction>,
+{
+    /// Reads `FunctionFlags` (offset 0xb8).
+    fn function_flags(&self) -> Result<u32, rt::MemError> { self.object().get(UFunction::FUNCTION_FLAGS) }
+    /// Reads `Func` (offset 0xe0).
+    fn func(&self) -> Result<rt::ObjectRef<'m, u8>, rt::ChainError> { self.object().follow(UFunction::FUNC, "UFunction::Func") }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UFunctionFields<'m> for H where H::Class: rt::IsA<UFunction> {}
+
+/// Typed writers for the fields of the class [`UFunction`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UFunctionLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UFunction>,
+{
+    /// Writes `FunctionFlags` (offset 0xb8).
+    fn set_function_flags(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UFunction::FUNCTION_FLAGS, value) }
+    /// Follows `Func` to the object it points to.
+    fn func(&self) -> Result<rt::LiveObject<'s, u8>, rt::ChainError> { self.live().follow(UFunction::FUNC, "UFunction::Func") }
+    /// Writes `Func` (offset 0xe0).
+    fn set_func(&self, value: rt::Ptr<u8>) -> Result<(), rt::WriteError> { self.live().set(UFunction::FUNC, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UFunctionLiveFields<'s> for H where H::Class: rt::IsA<UFunction> {}
+
 /// Struct `/Script/CoreUObject.Guid`.
 ///
 /// Size 0x10, alignment 4.
@@ -320,6 +421,47 @@ impl FGuid {
     /// Offset of `D`: Offset 0xc, `uint32`.
     pub const D: rt::FieldRef<Self, u32> = rt::FieldRef::new(0xc);
 }
+
+/// Typed accessors for the fields of the struct [`FGuid`], on `rt::ObjectRef`
+/// of this struct or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait FGuidFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<FGuid>,
+{
+    /// Reads `A` (offset 0x0).
+    fn a(&self) -> Result<u32, rt::MemError> { self.object().get(FGuid::A) }
+    /// Reads `B` (offset 0x4).
+    fn b(&self) -> Result<u32, rt::MemError> { self.object().get(FGuid::B) }
+    /// Reads `C` (offset 0x8).
+    fn c(&self) -> Result<u32, rt::MemError> { self.object().get(FGuid::C) }
+    /// Reads `D` (offset 0xc).
+    fn d(&self) -> Result<u32, rt::MemError> { self.object().get(FGuid::D) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> FGuidFields<'m> for H where H::Class: rt::IsA<FGuid> {}
+
+/// Typed writers for the fields of the struct [`FGuid`], on `rt::LiveObject` of this
+/// struct or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait FGuidLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<FGuid>,
+{
+    /// Writes `A` (offset 0x0).
+    fn set_a(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(FGuid::A, value) }
+    /// Writes `B` (offset 0x4).
+    fn set_b(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(FGuid::B, value) }
+    /// Writes `C` (offset 0x8).
+    fn set_c(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(FGuid::C, value) }
+    /// Writes `D` (offset 0xc).
+    fn set_d(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(FGuid::D, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> FGuidLiveFields<'s> for H where H::Class: rt::IsA<FGuid> {}
 
 /// Class `/Script/CoreUObject.Object`.
 ///
@@ -384,6 +526,61 @@ impl UObject {
     /// Offset of `OuterPrivate`: Offset 0x28, `the outer object (from the engine layout)`.
     pub const OUTER_PRIVATE: rt::FieldRef<Self, rt::Ptr<crate::core_uobject::UObject>> = rt::FieldRef::new(0x28);
 }
+
+/// Typed accessors for the fields of the class [`UObject`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UObjectFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UObject>,
+{
+    /// Reads `Vtable` (offset 0x0).
+    fn vtable(&self) -> Result<rt::ObjectRef<'m, u8>, rt::ChainError> { self.object().follow(UObject::VTABLE, "UObject::Vtable") }
+    /// Reads `ObjectFlags` (offset 0x8).
+    fn object_flags(&self) -> Result<u32, rt::MemError> { self.object().get(UObject::OBJECT_FLAGS) }
+    /// Reads `InternalIndex` (offset 0xc).
+    fn internal_index(&self) -> Result<i32, rt::MemError> { self.object().get(UObject::INTERNAL_INDEX) }
+    /// Reads `ClassPrivate` (offset 0x10).
+    fn class_private(&self) -> Result<rt::ObjectRef<'m, crate::core_uobject::UClass>, rt::ChainError> { self.object().follow(UObject::CLASS_PRIVATE, "UObject::ClassPrivate") }
+    /// Reads `NamePrivate` (offset 0x18).
+    fn name_private(&self) -> Result<crate::FName, rt::MemError> { self.object().get(UObject::NAME_PRIVATE) }
+    /// Reads `OuterPrivate` (offset 0x28).
+    fn outer_private(&self) -> Result<rt::ObjectRef<'m, crate::core_uobject::UObject>, rt::ChainError> { self.object().follow(UObject::OUTER_PRIVATE, "UObject::OuterPrivate") }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UObjectFields<'m> for H where H::Class: rt::IsA<UObject> {}
+
+/// Typed writers for the fields of the class [`UObject`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UObjectLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UObject>,
+{
+    /// Follows `Vtable` to the object it points to.
+    fn vtable(&self) -> Result<rt::LiveObject<'s, u8>, rt::ChainError> { self.live().follow(UObject::VTABLE, "UObject::Vtable") }
+    /// Writes `Vtable` (offset 0x0).
+    fn set_vtable(&self, value: rt::Ptr<u8>) -> Result<(), rt::WriteError> { self.live().set(UObject::VTABLE, value) }
+    /// Writes `ObjectFlags` (offset 0x8).
+    fn set_object_flags(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UObject::OBJECT_FLAGS, value) }
+    /// Writes `InternalIndex` (offset 0xc).
+    fn set_internal_index(&self, value: i32) -> Result<(), rt::WriteError> { self.live().set(UObject::INTERNAL_INDEX, value) }
+    /// Follows `ClassPrivate` to the object it points to.
+    fn class_private(&self) -> Result<rt::LiveObject<'s, crate::core_uobject::UClass>, rt::ChainError> { self.live().follow(UObject::CLASS_PRIVATE, "UObject::ClassPrivate") }
+    /// Writes `ClassPrivate` (offset 0x10).
+    fn set_class_private(&self, value: rt::Ptr<crate::core_uobject::UClass>) -> Result<(), rt::WriteError> { self.live().set(UObject::CLASS_PRIVATE, value) }
+    /// Writes `NamePrivate` (offset 0x18).
+    fn set_name_private(&self, value: crate::FName) -> Result<(), rt::WriteError> { self.live().set(UObject::NAME_PRIVATE, value) }
+    /// Follows `OuterPrivate` to the object it points to.
+    fn outer_private(&self) -> Result<rt::LiveObject<'s, crate::core_uobject::UObject>, rt::ChainError> { self.live().follow(UObject::OUTER_PRIVATE, "UObject::OuterPrivate") }
+    /// Writes `OuterPrivate` (offset 0x28).
+    fn set_outer_private(&self, value: rt::Ptr<crate::core_uobject::UObject>) -> Result<(), rt::WriteError> { self.live().set(UObject::OUTER_PRIVATE, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UObjectLiveFields<'s> for H where H::Class: rt::IsA<UObject> {}
 
 /// Class `/Script/CoreUObject.Struct`.
 ///
@@ -466,6 +663,57 @@ impl UStruct {
     pub const MIN_ALIGNMENT: rt::FieldRef<Self, i32> = rt::FieldRef::new(0x64);
 }
 
+/// Typed accessors for the fields of the class [`UStruct`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UStructFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UStruct>,
+{
+    /// Reads `SuperStruct` (offset 0x48).
+    fn super_struct(&self) -> Result<rt::ObjectRef<'m, crate::core_uobject::UStruct>, rt::ChainError> { self.object().follow(UStruct::SUPER_STRUCT, "UStruct::SuperStruct") }
+    /// Reads `Children` (offset 0x50).
+    fn children(&self) -> Result<rt::ObjectRef<'m, crate::core_uobject::UField>, rt::ChainError> { self.object().follow(UStruct::CHILDREN, "UStruct::Children") }
+    /// Reads `ChildProperties` (offset 0x58).
+    fn child_properties(&self) -> Result<rt::ObjectRef<'m, u8>, rt::ChainError> { self.object().follow(UStruct::CHILD_PROPERTIES, "UStruct::ChildProperties") }
+    /// Reads `PropertiesSize` (offset 0x60).
+    fn properties_size(&self) -> Result<i32, rt::MemError> { self.object().get(UStruct::PROPERTIES_SIZE) }
+    /// Reads `MinAlignment` (offset 0x64).
+    fn min_alignment(&self) -> Result<i32, rt::MemError> { self.object().get(UStruct::MIN_ALIGNMENT) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UStructFields<'m> for H where H::Class: rt::IsA<UStruct> {}
+
+/// Typed writers for the fields of the class [`UStruct`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UStructLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UStruct>,
+{
+    /// Follows `SuperStruct` to the object it points to.
+    fn super_struct(&self) -> Result<rt::LiveObject<'s, crate::core_uobject::UStruct>, rt::ChainError> { self.live().follow(UStruct::SUPER_STRUCT, "UStruct::SuperStruct") }
+    /// Writes `SuperStruct` (offset 0x48).
+    fn set_super_struct(&self, value: rt::Ptr<crate::core_uobject::UStruct>) -> Result<(), rt::WriteError> { self.live().set(UStruct::SUPER_STRUCT, value) }
+    /// Follows `Children` to the object it points to.
+    fn children(&self) -> Result<rt::LiveObject<'s, crate::core_uobject::UField>, rt::ChainError> { self.live().follow(UStruct::CHILDREN, "UStruct::Children") }
+    /// Writes `Children` (offset 0x50).
+    fn set_children(&self, value: rt::Ptr<crate::core_uobject::UField>) -> Result<(), rt::WriteError> { self.live().set(UStruct::CHILDREN, value) }
+    /// Follows `ChildProperties` to the object it points to.
+    fn child_properties(&self) -> Result<rt::LiveObject<'s, u8>, rt::ChainError> { self.live().follow(UStruct::CHILD_PROPERTIES, "UStruct::ChildProperties") }
+    /// Writes `ChildProperties` (offset 0x58).
+    fn set_child_properties(&self, value: rt::Ptr<u8>) -> Result<(), rt::WriteError> { self.live().set(UStruct::CHILD_PROPERTIES, value) }
+    /// Writes `PropertiesSize` (offset 0x60).
+    fn set_properties_size(&self, value: i32) -> Result<(), rt::WriteError> { self.live().set(UStruct::PROPERTIES_SIZE, value) }
+    /// Writes `MinAlignment` (offset 0x64).
+    fn set_min_alignment(&self, value: i32) -> Result<(), rt::WriteError> { self.live().set(UStruct::MIN_ALIGNMENT, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UStructLiveFields<'s> for H where H::Class: rt::IsA<UStruct> {}
+
 /// Struct `/Script/CoreUObject.Transform`.
 ///
 /// Size 0x20, alignment 16.
@@ -507,6 +755,39 @@ impl FTransform {
     /// Offset of `Translation`: Offset 0x10, `Struct</Script/CoreUObject.Vector>`.
     pub const TRANSLATION: rt::FieldRef<Self, crate::core_uobject::FVector> = rt::FieldRef::new(0x10);
 }
+
+/// Typed accessors for the fields of the struct [`FTransform`], on `rt::ObjectRef`
+/// of this struct or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait FTransformFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<FTransform>,
+{
+    /// Reads `Scale3D` (offset 0x0).
+    fn scale3_d(&self) -> Result<crate::core_uobject::FVector, rt::MemError> { self.object().get(FTransform::SCALE3_D) }
+    /// Reads `Translation` (offset 0x10).
+    fn translation(&self) -> Result<crate::core_uobject::FVector, rt::MemError> { self.object().get(FTransform::TRANSLATION) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> FTransformFields<'m> for H where H::Class: rt::IsA<FTransform> {}
+
+/// Typed writers for the fields of the struct [`FTransform`], on `rt::LiveObject` of this
+/// struct or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait FTransformLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<FTransform>,
+{
+    /// Writes `Scale3D` (offset 0x0).
+    fn set_scale3_d(&self, value: crate::core_uobject::FVector) -> Result<(), rt::WriteError> { self.live().set(FTransform::SCALE3_D, value) }
+    /// Writes `Translation` (offset 0x10).
+    fn set_translation(&self, value: crate::core_uobject::FVector) -> Result<(), rt::WriteError> { self.live().set(FTransform::TRANSLATION, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> FTransformLiveFields<'s> for H where H::Class: rt::IsA<FTransform> {}
 
 /// Struct `/Script/CoreUObject.Vector`.
 ///
@@ -551,3 +832,40 @@ impl FVector {
     /// Offset of `Z`: Offset 0x8, `float`.
     pub const Z: rt::FieldRef<Self, f32> = rt::FieldRef::new(0x8);
 }
+
+/// Typed accessors for the fields of the struct [`FVector`], on `rt::ObjectRef`
+/// of this struct or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait FVectorFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<FVector>,
+{
+    /// Reads `X` (offset 0x0).
+    fn x(&self) -> Result<f32, rt::MemError> { self.object().get(FVector::X) }
+    /// Reads `Y` (offset 0x4).
+    fn y(&self) -> Result<f32, rt::MemError> { self.object().get(FVector::Y) }
+    /// Reads `Z` (offset 0x8).
+    fn z(&self) -> Result<f32, rt::MemError> { self.object().get(FVector::Z) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> FVectorFields<'m> for H where H::Class: rt::IsA<FVector> {}
+
+/// Typed writers for the fields of the struct [`FVector`], on `rt::LiveObject` of this
+/// struct or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait FVectorLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<FVector>,
+{
+    /// Writes `X` (offset 0x0).
+    fn set_x(&self, value: f32) -> Result<(), rt::WriteError> { self.live().set(FVector::X, value) }
+    /// Writes `Y` (offset 0x4).
+    fn set_y(&self, value: f32) -> Result<(), rt::WriteError> { self.live().set(FVector::Y, value) }
+    /// Writes `Z` (offset 0x8).
+    fn set_z(&self, value: f32) -> Result<(), rt::WriteError> { self.live().set(FVector::Z, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> FVectorLiveFields<'s> for H where H::Class: rt::IsA<FVector> {}

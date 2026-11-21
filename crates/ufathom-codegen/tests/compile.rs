@@ -76,6 +76,17 @@ fn golden_dump_compiles_one_package_at_a_time() {
             "compile test feature {feature}: cargo check {:.1?}",
             run.elapsed
         );
+        // The same package with the chain accessors, with and without the
+        // live (write) half.
+        for features in [
+            format!("{feature},accessors"),
+            format!("{feature},accessors,inproc"),
+        ] {
+            run_cargo(
+                dir.path(),
+                &["check", "--no-default-features", "--features", &features],
+            );
+        }
     }
 }
 

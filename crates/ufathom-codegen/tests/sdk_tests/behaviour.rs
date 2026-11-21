@@ -4,15 +4,18 @@
 use std::cell::RefCell;
 
 use ufathom_runtime::mem::Snapshot;
-use ufathom_runtime::{CallError, Executor, IsA, ObjectRef, Ptr, UObjectBase};
-use ufathom_sdk::core_uobject::{FVector, UObject};
-use ufathom_sdk::engine::{AActor, APawn, EMode};
+use ufathom_runtime::{CallError, ChainError, Executor, IsA, ObjectRef, Ptr, UObjectBase};
+use ufathom_sdk::core_uobject::{FVector, UObject, UObjectFields};
+use ufathom_sdk::engine::{AActor, AActorFields, APawn, APawnFields, EMode};
 
 const BASE: u64 = 0x7000_0000;
+/// Where `second_pawn_bytes` sits.
+const SECOND: u64 = BASE + 0x100;
 
-/// A pawn: health 75.5, `bCanTick` set, mode flying, location (1, 2, 3), speed 600.
+/// A pawn: health 75.5, `bCanTick` set, mode flying, location (1, 2, 3), speed
+/// 600. Its `Target` is the second pawn and its `Owner` is null.
 fn pawn_bytes() -> Vec<u8> {
-    let mut b = vec![0u8; 0x48];
+    let mut b = vec![0u8; 0x58];
     // The `UObject` header, from the layout: index, class, name, outer.
     b[0x0C..0x10].copy_from_slice(&77i32.to_le_bytes());
     b[0x10..0x18].copy_from_slice(&0x1234u64.to_le_bytes());
@@ -26,12 +29,23 @@ fn pawn_bytes() -> Vec<u8> {
     b[0x34..0x38].copy_from_slice(&2.0f32.to_le_bytes());
     b[0x38..0x3C].copy_from_slice(&3.0f32.to_le_bytes());
     b[0x40..0x44].copy_from_slice(&600.0f32.to_le_bytes());
+    b[0x48..0x50].copy_from_slice(&SECOND.to_le_bytes());
+    b
+}
+
+/// A second pawn: health 12.5, speed 1.5, no target, and the first pawn as owner.
+fn second_pawn_bytes() -> Vec<u8> {
+    let mut b = vec![0u8; 0x58];
+    b[0x28..0x2C].copy_from_slice(&12.5f32.to_le_bytes());
+    b[0x40..0x44].copy_from_slice(&1.5f32.to_le_bytes());
+    b[0x50..0x58].copy_from_slice(&BASE.to_le_bytes());
     b
 }
 
 fn memory() -> Snapshot {
     Snapshot::builder()
         .region(BASE, pawn_bytes())
+        .region(SECOND, second_pawn_bytes())
         .build()
         .unwrap()
 }
@@ -39,7 +53,7 @@ fn memory() -> Snapshot {
 #[test]
 fn layout_is_exact() {
     assert_eq!(size_of::<AActor>(), 0x40);
-    assert_eq!(size_of::<APawn>(), 0x48);
+    assert_eq!(size_of::<APawn>(), 0x58);
     assert_eq!(align_of::<APawn>(), 8);
     assert_eq!(size_of::<FVector>(), 12);
 }
@@ -80,6 +94,76 @@ fn unreadable_address_is_an_error() {
     let mem = memory();
     assert!(ObjectRef::<APawn>::new(&mem, 0x10).read().is_err());
     assert!(ObjectRef::<APawn>::new(&mem, BASE + 0x40).read().is_err());
+}
+
+#[test]
+fn chains_read_two_levels_through_pointer_fields() {
+    let mem = memory();
+    let pawn = ObjectRef::<APawn>::new(&mem, BASE);
+    // One link: the pointer field is followed to an object of its class.
+    assert_eq!(pawn.target().unwrap().addr(), SECOND);
+    assert_eq!(pawn.target().unwrap().speed().unwrap(), 1.5);
+    // Two links, the second a field of the parent class, through the child.
+    assert_eq!(pawn.target().unwrap().health().unwrap(), 12.5);
+    // Three links, through a pointer to the parent class and back.
+    let owner = pawn.target().unwrap().owner().unwrap();
+    assert_eq!(owner.addr(), BASE);
+    assert_eq!(owner.health().unwrap(), 75.5);
+    // The same chain written with `?`.
+    fn chain(pawn: ObjectRef<'_, APawn>) -> Result<f32, ChainError> {
+        Ok(pawn.target()?.owner()?.health()?)
+    }
+    assert_eq!(chain(pawn).unwrap(), 75.5);
+}
+
+#[test]
+fn inherited_fields_are_read_through_a_child() {
+    let mem = memory();
+    let pawn = ObjectRef::<APawn>::new(&mem, BASE);
+    // Declared on `AActor`, read on an `APawn` handle.
+    assert_eq!(pawn.health().unwrap(), 75.5);
+    assert_eq!(pawn.mode().unwrap(), EMode::Flying);
+    assert_eq!(pawn.location().unwrap().z, 3.0);
+    assert!(pawn.b_can_tick().unwrap());
+    assert!(!pawn.b_hidden().unwrap());
+    // Declared on `UObject`, two levels up.
+    assert_eq!(pawn.internal_index().unwrap(), 77);
+    assert_eq!(pawn.class_private().unwrap().addr(), 0x1234);
+    // The parent's own handle reads the same field.
+    assert_eq!(pawn.upcast::<AActor>().health().unwrap(), 75.5);
+}
+
+#[test]
+fn a_null_pointer_in_a_chain_names_the_field() {
+    let mem = memory();
+    let pawn = ObjectRef::<APawn>::new(&mem, BASE);
+    // `Owner` is null on the first pawn.
+    match pawn.owner() {
+        Err(ChainError::Null { field }) => assert_eq!(field, "APawn::Owner"),
+        other => panic!("expected a null error, got {other:?}"),
+    }
+    // The chain breaks at the second link; the first succeeded.
+    fn chain(pawn: ObjectRef<'_, APawn>) -> Result<f32, ChainError> {
+        Ok(pawn.target()?.target()?.health()?)
+    }
+    let error = chain(pawn).unwrap_err();
+    assert!(matches!(error, ChainError::Null { field: "APawn::Target" }));
+    assert_eq!(
+        error.to_string(),
+        "null object pointer in field APawn::Target"
+    );
+}
+
+#[test]
+fn a_wild_pointer_in_a_chain_is_a_memory_error() {
+    let mut bytes = pawn_bytes();
+    bytes[0x50..0x58].copy_from_slice(&0xDEAD_0000u64.to_le_bytes());
+    let mem = Snapshot::builder().region(BASE, bytes).build().unwrap();
+    let pawn = ObjectRef::<APawn>::new(&mem, BASE);
+    // Following a pointer reads only the pointer; the target is read next.
+    let owner = pawn.owner().unwrap();
+    assert_eq!(owner.addr(), 0xDEAD_0000);
+    assert!(matches!(owner.health(), Err(ufathom_runtime::MemError::Unreadable { .. })));
 }
 
 #[test]
@@ -230,9 +314,10 @@ fn typed_hook_markers_carry_the_path_and_the_native_flag() {
 fn fields_are_written_through_live_object_and_read_back() {
     use ufathom_runtime::mem::SelfMemory;
     use ufathom_runtime::{
-        EngineDesc, FNameDesc, NamePoolDesc, NamesDesc, ObjectArrayDesc, ObjectDesc, Place,
-        Session, WriteError,
+        EngineDesc, FNameDesc, LiveObject, NamePoolDesc, NamesDesc, ObjectArrayDesc, ObjectDesc,
+        Place, Session, WriteError,
     };
+    use ufathom_sdk::engine::{AActorLiveFields, APawnLiveFields};
 
     const ARRAY: u64 = 0x00;
     const ITEMS: u64 = 0x40;
@@ -253,12 +338,14 @@ fn fields_are_written_through_live_object_and_read_back() {
     put(ITEMS + ITEM_SIZE, &(base + PAWN_AT).to_le_bytes());
     // The pawn is in slot 1 and its class is in slot 0.
     let mut pawn = pawn_bytes();
+    // The pawn is its own target, so a live chain can stay inside the fake engine.
+    pawn[0x48..0x50].copy_from_slice(&(base + PAWN_AT).to_le_bytes());
     pawn[0x0C..0x10].copy_from_slice(&1u32.to_le_bytes());
     pawn[0x10..0x18].copy_from_slice(&(base + CLASS_AT).to_le_bytes());
     put(PAWN_AT, &pawn);
     // The class: slot 0, `PropertiesSize` (0x40 in this layout) of the pawn.
     put(CLASS_AT + 0x0C, &0u32.to_le_bytes());
-    put(CLASS_AT + 0x40, &0x48u32.to_le_bytes());
+    put(CLASS_AT + 0x40, &0x58u32.to_le_bytes());
     for (word, chunk) in words.iter_mut().zip(bytes.chunks_exact(8)) {
         *word = u64::from_le_bytes(chunk.try_into().unwrap());
     }
@@ -325,6 +412,43 @@ fn fields_are_written_through_live_object_and_read_back() {
     assert_eq!((location.x, location.y, location.z), (4.0, 5.0, 6.0));
     assert!(read.get_bit(AActor::B_HIDDEN).unwrap());
     assert!(!read.get_bit(AActor::B_CAN_TICK).unwrap());
+
+    // The same writes through the typed accessors, inherited ones included.
+    pawn.set_speed(950.0).unwrap();
+    pawn.set_health(120.0).unwrap();
+    pawn.set_mode(EMode(2)).unwrap();
+    pawn.set_location(FVector { x: 7.0, y: 8.0, z: 9.0 }).unwrap();
+    pawn.set_b_hidden(false).unwrap();
+    pawn.set_b_can_tick(true).unwrap();
+    assert_eq!(read.speed().unwrap(), 950.0);
+    assert_eq!(read.health().unwrap(), 120.0);
+    assert_eq!(read.mode().unwrap(), EMode(2));
+    assert_eq!(read.location().unwrap().y, 8.0);
+    assert!(!read.b_hidden().unwrap());
+    assert!(read.b_can_tick().unwrap());
+
+    // A write chain: follow `Target` (the pawn itself) and write there.
+    pawn.target().unwrap().set_health(33.0).unwrap();
+    assert_eq!(read.target().unwrap().health().unwrap(), 33.0);
+    assert_eq!(read.health().unwrap(), 33.0);
+    // A null link reports the field, and `ChainError` takes a `WriteError` too.
+    assert!(matches!(
+        pawn.owner(),
+        Err(ChainError::Null { field: "APawn::Owner" })
+    ));
+    fn chain(pawn: LiveObject<'_, APawn>) -> Result<(), ChainError> {
+        pawn.target()?.set_speed(5.0)?;
+        pawn.owner()?.set_health(6.0)?;
+        Ok(())
+    }
+    assert!(matches!(chain(pawn), Err(ChainError::Null { .. })));
+    assert_eq!(read.speed().unwrap(), 5.0);
+    // A dead object is refused by the typed setter too.
+    let ghost = session.live_object(Ptr::<APawn>::new(base + PAWN_AT + 8));
+    assert!(matches!(
+        ghost.set_health(1.0),
+        Err(WriteError::DeadObject { .. })
+    ));
 
     // An object that is not in the array is refused and nothing is written.
     let stray = session.live_object(Ptr::<APawn>::new(base + PAWN_AT + 8));

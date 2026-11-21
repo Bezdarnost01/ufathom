@@ -323,6 +323,63 @@ impl AActor {
     }
 }
 
+/// Typed accessors for the fields of the class [`AActor`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait AActorFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<AActor>,
+{
+    /// Reads `Health` (offset 0x30).
+    fn health(&self) -> Result<f32, rt::MemError> { self.object().get(AActor::HEALTH) }
+    /// Reads `bCanBeDamaged` (offset 0x34).
+    fn b_can_be_damaged(&self) -> Result<bool, rt::MemError> { self.object().get_bit(AActor::B_CAN_BE_DAMAGED) }
+    /// Reads `bHidden` (offset 0x34).
+    fn b_hidden(&self) -> Result<bool, rt::MemError> { self.object().get_bit(AActor::B_HIDDEN) }
+    /// Reads `bReplicates` (offset 0x34).
+    fn b_replicates(&self) -> Result<bool, rt::MemError> { self.object().get_bit(AActor::B_REPLICATES) }
+    /// Reads `bBlocking` (offset 0x35).
+    fn b_blocking(&self) -> Result<bool, rt::MemError> { self.object().get_bit(AActor::B_BLOCKING) }
+    /// Reads `bNative` (offset 0x36).
+    fn b_native(&self) -> Result<bool, rt::MemError> { self.object().get(AActor::B_NATIVE).map(rt::UBool::get) }
+    /// Reads `Mode` (offset 0x37).
+    fn mode(&self) -> Result<crate::core_uobject::ENetRole, rt::MemError> { self.object().get(AActor::MODE) }
+    /// Reads `Location` (offset 0x38).
+    fn location(&self) -> Result<crate::core_uobject::FVector, rt::MemError> { self.object().get(AActor::LOCATION) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> AActorFields<'m> for H where H::Class: rt::IsA<AActor> {}
+
+/// Typed writers for the fields of the class [`AActor`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait AActorLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<AActor>,
+{
+    /// Writes `Health` (offset 0x30).
+    fn set_health(&self, value: f32) -> Result<(), rt::WriteError> { self.live().set(AActor::HEALTH, value) }
+    /// Writes `bCanBeDamaged` (offset 0x34).
+    fn set_b_can_be_damaged(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set_bit(AActor::B_CAN_BE_DAMAGED, value) }
+    /// Writes `bHidden` (offset 0x34).
+    fn set_b_hidden(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set_bit(AActor::B_HIDDEN, value) }
+    /// Writes `bReplicates` (offset 0x34).
+    fn set_b_replicates(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set_bit(AActor::B_REPLICATES, value) }
+    /// Writes `bBlocking` (offset 0x35).
+    fn set_b_blocking(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set_bit(AActor::B_BLOCKING, value) }
+    /// Writes `bNative` (offset 0x36).
+    fn set_b_native(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set(AActor::B_NATIVE, rt::UBool::from(value)) }
+    /// Writes `Mode` (offset 0x37).
+    fn set_mode(&self, value: crate::core_uobject::ENetRole) -> Result<(), rt::WriteError> { self.live().set(AActor::MODE, value) }
+    /// Writes `Location` (offset 0x38).
+    fn set_location(&self, value: crate::core_uobject::FVector) -> Result<(), rt::WriteError> { self.live().set(AActor::LOCATION, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> AActorLiveFields<'s> for H where H::Class: rt::IsA<AActor> {}
+
 /// Parameter block of `/Script/Engine.Actor:GetActorCount`.
 ///
 /// Size 0x4, alignment 4.
@@ -714,6 +771,51 @@ impl UBitShare {
     }
 }
 
+/// Typed accessors for the fields of the class [`UBitShare`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UBitShareFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UBitShare>,
+{
+    /// Reads `bFirst` (offset 0x30).
+    fn b_first(&self) -> Result<bool, rt::MemError> { self.object().get_bit(UBitShare::B_FIRST) }
+    /// Reads `bSecond` (offset 0x30).
+    fn b_second(&self) -> Result<bool, rt::MemError> { self.object().get_bit(UBitShare::B_SECOND) }
+    /// Reads `bThird` (offset 0x30).
+    fn b_third(&self) -> Result<bool, rt::MemError> { self.object().get_bit(UBitShare::B_THIRD) }
+    /// Reads `bNext` (offset 0x31).
+    fn b_next(&self) -> Result<bool, rt::MemError> { self.object().get_bit(UBitShare::B_NEXT) }
+    /// Reads `bPlain` (offset 0x33).
+    fn b_plain(&self) -> Result<bool, rt::MemError> { self.object().get(UBitShare::B_PLAIN).map(rt::UBool::get) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UBitShareFields<'m> for H where H::Class: rt::IsA<UBitShare> {}
+
+/// Typed writers for the fields of the class [`UBitShare`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UBitShareLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UBitShare>,
+{
+    /// Writes `bFirst` (offset 0x30).
+    fn set_b_first(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set_bit(UBitShare::B_FIRST, value) }
+    /// Writes `bSecond` (offset 0x30).
+    fn set_b_second(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set_bit(UBitShare::B_SECOND, value) }
+    /// Writes `bThird` (offset 0x30).
+    fn set_b_third(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set_bit(UBitShare::B_THIRD, value) }
+    /// Writes `bNext` (offset 0x31).
+    fn set_b_next(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set_bit(UBitShare::B_NEXT, value) }
+    /// Writes `bPlain` (offset 0x33).
+    fn set_b_plain(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set(UBitShare::B_PLAIN, rt::UBool::from(value)) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UBitShareLiveFields<'s> for H where H::Class: rt::IsA<UBitShare> {}
+
 /// Struct `/Script/Engine.CycleA`.
 ///
 /// Size 0x8, alignment 4.
@@ -778,6 +880,20 @@ impl FCycleB {
     pub const A: rt::FieldRef<Self, crate::engine::FCycleA> = rt::FieldRef::new(0x0);
 }
 
+/// Typed accessors for the fields of the struct [`FCycleB`], on `rt::ObjectRef`
+/// of this struct or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait FCycleBFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<FCycleB>,
+{
+    /// Reads `A` (offset 0x0).
+    fn a(&self) -> Result<crate::engine::FCycleA, rt::MemError> { self.object().get(FCycleB::A) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> FCycleBFields<'m> for H where H::Class: rt::IsA<FCycleB> {}
+
 /// Class `/Script/Engine.Dup`.
 ///
 /// Size 0x38, alignment 8.
@@ -829,6 +945,35 @@ impl UDup {
     /// Offset of `A`: Offset 0x30, `uint32`.
     pub const A: rt::FieldRef<Self, u32> = rt::FieldRef::new(0x30);
 }
+
+/// Typed accessors for the fields of the class [`UDup`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UDupFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UDup>,
+{
+    /// Reads `A` (offset 0x30).
+    fn a(&self) -> Result<u32, rt::MemError> { self.object().get(UDup::A) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UDupFields<'m> for H where H::Class: rt::IsA<UDup> {}
+
+/// Typed writers for the fields of the class [`UDup`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UDupLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UDup>,
+{
+    /// Writes `A` (offset 0x30).
+    fn set_a(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UDup::A, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UDupLiveFields<'s> for H where H::Class: rt::IsA<UDup> {}
 
 /// Struct `/Script/Engine.EmptyAligned`.
 ///
@@ -1319,6 +1464,179 @@ impl UEverything {
     }
 }
 
+/// Typed accessors for the fields of the class [`UEverything`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UEverythingFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UEverything>,
+{
+    /// Reads `Int8Value` (offset 0x30).
+    fn int8_value(&self) -> Result<i8, rt::MemError> { self.object().get(UEverything::INT8_VALUE) }
+    /// Reads `Int16Value` (offset 0x32).
+    fn int16_value(&self) -> Result<i16, rt::MemError> { self.object().get(UEverything::INT16_VALUE) }
+    /// Reads `Int32Value` (offset 0x34).
+    fn int32_value(&self) -> Result<i32, rt::MemError> { self.object().get(UEverything::INT32_VALUE) }
+    /// Reads `Int64Value` (offset 0x38).
+    fn int64_value(&self) -> Result<i64, rt::MemError> { self.object().get(UEverything::INT64_VALUE) }
+    /// Reads `UInt8Value` (offset 0x40).
+    fn u_int8_value(&self) -> Result<u8, rt::MemError> { self.object().get(UEverything::U_INT8_VALUE) }
+    /// Reads `UInt16Value` (offset 0x42).
+    fn u_int16_value(&self) -> Result<u16, rt::MemError> { self.object().get(UEverything::U_INT16_VALUE) }
+    /// Reads `UInt32Value` (offset 0x44).
+    fn u_int32_value(&self) -> Result<u32, rt::MemError> { self.object().get(UEverything::U_INT32_VALUE) }
+    /// Reads `UInt64Value` (offset 0x48).
+    fn u_int64_value(&self) -> Result<u64, rt::MemError> { self.object().get(UEverything::U_INT64_VALUE) }
+    /// Reads `FloatValue` (offset 0x50).
+    fn float_value(&self) -> Result<f32, rt::MemError> { self.object().get(UEverything::FLOAT_VALUE) }
+    /// Reads `DoubleValue` (offset 0x58).
+    fn double_value(&self) -> Result<f64, rt::MemError> { self.object().get(UEverything::DOUBLE_VALUE) }
+    /// Reads `NativeFlag` (offset 0x60).
+    fn native_flag(&self) -> Result<bool, rt::MemError> { self.object().get(UEverything::NATIVE_FLAG).map(rt::UBool::get) }
+    /// Reads `NameValue` (offset 0x64).
+    fn name_value(&self) -> Result<crate::FName, rt::MemError> { self.object().get(UEverything::NAME_VALUE) }
+    /// Reads `StringValue` (offset 0x70).
+    fn string_value(&self) -> Result<rt::FString, rt::MemError> { self.object().get(UEverything::STRING_VALUE) }
+    /// Reads `TextValue` (offset 0x80).
+    fn text_value(&self) -> Result<rt::FText, rt::MemError> { self.object().get(UEverything::TEXT_VALUE) }
+    /// Reads `ActorRef` (offset 0x98).
+    fn actor_ref(&self) -> Result<rt::ObjectRef<'m, crate::engine::AActor>, rt::ChainError> { self.object().follow(UEverything::ACTOR_REF, "UEverything::ActorRef") }
+    /// Reads `MissingRef` (offset 0xa0).
+    fn missing_ref(&self) -> Result<rt::ObjectRef<'m, rt::UObjectBase>, rt::ChainError> { self.object().follow(UEverything::MISSING_REF, "UEverything::MissingRef") }
+    /// Reads `ClassRef` (offset 0xa8).
+    fn class_ref(&self) -> Result<rt::ObjectRef<'m, crate::core_uobject::UClass>, rt::ChainError> { self.object().follow(UEverything::CLASS_REF, "UEverything::ClassRef") }
+    /// Reads `WeakRef` (offset 0xb0).
+    fn weak_ref(&self) -> Result<rt::FWeakObjectPtr, rt::MemError> { self.object().get(UEverything::WEAK_REF) }
+    /// Reads `LazyRef` (offset 0xb8).
+    fn lazy_ref(&self) -> Result<rt::FLazyObjectPtr, rt::MemError> { self.object().get(UEverything::LAZY_REF) }
+    /// Reads `SoftRef` (offset 0xd8).
+    fn soft_ref(&self) -> Result<rt::FSoftObjectPtr<crate::FName>, rt::MemError> { self.object().get(UEverything::SOFT_REF) }
+    /// Reads `SoftClassRef` (offset 0x108).
+    fn soft_class_ref(&self) -> Result<rt::FSoftObjectPtr<crate::FName>, rt::MemError> { self.object().get(UEverything::SOFT_CLASS_REF) }
+    /// Reads `InterfaceRef` (offset 0x138).
+    fn interface_ref(&self) -> Result<rt::FScriptInterface<crate::engine::AActor>, rt::MemError> { self.object().get(UEverything::INTERFACE_REF) }
+    /// Reads `Position` (offset 0x148).
+    fn position(&self) -> Result<crate::core_uobject::FVector, rt::MemError> { self.object().get(UEverything::POSITION) }
+    /// Reads `Id` (offset 0x154).
+    fn id(&self) -> Result<crate::core_uobject::FGuid, rt::MemError> { self.object().get(UEverything::ID) }
+    /// Reads `Pose` (offset 0x170).
+    fn pose(&self) -> Result<crate::core_uobject::FTransform, rt::MemError> { self.object().get(UEverything::POSE) }
+    /// Reads `Numbers` (offset 0x190).
+    fn numbers(&self) -> Result<rt::TArray<i32>, rt::MemError> { self.object().get(UEverything::NUMBERS) }
+    /// Reads `Actors` (offset 0x1a0).
+    fn actors(&self) -> Result<rt::TArray<rt::Ptr<crate::engine::AActor>>, rt::MemError> { self.object().get(UEverything::ACTORS) }
+    /// Reads `Unresolved` (offset 0x1b0).
+    fn unresolved(&self) -> Result<rt::TArray<()>, rt::MemError> { self.object().get(UEverything::UNRESOLVED) }
+    /// Reads `Tags` (offset 0x1c0).
+    fn tags(&self) -> Result<rt::TSet<crate::FName>, rt::MemError> { self.object().get(UEverything::TAGS) }
+    /// Reads `Table` (offset 0x210).
+    fn table(&self) -> Result<rt::TMap<crate::FName, crate::core_uobject::FVector>, rt::MemError> { self.object().get(UEverything::TABLE) }
+    /// Reads `Role` (offset 0x260).
+    fn role(&self) -> Result<crate::core_uobject::ENetRole, rt::MemError> { self.object().get(UEverything::ROLE) }
+    /// Reads `RoleByte` (offset 0x261).
+    fn role_byte(&self) -> Result<crate::core_uobject::ENetRole, rt::MemError> { self.object().get(UEverything::ROLE_BYTE) }
+    /// Reads `Signed` (offset 0x264).
+    fn signed(&self) -> Result<crate::core_uobject::ESigned, rt::MemError> { self.object().get(UEverything::SIGNED) }
+    /// Reads `GoneEnum` (offset 0x268).
+    fn gone_enum(&self) -> Result<u16, rt::MemError> { self.object().get(UEverything::GONE_ENUM) }
+    /// Reads `GoneByte` (offset 0x26a).
+    fn gone_byte(&self) -> Result<u8, rt::MemError> { self.object().get(UEverything::GONE_BYTE) }
+    /// Reads `OnDone` (offset 0x26c).
+    fn on_done(&self) -> Result<rt::FScriptDelegate<crate::FName>, rt::MemError> { self.object().get(UEverything::ON_DONE) }
+    /// Reads `OnMany` (offset 0x280).
+    fn on_many(&self) -> Result<rt::FMulticastInlineDelegate<crate::FName>, rt::MemError> { self.object().get(UEverything::ON_MANY) }
+    /// Reads `OnSparse` (offset 0x290).
+    fn on_sparse(&self) -> Result<rt::FMulticastSparseDelegate, rt::MemError> { self.object().get(UEverything::ON_SPARSE) }
+    /// Reads `Grid` (offset 0x2d0).
+    fn grid(&self) -> Result<[i32; 4], rt::MemError> { self.object().get(UEverything::GRID) }
+    /// Reads `Corners` (offset 0x2e0).
+    fn corners(&self) -> Result<[crate::core_uobject::FVector; 2], rt::MemError> { self.object().get(UEverything::CORNERS) }
+    /// Reads `bFirst` (offset 0x2f8).
+    fn b_first(&self) -> Result<bool, rt::MemError> { self.object().get_bit(UEverything::B_FIRST) }
+    /// Reads `bSecond` (offset 0x2f8).
+    fn b_second(&self) -> Result<bool, rt::MemError> { self.object().get_bit(UEverything::B_SECOND) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UEverythingFields<'m> for H where H::Class: rt::IsA<UEverything> {}
+
+/// Typed writers for the fields of the class [`UEverything`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UEverythingLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UEverything>,
+{
+    /// Writes `Int8Value` (offset 0x30).
+    fn set_int8_value(&self, value: i8) -> Result<(), rt::WriteError> { self.live().set(UEverything::INT8_VALUE, value) }
+    /// Writes `Int16Value` (offset 0x32).
+    fn set_int16_value(&self, value: i16) -> Result<(), rt::WriteError> { self.live().set(UEverything::INT16_VALUE, value) }
+    /// Writes `Int32Value` (offset 0x34).
+    fn set_int32_value(&self, value: i32) -> Result<(), rt::WriteError> { self.live().set(UEverything::INT32_VALUE, value) }
+    /// Writes `Int64Value` (offset 0x38).
+    fn set_int64_value(&self, value: i64) -> Result<(), rt::WriteError> { self.live().set(UEverything::INT64_VALUE, value) }
+    /// Writes `UInt8Value` (offset 0x40).
+    fn set_u_int8_value(&self, value: u8) -> Result<(), rt::WriteError> { self.live().set(UEverything::U_INT8_VALUE, value) }
+    /// Writes `UInt16Value` (offset 0x42).
+    fn set_u_int16_value(&self, value: u16) -> Result<(), rt::WriteError> { self.live().set(UEverything::U_INT16_VALUE, value) }
+    /// Writes `UInt32Value` (offset 0x44).
+    fn set_u_int32_value(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UEverything::U_INT32_VALUE, value) }
+    /// Writes `UInt64Value` (offset 0x48).
+    fn set_u_int64_value(&self, value: u64) -> Result<(), rt::WriteError> { self.live().set(UEverything::U_INT64_VALUE, value) }
+    /// Writes `FloatValue` (offset 0x50).
+    fn set_float_value(&self, value: f32) -> Result<(), rt::WriteError> { self.live().set(UEverything::FLOAT_VALUE, value) }
+    /// Writes `DoubleValue` (offset 0x58).
+    fn set_double_value(&self, value: f64) -> Result<(), rt::WriteError> { self.live().set(UEverything::DOUBLE_VALUE, value) }
+    /// Writes `NativeFlag` (offset 0x60).
+    fn set_native_flag(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set(UEverything::NATIVE_FLAG, rt::UBool::from(value)) }
+    /// Writes `NameValue` (offset 0x64).
+    fn set_name_value(&self, value: crate::FName) -> Result<(), rt::WriteError> { self.live().set(UEverything::NAME_VALUE, value) }
+    /// Follows `ActorRef` to the object it points to.
+    fn actor_ref(&self) -> Result<rt::LiveObject<'s, crate::engine::AActor>, rt::ChainError> { self.live().follow(UEverything::ACTOR_REF, "UEverything::ActorRef") }
+    /// Writes `ActorRef` (offset 0x98).
+    fn set_actor_ref(&self, value: rt::Ptr<crate::engine::AActor>) -> Result<(), rt::WriteError> { self.live().set(UEverything::ACTOR_REF, value) }
+    /// Follows `MissingRef` to the object it points to.
+    fn missing_ref(&self) -> Result<rt::LiveObject<'s, rt::UObjectBase>, rt::ChainError> { self.live().follow(UEverything::MISSING_REF, "UEverything::MissingRef") }
+    /// Writes `MissingRef` (offset 0xa0).
+    fn set_missing_ref(&self, value: rt::Ptr<rt::UObjectBase>) -> Result<(), rt::WriteError> { self.live().set(UEverything::MISSING_REF, value) }
+    /// Follows `ClassRef` to the object it points to.
+    fn class_ref(&self) -> Result<rt::LiveObject<'s, crate::core_uobject::UClass>, rt::ChainError> { self.live().follow(UEverything::CLASS_REF, "UEverything::ClassRef") }
+    /// Writes `ClassRef` (offset 0xa8).
+    fn set_class_ref(&self, value: rt::Ptr<crate::core_uobject::UClass>) -> Result<(), rt::WriteError> { self.live().set(UEverything::CLASS_REF, value) }
+    /// Writes `WeakRef` (offset 0xb0).
+    fn set_weak_ref(&self, value: rt::FWeakObjectPtr) -> Result<(), rt::WriteError> { self.live().set(UEverything::WEAK_REF, value) }
+    /// Writes `LazyRef` (offset 0xb8).
+    fn set_lazy_ref(&self, value: rt::FLazyObjectPtr) -> Result<(), rt::WriteError> { self.live().set(UEverything::LAZY_REF, value) }
+    /// Writes `Position` (offset 0x148).
+    fn set_position(&self, value: crate::core_uobject::FVector) -> Result<(), rt::WriteError> { self.live().set(UEverything::POSITION, value) }
+    /// Writes `Id` (offset 0x154).
+    fn set_id(&self, value: crate::core_uobject::FGuid) -> Result<(), rt::WriteError> { self.live().set(UEverything::ID, value) }
+    /// Writes `Pose` (offset 0x170).
+    fn set_pose(&self, value: crate::core_uobject::FTransform) -> Result<(), rt::WriteError> { self.live().set(UEverything::POSE, value) }
+    /// Writes `Role` (offset 0x260).
+    fn set_role(&self, value: crate::core_uobject::ENetRole) -> Result<(), rt::WriteError> { self.live().set(UEverything::ROLE, value) }
+    /// Writes `RoleByte` (offset 0x261).
+    fn set_role_byte(&self, value: crate::core_uobject::ENetRole) -> Result<(), rt::WriteError> { self.live().set(UEverything::ROLE_BYTE, value) }
+    /// Writes `Signed` (offset 0x264).
+    fn set_signed(&self, value: crate::core_uobject::ESigned) -> Result<(), rt::WriteError> { self.live().set(UEverything::SIGNED, value) }
+    /// Writes `GoneEnum` (offset 0x268).
+    fn set_gone_enum(&self, value: u16) -> Result<(), rt::WriteError> { self.live().set(UEverything::GONE_ENUM, value) }
+    /// Writes `GoneByte` (offset 0x26a).
+    fn set_gone_byte(&self, value: u8) -> Result<(), rt::WriteError> { self.live().set(UEverything::GONE_BYTE, value) }
+    /// Writes `Grid` (offset 0x2d0).
+    fn set_grid(&self, value: [i32; 4]) -> Result<(), rt::WriteError> { self.live().set(UEverything::GRID, value) }
+    /// Writes `Corners` (offset 0x2e0).
+    fn set_corners(&self, value: [crate::core_uobject::FVector; 2]) -> Result<(), rt::WriteError> { self.live().set(UEverything::CORNERS, value) }
+    /// Writes `bFirst` (offset 0x2f8).
+    fn set_b_first(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set_bit(UEverything::B_FIRST, value) }
+    /// Writes `bSecond` (offset 0x2f8).
+    fn set_b_second(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set_bit(UEverything::B_SECOND, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UEverythingLiveFields<'s> for H where H::Class: rt::IsA<UEverything> {}
+
 /// Class `/Script/Engine.FromEmpty`.
 ///
 /// Size 0x8, alignment 8.
@@ -1368,6 +1686,35 @@ impl UFromEmpty {
     /// Offset of `Value`: Offset 0x0, `uint64`.
     pub const VALUE: rt::FieldRef<Self, u64> = rt::FieldRef::new(0x0);
 }
+
+/// Typed accessors for the fields of the class [`UFromEmpty`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UFromEmptyFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UFromEmpty>,
+{
+    /// Reads `Value` (offset 0x0).
+    fn value(&self) -> Result<u64, rt::MemError> { self.object().get(UFromEmpty::VALUE) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UFromEmptyFields<'m> for H where H::Class: rt::IsA<UFromEmpty> {}
+
+/// Typed writers for the fields of the class [`UFromEmpty`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UFromEmptyLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UFromEmpty>,
+{
+    /// Writes `Value` (offset 0x0).
+    fn set_value(&self, value: u64) -> Result<(), rt::WriteError> { self.live().set(UFromEmpty::VALUE, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UFromEmptyLiveFields<'s> for H where H::Class: rt::IsA<UFromEmpty> {}
 
 /// Class `/Script/Engine.Keywords`.
 ///
@@ -1527,6 +1874,55 @@ impl UKeywords {
     }
 }
 
+/// Typed accessors for the fields of the class [`UKeywords`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UKeywordsFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UKeywords>,
+{
+    /// Reads `Loop` (offset 0x30).
+    fn r#loop(&self) -> Result<bool, rt::MemError> { self.object().get_bit(UKeywords::LOOP) }
+    /// Reads `Self` (offset 0x30).
+    fn self_(&self) -> Result<bool, rt::MemError> { self.object().get_bit(UKeywords::SELF) }
+    /// Reads `Type` (offset 0x30).
+    fn r#type(&self) -> Result<bool, rt::MemError> { self.object().get_bit(UKeywords::TYPE) }
+    /// Reads `bLoop` (offset 0x30).
+    fn b_loop(&self) -> Result<bool, rt::MemError> { self.object().get_bit(UKeywords::B_LOOP) }
+    /// Reads `Match` (offset 0x31).
+    fn r#match(&self) -> Result<bool, rt::MemError> { self.object().get(UKeywords::MATCH).map(rt::UBool::get) }
+    /// Reads `Plain` (offset 0x38).
+    fn plain(&self) -> Result<u32, rt::MemError> { self.object().get(UKeywords::PLAIN) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UKeywordsFields<'m> for H where H::Class: rt::IsA<UKeywords> {}
+
+/// Typed writers for the fields of the class [`UKeywords`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UKeywordsLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UKeywords>,
+{
+    /// Writes `Loop` (offset 0x30).
+    fn set_loop(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set_bit(UKeywords::LOOP, value) }
+    /// Writes `Self` (offset 0x30).
+    fn set_self(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set_bit(UKeywords::SELF, value) }
+    /// Writes `Type` (offset 0x30).
+    fn set_type(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set_bit(UKeywords::TYPE, value) }
+    /// Writes `bLoop` (offset 0x30).
+    fn set_b_loop(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set_bit(UKeywords::B_LOOP, value) }
+    /// Writes `Match` (offset 0x31).
+    fn set_match(&self, value: bool) -> Result<(), rt::WriteError> { self.live().set(UKeywords::MATCH, rt::UBool::from(value)) }
+    /// Writes `Plain` (offset 0x38).
+    fn set_plain(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UKeywords::PLAIN, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UKeywordsLiveFields<'s> for H where H::Class: rt::IsA<UKeywords> {}
+
 /// Parameter block of `/Script/Engine.Keywords:Loop`.
 ///
 /// Size 0x8, alignment 8.
@@ -1641,6 +2037,39 @@ impl FLowAlign {
     pub const N: rt::FieldRef<Self, u32> = rt::FieldRef::new(0x8);
 }
 
+/// Typed accessors for the fields of the struct [`FLowAlign`], on `rt::ObjectRef`
+/// of this struct or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait FLowAlignFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<FLowAlign>,
+{
+    /// Reads `Wide` (offset 0x0).
+    fn wide(&self) -> Result<u64, rt::MemError> { self.object().get(FLowAlign::WIDE) }
+    /// Reads `N` (offset 0x8).
+    fn n(&self) -> Result<u32, rt::MemError> { self.object().get(FLowAlign::N) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> FLowAlignFields<'m> for H where H::Class: rt::IsA<FLowAlign> {}
+
+/// Typed writers for the fields of the struct [`FLowAlign`], on `rt::LiveObject` of this
+/// struct or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait FLowAlignLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<FLowAlign>,
+{
+    /// Writes `Wide` (offset 0x0).
+    fn set_wide(&self, value: u64) -> Result<(), rt::WriteError> { self.live().set(FLowAlign::WIDE, value) }
+    /// Writes `N` (offset 0x8).
+    fn set_n(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(FLowAlign::N, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> FLowAlignLiveFields<'s> for H where H::Class: rt::IsA<FLowAlign> {}
+
 /// Struct `/Script/Engine.Misaligned`.
 ///
 /// Size 0x10, alignment 8.
@@ -1686,6 +2115,39 @@ impl FMisaligned {
     /// Offset of `C`: Offset 0xc, `uint32`.
     pub const C: rt::FieldRef<Self, u32> = rt::FieldRef::new(0xc);
 }
+
+/// Typed accessors for the fields of the struct [`FMisaligned`], on `rt::ObjectRef`
+/// of this struct or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait FMisalignedFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<FMisaligned>,
+{
+    /// Reads `A` (offset 0x0).
+    fn a(&self) -> Result<u8, rt::MemError> { self.object().get(FMisaligned::A) }
+    /// Reads `C` (offset 0xc).
+    fn c(&self) -> Result<u32, rt::MemError> { self.object().get(FMisaligned::C) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> FMisalignedFields<'m> for H where H::Class: rt::IsA<FMisaligned> {}
+
+/// Typed writers for the fields of the struct [`FMisaligned`], on `rt::LiveObject` of this
+/// struct or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait FMisalignedLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<FMisaligned>,
+{
+    /// Writes `A` (offset 0x0).
+    fn set_a(&self, value: u8) -> Result<(), rt::WriteError> { self.live().set(FMisaligned::A, value) }
+    /// Writes `C` (offset 0xc).
+    fn set_c(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(FMisaligned::C, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> FMisalignedLiveFields<'s> for H where H::Class: rt::IsA<FMisaligned> {}
 
 /// Struct `/Script/Engine.OddSize`.
 ///
@@ -1735,6 +2197,39 @@ impl FOddSize {
     pub const C: rt::FieldRef<Self, u8> = rt::FieldRef::new(0x28);
 }
 
+/// Typed accessors for the fields of the struct [`FOddSize`], on `rt::ObjectRef`
+/// of this struct or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait FOddSizeFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<FOddSize>,
+{
+    /// Reads `A` (offset 0x0).
+    fn a(&self) -> Result<u8, rt::MemError> { self.object().get(FOddSize::A) }
+    /// Reads `C` (offset 0x28).
+    fn c(&self) -> Result<u8, rt::MemError> { self.object().get(FOddSize::C) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> FOddSizeFields<'m> for H where H::Class: rt::IsA<FOddSize> {}
+
+/// Typed writers for the fields of the struct [`FOddSize`], on `rt::LiveObject` of this
+/// struct or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait FOddSizeLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<FOddSize>,
+{
+    /// Writes `A` (offset 0x0).
+    fn set_a(&self, value: u8) -> Result<(), rt::WriteError> { self.live().set(FOddSize::A, value) }
+    /// Writes `C` (offset 0x28).
+    fn set_c(&self, value: u8) -> Result<(), rt::WriteError> { self.live().set(FOddSize::C, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> FOddSizeLiveFields<'s> for H where H::Class: rt::IsA<FOddSize> {}
+
 /// Class `/Script/Engine.Orphan`.
 ///
 /// Size 0x20, alignment 8.
@@ -1770,6 +2265,35 @@ impl UOrphan {
     /// Offset of `V`: Offset 0x10, `uint32`.
     pub const V: rt::FieldRef<Self, u32> = rt::FieldRef::new(0x10);
 }
+
+/// Typed accessors for the fields of the class [`UOrphan`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UOrphanFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UOrphan>,
+{
+    /// Reads `V` (offset 0x10).
+    fn v(&self) -> Result<u32, rt::MemError> { self.object().get(UOrphan::V) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UOrphanFields<'m> for H where H::Class: rt::IsA<UOrphan> {}
+
+/// Typed writers for the fields of the class [`UOrphan`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UOrphanLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UOrphan>,
+{
+    /// Writes `V` (offset 0x10).
+    fn set_v(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UOrphan::V, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UOrphanLiveFields<'s> for H where H::Class: rt::IsA<UOrphan> {}
 
 /// Class `/Script/Engine.Outer.Dup`.
 ///
@@ -1822,6 +2346,35 @@ impl UDup_1 {
     /// Offset of `B`: Offset 0x30, `uint32`.
     pub const B: rt::FieldRef<Self, u32> = rt::FieldRef::new(0x30);
 }
+
+/// Typed accessors for the fields of the class [`UDup_1`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UDup_1Fields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UDup_1>,
+{
+    /// Reads `B` (offset 0x30).
+    fn b(&self) -> Result<u32, rt::MemError> { self.object().get(UDup_1::B) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UDup_1Fields<'m> for H where H::Class: rt::IsA<UDup_1> {}
+
+/// Typed writers for the fields of the class [`UDup_1`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UDup_1LiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UDup_1>,
+{
+    /// Writes `B` (offset 0x30).
+    fn set_b(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UDup_1::B, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UDup_1LiveFields<'s> for H where H::Class: rt::IsA<UDup_1> {}
 
 /// Class `/Script/Engine.Overlapper`.
 ///
@@ -1884,6 +2437,39 @@ impl UOverlapper {
     pub const AFTER: rt::FieldRef<Self, u32> = rt::FieldRef::new(0x38);
 }
 
+/// Typed accessors for the fields of the class [`UOverlapper`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UOverlapperFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UOverlapper>,
+{
+    /// Reads `Big` (offset 0x30).
+    fn big(&self) -> Result<u64, rt::MemError> { self.object().get(UOverlapper::BIG) }
+    /// Reads `After` (offset 0x38).
+    fn after(&self) -> Result<u32, rt::MemError> { self.object().get(UOverlapper::AFTER) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UOverlapperFields<'m> for H where H::Class: rt::IsA<UOverlapper> {}
+
+/// Typed writers for the fields of the class [`UOverlapper`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UOverlapperLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UOverlapper>,
+{
+    /// Writes `Big` (offset 0x30).
+    fn set_big(&self, value: u64) -> Result<(), rt::WriteError> { self.live().set(UOverlapper::BIG, value) }
+    /// Writes `After` (offset 0x38).
+    fn set_after(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UOverlapper::AFTER, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UOverlapperLiveFields<'s> for H where H::Class: rt::IsA<UOverlapper> {}
+
 /// Class `/Script/Engine.Pawn`.
 ///
 /// Size 0x50, alignment 8.
@@ -1939,6 +2525,35 @@ impl APawn {
     pub const SPEED: rt::FieldRef<Self, f32> = rt::FieldRef::new(0x48);
 }
 
+/// Typed accessors for the fields of the class [`APawn`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait APawnFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<APawn>,
+{
+    /// Reads `Speed` (offset 0x48).
+    fn speed(&self) -> Result<f32, rt::MemError> { self.object().get(APawn::SPEED) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> APawnFields<'m> for H where H::Class: rt::IsA<APawn> {}
+
+/// Typed writers for the fields of the class [`APawn`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait APawnLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<APawn>,
+{
+    /// Writes `Speed` (offset 0x48).
+    fn set_speed(&self, value: f32) -> Result<(), rt::WriteError> { self.live().set(APawn::SPEED, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> APawnLiveFields<'s> for H where H::Class: rt::IsA<APawn> {}
+
 /// Struct `/Script/Engine.QuarterSize`.
 ///
 /// Size 0x2c, alignment 4.
@@ -1981,6 +2596,35 @@ impl FQuarterSize {
     pub const Q: rt::FieldRef<Self, [u8; 8]> = rt::FieldRef::new(0x20);
 }
 
+/// Typed accessors for the fields of the struct [`FQuarterSize`], on `rt::ObjectRef`
+/// of this struct or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait FQuarterSizeFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<FQuarterSize>,
+{
+    /// Reads `A` (offset 0x0).
+    fn a(&self) -> Result<u32, rt::MemError> { self.object().get(FQuarterSize::A) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> FQuarterSizeFields<'m> for H where H::Class: rt::IsA<FQuarterSize> {}
+
+/// Typed writers for the fields of the struct [`FQuarterSize`], on `rt::LiveObject` of this
+/// struct or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait FQuarterSizeLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<FQuarterSize>,
+{
+    /// Writes `A` (offset 0x0).
+    fn set_a(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(FQuarterSize::A, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> FQuarterSizeLiveFields<'s> for H where H::Class: rt::IsA<FQuarterSize> {}
+
 /// Class `/Script/Engine.ReuseBase`.
 ///
 /// Size 0x10, alignment 8.
@@ -2022,6 +2666,39 @@ impl UReuseBase {
     /// Offset of `Flag`: Offset 0x8, `uint8`.
     pub const FLAG: rt::FieldRef<Self, u8> = rt::FieldRef::new(0x8);
 }
+
+/// Typed accessors for the fields of the class [`UReuseBase`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UReuseBaseFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UReuseBase>,
+{
+    /// Reads `Id` (offset 0x0).
+    fn id(&self) -> Result<u32, rt::MemError> { self.object().get(UReuseBase::ID) }
+    /// Reads `Flag` (offset 0x8).
+    fn flag(&self) -> Result<u8, rt::MemError> { self.object().get(UReuseBase::FLAG) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UReuseBaseFields<'m> for H where H::Class: rt::IsA<UReuseBase> {}
+
+/// Typed writers for the fields of the class [`UReuseBase`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UReuseBaseLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UReuseBase>,
+{
+    /// Writes `Id` (offset 0x0).
+    fn set_id(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UReuseBase::ID, value) }
+    /// Writes `Flag` (offset 0x8).
+    fn set_flag(&self, value: u8) -> Result<(), rt::WriteError> { self.live().set(UReuseBase::FLAG, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UReuseBaseLiveFields<'s> for H where H::Class: rt::IsA<UReuseBase> {}
 
 /// Class `/Script/Engine.ReuseChild`.
 ///
@@ -2083,6 +2760,39 @@ impl UReuseChild {
     /// Offset of `Tail`: Offset 0x10, `uint64`.
     pub const TAIL: rt::FieldRef<Self, u64> = rt::FieldRef::new(0x10);
 }
+
+/// Typed accessors for the fields of the class [`UReuseChild`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UReuseChildFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UReuseChild>,
+{
+    /// Reads `Extra` (offset 0xc).
+    fn extra(&self) -> Result<u32, rt::MemError> { self.object().get(UReuseChild::EXTRA) }
+    /// Reads `Tail` (offset 0x10).
+    fn tail(&self) -> Result<u64, rt::MemError> { self.object().get(UReuseChild::TAIL) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UReuseChildFields<'m> for H where H::Class: rt::IsA<UReuseChild> {}
+
+/// Typed writers for the fields of the class [`UReuseChild`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UReuseChildLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UReuseChild>,
+{
+    /// Writes `Extra` (offset 0xc).
+    fn set_extra(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UReuseChild::EXTRA, value) }
+    /// Writes `Tail` (offset 0x10).
+    fn set_tail(&self, value: u64) -> Result<(), rt::WriteError> { self.live().set(UReuseChild::TAIL, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UReuseChildLiveFields<'s> for H where H::Class: rt::IsA<UReuseChild> {}
 
 /// Class `/Script/Engine.SizeMismatch`.
 ///
@@ -2254,6 +2964,75 @@ impl UType {
     pub const SELF_1: rt::FieldRef<Self, u32> = rt::FieldRef::new(0x58);
 }
 
+/// Typed accessors for the fields of the class [`UType`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UTypeFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UType>,
+{
+    /// Reads `type` (offset 0x30).
+    fn r#type(&self) -> Result<u32, rt::MemError> { self.object().get(UType::TYPE) }
+    /// Reads `Self` (offset 0x34).
+    fn self_(&self) -> Result<u32, rt::MemError> { self.object().get(UType::SELF) }
+    /// Reads `match` (offset 0x38).
+    fn r#match(&self) -> Result<u32, rt::MemError> { self.object().get(UType::MATCH) }
+    /// Reads `Weird Name!` (offset 0x3c).
+    fn weird_name(&self) -> Result<u32, rt::MemError> { self.object().get(UType::WEIRD_NAME) }
+    /// Reads `名前` (offset 0x40).
+    fn u540d_u524d(&self) -> Result<u32, rt::MemError> { self.object().get(UType::U540D_U524D) }
+    /// Reads `Foo` (offset 0x44).
+    fn foo(&self) -> Result<u32, rt::MemError> { self.object().get(UType::FOO) }
+    /// Reads `foo` (offset 0x48).
+    fn foo_1(&self) -> Result<u32, rt::MemError> { self.object().get(UType::FOO_1) }
+    /// Reads `9lives` (offset 0x4c).
+    fn _9lives(&self) -> Result<u32, rt::MemError> { self.object().get(UType::_9LIVES) }
+    /// Reads `_` (offset 0x50).
+    fn __(&self) -> Result<u32, rt::MemError> { self.object().get(UType::__) }
+    /// Reads `crate` (offset 0x54).
+    fn crate_(&self) -> Result<u32, rt::MemError> { self.object().get(UType::CRATE) }
+    /// Reads `self` (offset 0x58).
+    fn self_1(&self) -> Result<u32, rt::MemError> { self.object().get(UType::SELF_1) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UTypeFields<'m> for H where H::Class: rt::IsA<UType> {}
+
+/// Typed writers for the fields of the class [`UType`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UTypeLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UType>,
+{
+    /// Writes `type` (offset 0x30).
+    fn set_type(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UType::TYPE, value) }
+    /// Writes `Self` (offset 0x34).
+    fn set_self(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UType::SELF, value) }
+    /// Writes `match` (offset 0x38).
+    fn set_match(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UType::MATCH, value) }
+    /// Writes `Weird Name!` (offset 0x3c).
+    fn set_weird_name(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UType::WEIRD_NAME, value) }
+    /// Writes `名前` (offset 0x40).
+    fn set_u540d_u524d(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UType::U540D_U524D, value) }
+    /// Writes `Foo` (offset 0x44).
+    fn set_foo(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UType::FOO, value) }
+    /// Writes `foo` (offset 0x48).
+    fn set_foo_1(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UType::FOO_1, value) }
+    /// Writes `9lives` (offset 0x4c).
+    fn set__9lives(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UType::_9LIVES, value) }
+    /// Writes `_` (offset 0x50).
+    fn set__(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UType::__, value) }
+    /// Writes `crate` (offset 0x54).
+    fn set_crate(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UType::CRATE, value) }
+    /// Writes `self` (offset 0x58).
+    fn set_self_1(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UType::SELF_1, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UTypeLiveFields<'s> for H where H::Class: rt::IsA<UType> {}
+
 /// Struct `/Script/Engine.WeirdAlign`.
 ///
 /// Size 0xc, alignment 4.
@@ -2287,6 +3066,35 @@ impl FWeirdAlign {
     /// Offset of `A`: Offset 0x0, `uint32`.
     pub const A: rt::FieldRef<Self, u32> = rt::FieldRef::new(0x0);
 }
+
+/// Typed accessors for the fields of the struct [`FWeirdAlign`], on `rt::ObjectRef`
+/// of this struct or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait FWeirdAlignFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<FWeirdAlign>,
+{
+    /// Reads `A` (offset 0x0).
+    fn a(&self) -> Result<u32, rt::MemError> { self.object().get(FWeirdAlign::A) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> FWeirdAlignFields<'m> for H where H::Class: rt::IsA<FWeirdAlign> {}
+
+/// Typed writers for the fields of the struct [`FWeirdAlign`], on `rt::LiveObject` of this
+/// struct or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait FWeirdAlignLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<FWeirdAlign>,
+{
+    /// Writes `A` (offset 0x0).
+    fn set_a(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(FWeirdAlign::A, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> FWeirdAlignLiveFields<'s> for H where H::Class: rt::IsA<FWeirdAlign> {}
 
 /// Class `/Script/Engine.World`.
 ///
