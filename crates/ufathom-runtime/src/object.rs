@@ -5,6 +5,7 @@ use core::marker::PhantomData;
 
 use ufathom_mem::{MemError, MemoryReader, MemoryReaderExt, Pod};
 
+use crate::chain::ChainError;
 use crate::ptr::Ptr;
 use crate::traits::{BitRef, FieldRef, IsA};
 
@@ -89,6 +90,29 @@ impl<'m, T> ObjectRef<'m, T> {
     {
         let byte: u8 = self.mem.read_pod(self.offset_addr(bit.offset())?)?;
         Ok(byte & bit.mask() != 0)
+    }
+
+    /// Reads an object pointer field and returns the object it points to:
+    /// one link of a field chain.
+    ///
+    /// `name` is how the field is reported if the pointer is null, as
+    /// `Class::Field`. The target is not checked for liveness or class: the
+    /// read of its fields is what is checked, and it cannot fault.
+    ///
+    /// # Errors
+    ///
+    /// [`ChainError::Null`] for a null pointer, [`ChainError::Memory`] for a
+    /// failed read.
+    pub fn follow<Owner, U: 'static>(
+        &self,
+        field: FieldRef<Owner, Ptr<U>>,
+        name: &'static str,
+    ) -> Result<ObjectRef<'m, U>, ChainError>
+    where
+        T: IsA<Owner>,
+    {
+        let target = self.get(field)?;
+        ObjectRef::from_ptr(self.mem, target).ok_or(ChainError::Null { field: name })
     }
 
     fn offset_addr(&self, offset: u32) -> Result<u64, MemError> {

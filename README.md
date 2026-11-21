@@ -126,7 +126,20 @@ for pawn in session.objects_of::<sdk::engine::APawn>()? {
 let world = session.gworld()?;
 ```
 
-It also provides `find_object` by path, `find_by_name`, `is_a`, `cast::<T>()`, `default_object::<T>()`, `gengine()` and checked field reads through `session.object(ptr).get(T::FIELD)`.
+It also provides `find_object` by path, `find_by_name`, `is_a`, `cast::<T>()`, `default_object::<T>()` and `gengine()`.
+
+Fields are read as a chain, the way C++ writes `actor->RootComponent->RelativeLocation`. Every link is a checked read and returns a `Result`, so `?` stops at the first one that fails:
+
+```rust
+use sdk::engine::*; // brings the accessor traits of this package into scope
+
+let loc = session.object(actor).root_component()?.relative_location()?;
+let hp = session.object(pawn).health()?; // `Health` is declared on `AActor`, read through an `APawn`
+```
+
+A plain field returns its value. An object pointer field returns an `ObjectRef` on the object it points to, so the chain continues. A null pointer is `ChainError::Null { field: "AActor::RootComponent" }`, so the error says where the chain broke; unreadable memory is `ChainError::Memory`. Reads do not check that an object is alive (a read cannot fault, but a stale object gives stale values). Each class gets an extension trait (`AActorFields`) implemented for every object of that class or a derived one, so inherited fields work with no extra code. Bit-field booleans return `bool`. A field name that clashes with an existing method (`get`, `read`, `addr`, `set`, ...) gets a `field_` prefix (`field_get()`), and a name an ancestor already uses gets a numeric suffix.
+
+The accessors are behind the `accessors` feature of the SDK, on by default; turn it off (`--no-default-features --features all`) for a shorter build. Without it, and for the cases a chain does not cover, read with the field constants: `session.object(ptr).get(AActor::ROOT_COMPONENT)` and `.get_bit(AActor::B_HIDDEN)`.
 
 Calling game functions works only inside the game. Build with `--features inproc` and attach on the game thread:
 
@@ -183,6 +196,23 @@ fn widen_fov(
     Ok(())
 }
 ```
+
+With the `accessors` feature, the same writes read as setters, and a chain can lead to the object to write to. A pointer field returns a `LiveObject` on its target, and each write is checked on the object it reaches:
+
+```rust
+use sdk::engine::*; // the `...LiveFields` traits come with the `inproc` feature
+
+fn heal(
+    session: &rt::Session<rt::mem::SelfMemory>,
+    pawn: rt::Ptr<sdk::engine::APawn>,
+) -> Result<(), rt::ChainError> {
+    session.live_object(pawn).set_health(100.0)?;
+    session.live_object(pawn).controller()?.set_b_hidden(false)?;
+    Ok(())
+}
+```
+
+`ChainError` converts from `WriteError`, so one error type covers a chain with writes. Only fields that hold plain data have a setter (numbers, booleans, enums, names, pointers and structs made of those). A field that owns engine memory (a string, array, map, set, text or delegate) has none: write it through `set` with the field constant if you must. Reads of a live object go through `live.read_only()`.
 
 Before each write the object must still be in the object array slot its index names, the field must lie inside the `PropertiesSize` of the object's own class, and the page must be committed read-write (page protection is never changed). Any failure is a `WriteError` and nothing is written. `modify` and `set_bit` read, change and write back, so they are not atomic against the game: do them on the game thread, because a write from another thread races with the engine.
 

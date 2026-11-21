@@ -1091,6 +1091,7 @@ pub fn behaviour_dump() -> Dump {
     let layout = Profile::ue4_21_measured().layout;
     let object = path(CORE, "Object");
     let actor = path(ENGINE, "Actor");
+    let pawn = path(ENGINE, "Pawn");
     let structs = vec![
         class(CORE, "Object", None, 0x28, Vec::new(), Vec::new()),
         script_struct(
@@ -1166,8 +1167,19 @@ pub fn behaviour_dump() -> Dump {
             ENGINE,
             "Pawn",
             Some(&actor),
-            0x48,
-            vec![field("Speed", 0x40, PropertyType::Float, 4)],
+            0x58,
+            vec![
+                field("Speed", 0x40, PropertyType::Float, 4),
+                field("Target", 0x48, PropertyType::Object { class: pawn }, 8),
+                field(
+                    "Owner",
+                    0x50,
+                    PropertyType::Object {
+                        class: actor.clone(),
+                    },
+                    8,
+                ),
+            ],
             Vec::new(),
         ),
     ];

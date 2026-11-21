@@ -39,6 +39,7 @@ use core::marker::PhantomData;
 
 use ufathom_mem::{MemError, MemoryReaderExt, Pod, SelfMemory};
 
+use crate::chain::ChainError;
 use crate::object::ObjectRef;
 use crate::ptr::Ptr;
 use crate::session::{Session, SessionError};
@@ -134,6 +135,33 @@ impl<'s, T> LiveObject<'s, T> {
     #[must_use]
     pub fn read_only(&self) -> ObjectRef<'s, T> {
         self.session.object(self.ptr())
+    }
+
+    /// Reads an object pointer field and returns a handle on the object it
+    /// points to, to continue a chain with writes:
+    /// `session.live_object(pawn).controller()?.set_x(1.0)?`.
+    ///
+    /// The read does not check that the target is alive, as
+    /// [`ObjectRef::follow`]; every write through the returned handle does.
+    /// `name` is reported if the pointer is null, as `Class::Field`.
+    ///
+    /// # Errors
+    ///
+    /// [`ChainError::Null`] for a null pointer, [`ChainError::Memory`] for a
+    /// failed read.
+    pub fn follow<Owner, U: 'static>(
+        &self,
+        field: FieldRef<Owner, Ptr<U>>,
+        name: &'static str,
+    ) -> Result<LiveObject<'s, U>, ChainError>
+    where
+        T: IsA<Owner>,
+    {
+        let target = self.read_only().get(field)?;
+        if target.is_null() {
+            return Err(ChainError::Null { field: name });
+        }
+        Ok(self.session.live_object(target))
     }
 
     /// Writes one field. `T` must derive from (or be) the owner of the field.

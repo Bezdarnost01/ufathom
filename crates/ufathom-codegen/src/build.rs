@@ -12,10 +12,13 @@ use ufathom_model::{
 };
 
 use crate::header;
-use crate::names::{self, Namespace};
+use crate::names::{self, AccessorNames, AccessorNamespace, Namespace};
 use crate::planner::{BaseInfo, BaseMode, FieldKind, Item, Note, Plan, PlanField, PlanInput, plan};
 use crate::report::{AlignmentRaise, Degradation, DegradeReason, SizePadding};
-use crate::types::{EntryKind, FNameShape, NameEntry, Resolved, TypeTable, enum_int, fname_shape};
+use crate::types::{
+    EntryKind, FNameShape, NameEntry, Resolved, TypeTable, enum_int, fname_shape, is_plain_value,
+    pointer_target,
+};
 
 /// Alignment declared for a function parameter block.
 const PARAM_ALIGN: u32 = 16;
@@ -120,6 +123,33 @@ pub(crate) struct PlannedFunction {
     pub refs: BTreeSet<String>,
 }
 
+/// What an accessor of a field reads and returns.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum AccessorKind {
+    /// A plain value of the field's own type, read with `get`.
+    Value,
+    /// A `bool`: a bit-field bit, or a whole-byte `UBool`.
+    Flag,
+    /// An object pointer; the accessor follows it to the object. Holds the
+    /// Rust path of the class it points at.
+    Pointer(String),
+}
+
+/// The typed accessors of one field, on `ObjectRef` and on `LiveObject`.
+#[derive(Debug, Clone)]
+pub(crate) struct FieldAccessor {
+    /// Index into the planned fields.
+    pub field: usize,
+    /// Method names.
+    pub names: AccessorNames,
+    /// What the getter reads.
+    pub kind: AccessorKind,
+    /// Whether `LiveObject` gets a setter: the value is plain data. Fields
+    /// that hold engine-owned allocations are written through `set` and the
+    /// field constant, which does not suggest it is safe.
+    pub settable: bool,
+}
+
 /// A class or script struct, planned.
 #[derive(Debug)]
 pub(crate) struct PlannedStruct {
@@ -145,6 +175,13 @@ pub(crate) struct PlannedStruct {
     pub ancestors: Vec<String>,
     /// Functions with wrappers.
     pub functions: Vec<PlannedFunction>,
+    /// Typed accessors for the fields, in field order.
+    pub accessors: Vec<FieldAccessor>,
+    /// Name of the read accessor trait. Empty when there are no accessors.
+    pub fields_trait: String,
+    /// Name of the live (write) accessor trait. Empty when no field can be
+    /// written or followed.
+    pub live_trait: String,
     /// Modules referenced.
     pub refs: BTreeSet<String>,
 }
@@ -411,6 +448,8 @@ pub(crate) fn build(dump: &Dump) -> Built {
         }
     }
 
+    plan_accessors(&mut planned, &order, &defs, &by_path, &table, &mut type_ns);
+
     let structs: Vec<PlannedStruct> = planned.into_iter().flatten().collect();
 
     // Module dependencies for the features.
@@ -447,6 +486,103 @@ pub(crate) fn build(dump: &Dump) -> Built {
         fields: fields_total,
         functions,
         functions_skipped,
+    }
+}
+
+/// The typed accessors of every struct, parents first so that a child can
+/// avoid the names its ancestors use.
+fn plan_accessors(
+    planned: &mut [Option<PlannedStruct>],
+    order: &[usize],
+    defs: &[&StructDef],
+    by_path: &BTreeMap<&str, usize>,
+    table: &TypeTable,
+    type_ns: &mut BTreeMap<String, Namespace>,
+) {
+    // Rust paths of the enums and of the structs that are plain data.
+    let mut plain: BTreeSet<String> = table
+        .names
+        .values()
+        .filter(|e| e.kind == EntryKind::Enum)
+        .map(NameEntry::rust_path)
+        .collect();
+    let mut taken: BTreeMap<usize, BTreeSet<String>> = BTreeMap::new();
+    for &i in order {
+        let Some(def) = defs.get(i) else { continue };
+        let mut inherited: BTreeSet<String> = BTreeSet::new();
+        let mut seen: BTreeSet<usize> = BTreeSet::from([i]);
+        let mut cur = def.super_path.as_deref();
+        while let Some(idx) = cur.and_then(|p| by_path.get(p)).copied() {
+            if !seen.insert(idx) {
+                break;
+            }
+            if let Some(names) = taken.get(&idx) {
+                inherited.extend(names.iter().cloned());
+            }
+            cur = defs.get(idx).and_then(|d| d.super_path.as_deref());
+        }
+        let Some(Some(ps)) = planned.get_mut(i) else {
+            continue;
+        };
+        let mut ns = AccessorNamespace::with_inherited(inherited);
+        let mut accessors = Vec::new();
+        let mut all_plain = ps.plan.omitted.is_empty();
+        for (index, f) in ps.fields.iter().enumerate() {
+            let typed = f.rust_field.is_some() && !f.is_bytes;
+            let Some(resolved) = f.resolved.as_ref().filter(|_| typed) else {
+                // A bit-field bool has storage but no resolved type.
+                if f.bit.is_some() && f.bit_raw.is_some() && f.const_name.is_some() {
+                    accessors.push(FieldAccessor {
+                        field: index,
+                        names: ns.claim(&f.name),
+                        kind: AccessorKind::Flag,
+                        settable: true,
+                    });
+                } else if f.rust_field.is_some() || f.is_bytes {
+                    all_plain = false;
+                }
+                continue;
+            };
+            let plain_value = is_plain_value(&resolved.rust, &plain);
+            all_plain &= plain_value;
+            if f.const_name.is_none() {
+                continue;
+            }
+            let single = f.count == 1;
+            let kind = if single && resolved.rust == "rt::UBool" {
+                AccessorKind::Flag
+            } else if let Some(target) = single.then(|| pointer_target(&resolved.rust)).flatten() {
+                AccessorKind::Pointer(target.to_owned())
+            } else {
+                AccessorKind::Value
+            };
+            accessors.push(FieldAccessor {
+                field: index,
+                names: ns.claim(&f.name),
+                kind,
+                settable: plain_value,
+            });
+        }
+        if ps.base_path.is_some() && ps.plan.base == BaseMode::Embedded {
+            all_plain &= ps.base_path.as_ref().is_some_and(|b| plain.contains(b));
+        } else if ps.base_path.is_some() {
+            all_plain = false;
+        }
+        if !ps.is_class && all_plain && by_path.get(ps.path.as_str()) == Some(&i) {
+            plain.insert(format!("crate::{}::{}", ps.module, ps.rust_name));
+        }
+        taken.insert(i, ns.names().clone());
+        if !accessors.is_empty() {
+            let module = type_ns.entry(ps.module.clone()).or_default();
+            ps.fields_trait = module.claim(&format!("{}Fields", ps.rust_name));
+            if accessors
+                .iter()
+                .any(|a| a.settable || matches!(a.kind, AccessorKind::Pointer(_)))
+            {
+                ps.live_trait = module.claim(&format!("{}LiveFields", ps.rust_name));
+            }
+            ps.accessors = accessors;
+        }
     }
 }
 
@@ -910,6 +1046,9 @@ fn plan_struct(
         base_path,
         ancestors,
         functions: Vec::new(),
+        accessors: Vec::new(),
+        fields_trait: String::new(),
+        live_trait: String::new(),
         refs,
     }
 }

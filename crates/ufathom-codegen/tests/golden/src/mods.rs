@@ -71,6 +71,35 @@ impl ABP_Thing_C {
     }
 }
 
+/// Typed accessors for the fields of the class [`ABP_Thing_C`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait ABP_Thing_CFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<ABP_Thing_C>,
+{
+    /// Reads `Count` (offset 0x48).
+    fn count(&self) -> Result<i32, rt::MemError> { self.object().get(ABP_Thing_C::COUNT) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> ABP_Thing_CFields<'m> for H where H::Class: rt::IsA<ABP_Thing_C> {}
+
+/// Typed writers for the fields of the class [`ABP_Thing_C`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait ABP_Thing_CLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<ABP_Thing_C>,
+{
+    /// Writes `Count` (offset 0x48).
+    fn set_count(&self, value: i32) -> Result<(), rt::WriteError> { self.live().set(ABP_Thing_C::COUNT, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> ABP_Thing_CLiveFields<'s> for H where H::Class: rt::IsA<ABP_Thing_C> {}
+
 /// Parameter block of `/Game/Mods.BP_Thing_C:GetHome`.
 ///
 /// Size 0xc, alignment 4.
