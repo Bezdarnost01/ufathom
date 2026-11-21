@@ -1,6 +1,6 @@
 [package]
 name = "ufathom-mem"
-description = "Memory readers: self, process, minidump and snapshot, plus a page cache. No write path exists."
+description = "Memory readers: self, process, minidump and snapshot, plus a page cache. The only write is SelfMemory::write_exact."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

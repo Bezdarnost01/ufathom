@@ -22,6 +22,18 @@ pub enum MemError {
         len: u64,
     },
 
+    /// A write was refused because the range is not entirely committed,
+    /// plain read-write memory: it is unmapped, read-only, guarded, no-access
+    /// or copy-on-write. Nothing was written. Only
+    /// [`SelfMemory::write_exact`](crate::SelfMemory::write_exact) returns it.
+    #[error("memory at {addr:#x} ({len:#x} bytes) is not writable")]
+    NotWritable {
+        /// First address of the refused range.
+        addr: Addr,
+        /// Length of the refused range in bytes.
+        len: u64,
+    },
+
     /// `addr + len` does not fit in a 64-bit address.
     #[error("address range overflows: {addr:#x} + {len:#x}")]
     AddressOverflow {
@@ -101,6 +113,14 @@ impl MemError {
     /// Builds [`MemError::Unreadable`] from a slice length.
     pub(crate) fn unreadable(addr: Addr, len: usize) -> Self {
         Self::Unreadable {
+            addr,
+            len: len as u64,
+        }
+    }
+
+    /// Builds [`MemError::NotWritable`] from a slice length.
+    pub(crate) fn not_writable(addr: Addr, len: usize) -> Self {
+        Self::NotWritable {
             addr,
             len: len as u64,
         }

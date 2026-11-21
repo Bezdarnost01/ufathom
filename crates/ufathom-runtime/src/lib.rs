@@ -9,6 +9,11 @@
 //! implementation that runs game code is `inproc::InProcessExecutor`, behind
 //! the `inproc` feature; without it this crate never executes game code.
 //!
+//! With the `inproc` feature, a session over `SelfMemory` can also write fields
+//! of live objects (`Session::live_object`, `LiveObject`). It is the one write
+//! path of the crate and it checks the object before every write; external
+//! sessions cannot write.
+//!
 //! # `Pod`
 //!
 //! [`Pod`] is re-exported from `ufathom-mem`. A trait of our own is not
@@ -43,6 +48,8 @@ mod ptr;
 mod session;
 mod traits;
 mod ubool;
+#[cfg(feature = "inproc")]
+mod write;
 
 pub use containers::{
     FLazyObjectPtr, FMulticastInlineDelegate, FMulticastSparseDelegate, FScriptDelegate,
@@ -61,6 +68,8 @@ pub use ptr::Ptr;
 pub use session::{Session, SessionError, SessionResult};
 pub use traits::{BitRef, FieldRef, IsA, TypePath};
 pub use ubool::UBool;
+#[cfg(feature = "inproc")]
+pub use write::{LiveObject, WriteError};
 
 /// The memory access crate, re-exported so generated SDKs need no second
 /// dependency to read through a `mem::Snapshot` or another reader.

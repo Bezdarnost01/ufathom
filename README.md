@@ -168,6 +168,24 @@ game.before("/Script/Engine.Actor:ReceiveTick", |ctx| {
 })?;
 ```
 
+Fields of live objects can be written too, inside the game only (`inproc` feature; a session over `ProcessMemory` has no write path). Do it on the game thread, in `game.run` or a hook callback:
+
+```rust
+// Call it on the game thread: from `game.run(|ctx| ...)` or a hook callback.
+fn widen_fov(
+    session: &rt::Session<rt::mem::SelfMemory>,
+    camera: rt::Ptr<sdk::engine::APlayerCameraManager>,
+) -> Result<(), rt::WriteError> {
+    let camera = session.live_object(camera);
+    camera.set(sdk::engine::APlayerCameraManager::DEFAULT_FOV, 110.0)?;
+    camera.modify(sdk::engine::APlayerCameraManager::DEFAULT_FOV, |fov| *fov += 5.0)?;
+    camera.set_bit(sdk::engine::AActor::B_HIDDEN, true)?;
+    Ok(())
+}
+```
+
+Before each write the object must still be in the object array slot its index names, the field must lie inside the `PropertiesSize` of the object's own class, and the page must be committed read-write (page protection is never changed). Any failure is a `WriteError` and nothing is written. `modify` and `set_bit` read, change and write back, so they are not atomic against the game: do them on the game thread, because a write from another thread races with the engine.
+
 Strings and names work the way they do in Dumper-7 SDKs:
 
 ```rust
