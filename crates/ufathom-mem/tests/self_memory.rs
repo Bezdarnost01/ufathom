@@ -310,12 +310,25 @@ mod windows_pages {
 
     #[test]
     fn freed_page_is_an_error() {
-        let alloc = Alloc::new(PAGE, PAGE);
-        let addr = alloc.addr();
-        let mut buf = [0u8; 8];
-        SelfMemory::new().read_exact(addr, &mut buf).unwrap();
-        drop(alloc);
-        assert_unreadable(SelfMemory::new().read_exact(addr, &mut buf), "freed page");
+        // Other tests allocate in parallel threads, so the freed address can
+        // be handed out again before the read, which then succeeds. A real
+        // bug succeeds every time, a reuse does not, so retry a successful
+        // read and require an error to be the right kind.
+        let mem = SelfMemory::new();
+        for _ in 0..16 {
+            let alloc = Alloc::new(PAGE, PAGE);
+            let addr = alloc.addr();
+            let mut buf = [0u8; 8];
+            mem.read_exact(addr, &mut buf).unwrap();
+            drop(alloc);
+            let result = mem.read_exact(addr, &mut buf);
+            if result.is_ok() {
+                continue;
+            }
+            assert_unreadable(result, "freed page");
+            return;
+        }
+        panic!("reads of a freed page succeeded 16 times in a row");
     }
 
     #[test]
