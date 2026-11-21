@@ -1,8 +1,11 @@
 //! Windows backend: `ReadProcessMemory`, `VirtualQueryEx`, module and process lists.
 //!
-//! Target memory is never dereferenced directly. Every byte comes from
+//! Another process is never dereferenced. Every byte comes from
 //! `ReadProcessMemory`, which reports an error for unmapped, `PAGE_NOACCESS`
-//! and `PAGE_GUARD` pages instead of raising an exception. The one write,
+//! and `PAGE_GUARD` pages instead of raising an exception. The current process
+//! can additionally read through the fault-guarded copy of `fastpath` (x86-64
+//! only), which is validated first and recovers from a fault; any read it does
+//! not complete falls back to `ReadProcessMemory`. The one write,
 //! `Target::write`, goes through `WriteProcessMemory` and refuses anything but
 //! committed read-write memory.
 
@@ -30,6 +33,8 @@ use windows_sys::Win32::System::Threading::{
     PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ, QueryFullProcessImageNameW,
 };
 
+#[cfg(target_arch = "x86_64")]
+use super::fastpath;
 use crate::error::{MemError, range_end};
 use crate::protect::{is_plain_read_write, kind_from_type, perms_from_protect};
 use crate::reader::Addr;
@@ -64,14 +69,31 @@ pub(crate) struct Target {
     pid: u32,
     /// `None` means the current process, addressed by its pseudo handle.
     owned: Option<OwnedHandle>,
+    /// Whether reads may use the fault-guarded direct copy. Only ever true for
+    /// the current process.
+    #[cfg_attr(
+        not(target_arch = "x86_64"),
+        allow(dead_code, reason = "the guarded copy exists for x86-64 only")
+    )]
+    direct: bool,
 }
 
 impl Target {
-    /// The current process.
+    /// The current process, read with the fault-guarded direct copy where the
+    /// platform has one.
     pub(crate) fn current() -> Self {
         Self {
             pid: std::process::id(),
             owned: None,
+            direct: true,
+        }
+    }
+
+    /// The current process, read only through `ReadProcessMemory`.
+    pub(crate) fn current_os_copy() -> Self {
+        Self {
+            direct: false,
+            ..Self::current()
         }
     }
 
@@ -98,6 +120,7 @@ impl Target {
         let target = Self {
             pid,
             owned: Some(owned),
+            direct: false,
         };
         if target.has_exited() {
             return Err(MemError::ProcessGone { pid });
@@ -151,6 +174,10 @@ impl Target {
     pub(crate) fn read(&self, addr: Addr, buf: &mut [u8]) -> Result<(), MemError> {
         range_end(addr, buf.len())?;
         if buf.is_empty() {
+            return Ok(());
+        }
+        #[cfg(target_arch = "x86_64")]
+        if self.direct && matches!(fastpath::try_read(addr, buf), fastpath::Outcome::Done) {
             return Ok(());
         }
         let Ok(remote) = usize::try_from(addr) else {

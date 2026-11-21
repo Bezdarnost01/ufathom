@@ -7,26 +7,63 @@ use crate::types::{MemoryRegion, ModuleInfo, ProcessInfo};
 
 /// Reads the memory of the current process. This is the reader used inside the DLL.
 ///
-/// Every read goes through the operating system's cross-process copy call
-/// (`ReadProcessMemory` on Windows, `process_vm_readv` on Linux), which reports
-/// an error for unmapped, no-access and guarded pages instead of raising an
-/// exception. The reader never dereferences a pointer into the target, not even
-/// after asking the system whether a page is valid: a page can disappear between
-/// the check and the read, and only the copy call is atomic with respect to that.
+/// A read never faults for any address, including null, kernel addresses,
+/// `u64::MAX` and ranges that overflow: it returns an error, or the whole
+/// buffer filled, never a partial result.
 ///
-/// `read_exact` therefore never faults for any address, including null, kernel
-/// addresses, `u64::MAX` and ranges that overflow.
+/// # Read paths
+///
+/// [`SelfMemory::new`] takes the fast path where the platform has one
+/// (Windows x86-64). [`SelfMemory::safe`] always uses the operating system's
+/// cross-process copy call (`ReadProcessMemory` on Windows, `process_vm_readv`
+/// on Linux), which reports an error for unmapped, no-access and guarded pages
+/// instead of raising an exception, and never dereferences a pointer into the
+/// target.
+///
+/// The fast path reads with plain loads, so a read costs a few nanoseconds
+/// instead of a system call. It is made safe in three layers, described in
+/// `ARCHITECTURE.md`: the range is first checked with `VirtualQuery` (results
+/// are cached per thread), then copied by a hand-written routine that has its
+/// own structured exception handler, which turns an access violation,
+/// in-page error or guard page violation into an error, and finally any read
+/// that does not complete is repeated through the system call, which supplies
+/// the error. A page freed between the check and the copy therefore gives an
+/// error, never a crash. Reads of guard pages are refused by the check without
+/// touching the page, so, like the system call, they leave the guard flag
+/// alone. A module that was mapped by hand has no registered exception table;
+/// there the fast path switches itself off and reads use the system call.
 pub struct SelfMemory {
     target: Target,
 }
 
 impl SelfMemory {
-    /// Creates a reader for the current process.
+    /// Creates a reader for the current process that takes the fast path where
+    /// the platform has one and the system call everywhere else.
     pub fn new() -> Self {
         Self {
             target: Target::current(),
         }
     }
+
+    /// Creates a reader for the current process that only ever uses the
+    /// operating system's copy call and never dereferences a pointer into the
+    /// target. Slower: about 130 ns per read on Windows, a system call each.
+    pub fn safe() -> Self {
+        Self {
+            target: Target::current_os_copy(),
+        }
+    }
+}
+
+/// How many times the fast read path has recovered from a fault since the
+/// process started.
+///
+/// A fault means a page that was readable when a range was checked was freed
+/// or re-protected before the copy finished; the read was then answered
+/// through the system call. It should be 0 in a quiet process, and small in a
+/// busy one. Always 0 on platforms without a fast path.
+pub fn fast_read_faults() -> u64 {
+    sys::recovered_faults()
 }
 
 impl SelfMemory {

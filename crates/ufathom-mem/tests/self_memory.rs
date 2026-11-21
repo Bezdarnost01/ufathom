@@ -310,12 +310,27 @@ mod windows_pages {
 
     #[test]
     fn freed_page_is_an_error() {
-        let alloc = Alloc::new(PAGE, PAGE);
-        let addr = alloc.addr();
-        let mut buf = [0u8; 8];
-        SelfMemory::new().read_exact(addr, &mut buf).unwrap();
-        drop(alloc);
-        assert_unreadable(SelfMemory::new().read_exact(addr, &mut buf), "freed page");
+        // Other tests run in parallel threads and allocate pages too, and
+        // Windows hands the lowest free address to the next allocation, so a
+        // freed page can be live again before the read. A real bug succeeds
+        // every time, a reuse does not: retry a successful read.
+        let mem = SelfMemory::new();
+        for _ in 0..64 {
+            let alloc = Alloc::new(PAGE, PAGE);
+            let addr = alloc.addr();
+            let mut buf = [0u8; 8];
+            // The first read validates and caches the page, so the read after
+            // the free goes through the direct copy and must fault safely.
+            mem.read_exact(addr, &mut buf).unwrap();
+            drop(alloc);
+            let result = mem.read_exact(addr, &mut buf);
+            if result.is_ok() {
+                continue;
+            }
+            assert_unreadable(result, "freed page");
+            return;
+        }
+        panic!("reads of a freed page succeeded 64 times in a row");
     }
 
     #[test]

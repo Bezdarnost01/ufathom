@@ -49,7 +49,7 @@ The workflow refuses to release if the tag is not on `main`, does not match the 
 
 **Target data.** This code runs inside a live game. A bug here must not take the game down.
 - Treat every value read from the target as hostile. Use checked arithmetic on target-derived sizes and addresses.
-- Read only through `MemoryReader`. **Never dereference a raw pointer to target memory in the dump path**, not even after a validity check.
+- Read only through `MemoryReader`. **Never dereference a raw pointer to target memory in the dump path**, not even after a validity check. The one dereference is the fault-guarded copy inside `ufathom-mem`'s `SelfMemory` (see `ARCHITECTURE.md`), which turns a fault into an error; use `SelfMemory::safe()` where even that is unwanted.
 - Bound every loop over target data with a named constant. Detect cycles in linked structures.
 - Allocate only after validating a target-derived count against a limit.
 - Never trust a name, flag or size to be consistent across objects. Data may change while being read.

@@ -341,8 +341,10 @@ fn read_name(file: Bytes<'_>, rva: u64) -> Result<String, MemError> {
     }
     let raw = file.slice(rva + 4, u64::from(byte_len), "module name")?;
     let units: Vec<u16> = raw
-        .chunks_exact(2)
-        .filter_map(|pair| <[u8; 2]>::try_from(pair).ok())
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .copied()
         .map(u16::from_le_bytes)
         .collect();
     Ok(String::from_utf16_lossy(&units))

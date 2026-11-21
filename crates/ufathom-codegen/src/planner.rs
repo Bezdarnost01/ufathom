@@ -196,7 +196,7 @@ fn is_pow2(value: u32) -> bool {
 /// be a Rust type size.)
 fn effective_align(size: u32, hint: u32) -> u32 {
     let mut align = if is_pow2(hint) { hint } else { 1 };
-    while align > 1 && size % align != 0 {
+    while align > 1 && !size.is_multiple_of(align) {
         align /= 2;
     }
     align
@@ -224,10 +224,10 @@ fn alignment_hint(input: &PlanInput) -> u32 {
     } else {
         1
     };
-    if let Some(base) = &input.base {
-        if is_pow2(base.align) {
-            hint = hint.max(base.align);
-        }
+    if let Some(base) = &input.base
+        && is_pow2(base.align)
+    {
+        hint = hint.max(base.align);
     }
     for field in &input.fields {
         let FieldKind::Typed { size, align, count } = field.kind else {
@@ -336,12 +336,12 @@ pub(crate) fn plan(input: &PlanInput) -> Plan {
         };
         match storage(field) {
             Some((start, end)) => {
-                if let Some((_, group_end, members)) = open.as_mut() {
-                    if start < *group_end {
-                        *group_end = (*group_end).max(end);
-                        members.push(i);
-                        continue;
-                    }
+                if let Some((_, group_end, members)) = open.as_mut()
+                    && start < *group_end
+                {
+                    *group_end = (*group_end).max(end);
+                    members.push(i);
+                    continue;
                 }
                 flush(&mut open, &mut slots);
                 open = Some((start, end, vec![i]));
@@ -477,7 +477,7 @@ fn place_field(
             let span = u64::from(size) * u64::from(count);
             // Misalignment first: such a field says nothing about the owner's
             // alignment, so "the owner is too low" would be the wrong reason.
-            let problem = if field_align > 1 && offset % field_align != 0 {
+            let problem = if field_align > 1 && !offset.is_multiple_of(field_align) {
                 Some((
                     DegradeReason::Misaligned,
                     format!("offset {offset:#x} is not a multiple of {field_align}"),

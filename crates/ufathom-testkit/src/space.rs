@@ -265,10 +265,8 @@ impl Heap {
                     SEGMENT_CAP
                 };
                 let i = self.open_segment(cap);
-                if !large {
-                    if let Some(slot) = self.open.get_mut(pool.slot()) {
-                        *slot = Some(i);
-                    }
+                if !large && let Some(slot) = self.open.get_mut(pool.slot()) {
+                    *slot = Some(i);
                 }
                 i
             }

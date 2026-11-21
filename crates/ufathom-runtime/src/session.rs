@@ -18,6 +18,8 @@ const MAX_NAME_CHARS: usize = 1024;
 const MAX_NAME_BLOCKS: u32 = 8192;
 /// Deepest outer chain or class hierarchy followed.
 const MAX_CHAIN: usize = 256;
+/// Largest object header read into a stack buffer; a bigger one uses the heap.
+const HEADER_STACK_BYTES: usize = 256;
 /// Items read per request when walking a flat object array.
 const FLAT_BATCH: u32 = 4096;
 /// Most objects an array may claim.
@@ -942,10 +944,22 @@ impl<M: MemoryReader> Session<M> {
         if addr == 0 {
             return Err(invalid("object", 0, "null"));
         }
-        let mut bytes = vec![0u8; self.header_len];
+        // A heap buffer per object costs several times the read itself
+        // (about 45 ns against 9 ns with the in-process reader); a header
+        // is a few dozen bytes, so use the stack unless a build says more.
+        let mut on_stack = [0u8; HEADER_STACK_BYTES];
+        let mut on_heap;
+        let bytes: &mut [u8] = match on_stack.get_mut(..self.header_len) {
+            Some(part) => part,
+            None => {
+                on_heap = vec![0u8; self.header_len];
+                on_heap.as_mut_slice()
+            }
+        };
         self.mem
-            .read_exact(addr, &mut bytes)
+            .read_exact(addr, bytes)
             .map_err(read_error(addr, "object header"))?;
+        let bytes: &[u8] = bytes;
         let o = &self.desc.object;
         let mut name = [0u8; 16];
         let start = o.name as usize;
@@ -954,10 +968,10 @@ impl<M: MemoryReader> Session<M> {
             dst.copy_from_slice(src);
         }
         Ok(Header {
-            flags: field_u32(&bytes, o.flags as usize),
-            index: field_u32(&bytes, o.index as usize),
-            class: field_u64(&bytes, o.class as usize),
-            outer: field_u64(&bytes, o.outer as usize),
+            flags: field_u32(bytes, o.flags as usize),
+            index: field_u32(bytes, o.index as usize),
+            class: field_u64(bytes, o.class as usize),
+            outer: field_u64(bytes, o.outer as usize),
             name,
         })
     }
@@ -1028,7 +1042,9 @@ fn field_u64(bytes: &[u8], at: usize) -> u64 {
 fn decode(bytes: &[u8], wide: bool) -> String {
     if wide {
         let units: Vec<u16> = bytes
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| {
                 u16::from_le_bytes([
                     pair.first().copied().unwrap_or(0),

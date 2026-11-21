@@ -32,8 +32,9 @@ struct Pages {
 mod os {
     use super::{PAGE, Pages};
     use windows_sys::Win32::System::Memory::{
-        MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, MEMORY_BASIC_INFORMATION, PAGE_GUARD, PAGE_NOACCESS,
-        PAGE_READONLY, PAGE_READWRITE, VirtualAlloc, VirtualFree, VirtualProtect, VirtualQuery,
+        MEM_COMMIT, MEM_DECOMMIT, MEM_RELEASE, MEM_RESERVE, MEMORY_BASIC_INFORMATION, PAGE_GUARD,
+        PAGE_NOACCESS, PAGE_READONLY, PAGE_READWRITE, VirtualAlloc, VirtualFree, VirtualProtect,
+        VirtualQuery,
     };
 
     pub const GUARD: u32 = PAGE_READWRITE | PAGE_GUARD;
@@ -94,6 +95,16 @@ mod os {
                 unsafe { VirtualFree(self.base as *mut _, 0, MEM_RELEASE) };
                 self.base = 0;
             }
+        }
+
+        /// Takes both pages away while keeping the address range reserved, so
+        /// no other allocation of this process can be placed there before the
+        /// test writes to it. A freed range could be handed to a parallel
+        /// test, and a write that wrongly succeeded would corrupt its memory.
+        pub fn unmap_and_hold(&self) {
+            // SAFETY: decommits the pages committed in `new`; the reservation
+            // stays until `release`.
+            unsafe { VirtualFree(self.base as *mut _, 2 * PAGE, MEM_DECOMMIT) };
         }
     }
 }
@@ -168,6 +179,24 @@ mod os {
                 unsafe { libc::munmap(self.base as *mut _, 2 * PAGE) };
                 self.base = 0;
             }
+        }
+
+        /// Takes both pages away while keeping the address range held, so no
+        /// other mapping of this process can be placed there before the test
+        /// writes to it: the range is replaced by an inaccessible mapping.
+        pub fn unmap_and_hold(&self) {
+            // SAFETY: replaces the mapping made in `new` at the same address
+            // with an inaccessible one; `release` unmaps it.
+            unsafe {
+                libc::mmap(
+                    self.base as *mut _,
+                    2 * PAGE,
+                    libc::PROT_NONE,
+                    libc::MAP_PRIVATE | libc::MAP_ANONYMOUS | libc::MAP_FIXED | libc::MAP_NORESERVE,
+                    -1,
+                    0,
+                )
+            };
         }
     }
 }
@@ -254,10 +283,10 @@ fn refuses_null_kernel_and_extreme_addresses() {
 #[test]
 fn refuses_an_unmapped_page() {
     let mem = SelfMemory::new();
-    let mut pages = Pages::new();
+    let pages = Pages::new();
     let at = pages.addr(0);
     mem.write_exact(at, &[1]).unwrap();
-    pages.release();
+    pages.unmap_and_hold();
     assert_not_writable(mem.write_exact(at, &[2]), "released page");
     assert_not_writable(mem.write_exact(at + 16, &[2; 16]), "released page");
 }

@@ -470,7 +470,7 @@ pub(super) fn solve_func_offset(session: &Session<SelfMemory>) -> Result<u32, St
                 return ControlFlow::Continue(());
             }
             functions += 1;
-            for (index, word) in window.chunks_exact(8).enumerate().skip(first / 8) {
+            for (index, word) in window.as_chunks::<8>().0.iter().enumerate().skip(first / 8) {
                 let mut bytes = [0u8; 8];
                 bytes.copy_from_slice(word);
                 if is_code(u64::from_le_bytes(bytes))
