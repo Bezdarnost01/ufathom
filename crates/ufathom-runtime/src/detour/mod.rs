@@ -302,7 +302,7 @@ impl Detour {
         replacement: *const (),
     ) -> Result<Self, DetourError> {
         // SAFETY: the contract is the caller's.
-        unsafe { Self::install_inner(target, expected, replacement, None) }
+        unsafe { Self::install_inner(target, Some(expected), replacement, None) }
     }
 
     /// Like [`install`](Self::install), and stores the address of the
@@ -325,12 +325,40 @@ impl Detour {
         original: &'static AtomicUsize,
     ) -> Result<Self, DetourError> {
         // SAFETY: the contract is the caller's.
-        unsafe { Self::install_inner(target, expected, replacement, Some(original)) }
+        unsafe { Self::install_inner(target, Some(expected), replacement, Some(original)) }
     }
 
+    /// Like [`install_with_original`](Self::install_with_original), with no
+    /// author signature: the bytes at `target` are accepted as they are, and
+    /// everything else is checked as usual (whole-instruction decoding, `ret`,
+    /// traps, branches into the stolen bytes, relocation).
+    ///
+    /// Only for an address the caller has solved by other means, such as the
+    /// vote of [`GameThread::install_with`](crate::inproc::GameThread::install_with),
+    /// where no author is there to say what the bytes should be. It does not
+    /// notice a game update that moved the function to something else.
+    ///
+    /// # Errors
+    ///
+    /// As [`install`](Self::install), except the signature errors.
+    ///
+    /// # Safety
+    ///
+    /// As [`install`](Self::install), with `target` being the start of a
+    /// function.
+    pub(crate) unsafe fn install_trusting(
+        target: usize,
+        replacement: *const (),
+        original: &'static AtomicUsize,
+    ) -> Result<Self, DetourError> {
+        // SAFETY: the contract is the caller's.
+        unsafe { Self::install_inner(target, None, replacement, Some(original)) }
+    }
+
+    /// `expected` is `None` for [`install_trusting`](Self::install_trusting).
     unsafe fn install_inner(
         target: usize,
-        expected: &Signature,
+        expected: Option<&Signature>,
         replacement: *const (),
         original_cell: Option<&'static AtomicUsize>,
     ) -> Result<Self, DetourError> {
@@ -348,7 +376,7 @@ impl Detour {
         if span == 0 {
             return Err(not_executable("the page is not committed and executable"));
         }
-        if expected.len() > span {
+        if expected.is_some_and(|expected| expected.len() > span) {
             return Err(not_executable(
                 "the signature runs past the executable memory",
             ));
@@ -356,17 +384,16 @@ impl Detour {
 
         // Everything that allocates happens before any thread is stopped.
         let mut registry = lock_installed();
-        if registry
-            .iter()
-            .any(|detour| detour.overlaps(target, expected.len().max(JUMP_LEN)))
-        {
+        if registry.iter().any(|detour| {
+            detour.overlaps(target, expected.map_or(JUMP_LEN, |e| e.len().max(JUMP_LEN)))
+        }) {
             return Err(DetourError::AlreadyHooked { address: target });
         }
         let mut window = vec![0u8; span];
         SelfMemory::new()
             .read_exact(target as u64, &mut window)
             .map_err(|_| not_executable("the code cannot be read"))?;
-        if let Some(offset) = expected.first_mismatch(&window) {
+        if let Some(offset) = expected.and_then(|expected| expected.first_mismatch(&window)) {
             return Err(DetourError::SignatureMismatch {
                 address: target,
                 offset,
@@ -374,7 +401,9 @@ impl Detour {
             });
         }
         let prologue = analyze::analyze(target, &window)?;
-        if expected.len() < prologue.len {
+        if let Some(expected) = expected
+            && expected.len() < prologue.len
+        {
             return Err(DetourError::SignatureTooShort {
                 address: target,
                 needed: prologue.len,
@@ -527,10 +556,34 @@ impl Detour {
     /// [`uninstall_all_and_wait`] can try again. [`DetourError::Os`] when a
     /// protection change or the thread list fails.
     pub fn uninstall(self) -> Result<(), DetourError> {
+        self.restore_in_place()
+    }
+
+    /// [`uninstall`](Self::uninstall) on a borrowed detour, for an owner that
+    /// must keep the handle when the restore is refused. Once it has
+    /// succeeded, do not call it again: the bytes are the original ones, so a
+    /// second call reports [`DetourError::Modified`].
+    pub(crate) fn restore_in_place(&self) -> Result<(), DetourError> {
         let mut registry = lock_installed();
         restore(&self.inner)?;
         registry.retain(|detour| !Arc::ptr_eq(detour, &self.inner));
         Ok(())
+    }
+
+    /// After [`restore_in_place`](Self::restore_in_place) succeeded: waits up
+    /// to `timeout` as [`uninstall_and_wait`](Self::uninstall_and_wait) does
+    /// and frees the memory when idle. Returns `Ok(true)` once freed; after
+    /// that the trampoline is gone, so call it only once that is true, and
+    /// never call [`original`](Self::original) afterwards.
+    pub(crate) fn release_when_idle(&self, timeout: Duration) -> Result<bool, DetourError> {
+        let idle = wait_until_idle(core::slice::from_ref(&self.inner), timeout)?;
+        if idle {
+            // SAFETY: the bytes are restored, no thread is in the block or
+            // counted inside a replacement, and the caller releases once: it
+            // stops asking after the first `true`.
+            unsafe { memory::release(self.inner.block) };
+        }
+        Ok(idle)
     }
 
     /// Restores the original bytes, then waits up to `timeout` until nothing

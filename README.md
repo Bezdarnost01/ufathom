@@ -183,7 +183,7 @@ println!("{}", ctx.session().fstring(&label)?);
 
 Strings and arrays the engine returns are allocated by the engine. Free them through it with `exec.take_string(&mut s)` (read, then free), `take_strings`, `free_string` and `free_array`. These hand the buffer back through `KismetArrayLibrary::Array_Clear`. `free_array` frees only the array's own buffer: free what the elements own first. Never pass `FStringBuf` or `TArrayBuf` as an out parameter.
 
-The hook changes only data pointers. It patches the `ProcessEvent` slot in the virtual tables of live native classes. Calls from other threads pass straight through. The game thread is chosen in this order:
+By default the hook changes only data pointers. It patches the `ProcessEvent` slot in the virtual tables of live native classes (see [Which mode?](#which-mode) for the alternative). Calls from other threads pass straight through. The game thread is chosen in this order:
 
 1. a thread named with `game.set_game_thread(id)`;
 2. the process main thread;
@@ -194,10 +194,43 @@ Tasks and callbacks get an executor, and calls made through that executor do not
 A few more parts of the hook:
 
 - **`before_native` and `after_native`** hook the `UFunction::Func` pointer. Blueprint code reaches native functions through it without `ProcessEvent`. `before_native_fn::<Marker>` and `after_native_fn::<Marker>` name the function by type and accept only functions the dump marks native; a script function does not compile.
+- **`hook::<Marker>(When::Before | When::After, callback)`** and **`hook_native::<Marker>(When, callback)`** pick the mechanism from the marker, so you need not know which engine path a function takes. A script function (`Kind = Script`) goes through `ProcessEvent` and the callback gets `(&mut CallContext, &mut Params)`. A native function (`Kind = Native`) goes through `UFunction::Func` and the callback gets `&mut NativeContext`. A native function is registered on `Func` alone: every invocation passes through it, including the ones `ProcessEvent` makes, so it fires once per call, whether Blueprint bytecode or `ProcessEvent` made it. Registering it on `ProcessEvent` as well would fire twice for the calls that come through there. Two methods, not one, because the callbacks have different types and the compiler cannot choose a closure signature from the marker; a function of the wrong kind does not compile, and the error names the other method. Both return the usual `HookId`.
 - **`start_rescan_on_module_load()`** (Windows) hooks the virtual tables of native classes that a module loaded later adds. The loader tells the hook when a DLL loads; a background thread then rescans one and five seconds later, and loads close together share their rescans. Nothing runs between loads. **`start_auto_rescan(interval)`** does the same on a timer: use it on other platforms, or as well when a class can get its first instance with no module load.
 - **`into_guard(game)`** turns the id a hook returns into a `HookGuard` that removes the callback when it drops; `forget()` keeps it. Every callback also records the module that holds its code, so `remove_owned_by(module_base)` and `remove_owned_by_current_module()` remove everything one module registered before it is unloaded.
 - **`uninstall()`** puts the slots back. `uninstall_and_wait(timeout)` also waits until no thread is inside a hook, so the module can be unloaded.
 - **Several mods hooking the same slots.** Two mods that each link this runtime can hook one virtual table slot, the second saving the first one's hook as its original. The first then cannot restore the slot, and unmapping it would crash the game. `uninstall` leaves such a slot alone and returns `HookError::Chained`; the hook keeps forwarding, and `hot-unload` keeps the DLL loaded. Call `uninstall` again once the other mod has removed its hook.
+
+### Which mode?
+
+`GameThread::install` is `install_with(desc, HookMode::Vtable)`: it swaps the `ProcessEvent` slot in the virtual tables it finds through live objects and patches no code. A class with no live object yet, and a class from a module loaded later, are hooked by a rescan. With `--features detour` (Windows x86-64) you can instead detour the engine's `ProcessEvent` itself, once:
+
+```rust
+// SAFETY: inside the game; the majority `ProcessEvent` slot value is the engine's implementation.
+let game = unsafe { GameThread::install_with(&sdk::ENGINE, HookMode::Detour) }?;
+// `sdk::game_thread()` and `GameThread::get()` return this hook afterwards.
+```
+
+| | `HookMode::Vtable` (default) | `HookMode::Detour` |
+|---|---|---|
+| Patches | data pointers in virtual tables | the first bytes of the engine's `ProcessEvent` |
+| Class with no live object yet | missed until a rescan | covered |
+| Class that overrides `ProcessEvent` | missed | covered when it calls the base implementation |
+| `rescan`, `start_auto_rescan`, `start_rescan_on_module_load` | needed | no-ops (`Ok(0)`, `Ok(false)`) |
+| Needs | nothing | the `detour` feature, Windows x86-64 (`HookError::DetourUnavailable` otherwise) |
+
+Callbacks, tasks, game thread choice, guards and `remove_owned_by` work the same in both modes, and native `Func` hooks are unaffected. The detour mode has no author signature to check the target against: it takes the address the vote of virtual tables found and checks that against its own current bytes. The detour analysis still refuses a function it cannot move (a `ret`, a trap, a branch into the stolen bytes), but it cannot notice that the vote elected the wrong function, or that another tool patched the bytes first. A class whose override never calls the base implementation is not seen. `uninstall_and_wait` restores the bytes and waits for threads inside the hook and inside the detour; bytes another tool patched over are left alone and reported as `HookError::Chained`, and the DLL must stay loaded. An uninstalled detour is not installed again.
+
+### Which hook do I use?
+
+| I want to intercept | Use | The callback gets |
+|---|---|---|
+| a script function (an event a Blueprint implements) | `hook::<Marker>(When, ...)` | `&mut CallContext` and the typed parameters; may change them and skip the function |
+| a native function that has a `UFunction` (`FUNC_Native`) | `hook_native::<Marker>(When, ...)` | `&mut NativeContext`: object, function, `FFrame`, result; observes only |
+| a reflected function by path, or one with no marker | `before` / `after` (`ProcessEvent`), `before_native` / `after_native` (`Func`) | raw parameter bytes, or the same `NativeContext` |
+| every `ProcessEvent` call, classes with no object yet included | `install_with(desc, HookMode::Detour)` | widens what the rows above see |
+| a plain C++ function with no `UFunction` | `Detour::install` with a signature (below) | whatever your replacement takes |
+
+A direct C++ call of a native function's implementation, bypassing the `UFunction`, is seen by neither `ProcessEvent` nor `Func`; that needs a `Detour`.
 
 ### Hook any native function
 

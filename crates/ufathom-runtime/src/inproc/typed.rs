@@ -103,11 +103,39 @@ pub trait GameFunction: 'static {
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not a native function",
     label = "this function has no `FUNC_Native`",
-    note = "native hooks need `type Kind = Native`; hook a script function with `before_fn` or `after_fn`"
+    note = "native hooks need `type Kind = Native`; hook a script function with `hook`, `before_fn` or `after_fn`"
 )]
 pub trait NativeFunction: GameFunction<Kind = Native> {}
 
 impl<F: GameFunction<Kind = Native>> NativeFunction for F {}
+
+/// A [`GameFunction`] without `FUNC_Native`, accepted by
+/// [`GameThread::hook`]. Implemented for every function whose
+/// [`Kind`](GameFunction::Kind) is [`Script`]; a native one goes to
+/// [`GameThread::hook_native`] instead, and hooking it with `hook` does not
+/// compile:
+///
+/// ```compile_fail,E0277
+/// use ufathom_runtime::inproc::{GameFunction, GameThread, Native, When};
+///
+/// struct Destroy;
+/// impl GameFunction for Destroy {
+///     const PATH: &'static str = "/Script/Engine.Actor:K2_DestroyActor";
+///     type Kind = Native;
+///     type Params = [u8; 0];
+/// }
+/// # fn hook(game: &GameThread) {
+/// let _ = game.hook::<Destroy>(When::Before, |_, _| {});
+/// # }
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a script function",
+    label = "this function has `FUNC_Native`",
+    note = "script hooks need `type Kind = Script`; hook a native function with `hook_native`"
+)]
+pub trait ScriptFunction: GameFunction<Kind = Script> {}
+
+impl<F: GameFunction<Kind = Script>> ScriptFunction for F {}
 
 /// The parameter block as `P`, when it is large enough and aligned for it.
 /// A zero-sized `P` (a function without parameters) always fits: the engine

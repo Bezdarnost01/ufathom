@@ -7,20 +7,59 @@
 //! tasks, and callbacks before and after chosen game functions. A callback can
 //! be owned by a [`HookGuard`] and removed when it drops, or removed with
 //! everything else its module registered.
+//!
+//! # Which hook do I use?
+//!
+//! | I want to intercept | Use | The callback gets |
+//! |---|---|---|
+//! | a script function (an event a Blueprint implements), named by a generated marker | [`GameThread::hook`] with [`When`] | [`CallContext`] and the typed parameters; may change them and skip the function |
+//! | a native function that has a `UFunction` (`UFUNCTION` with a C++ body), named by a marker | [`GameThread::hook_native`] with [`When`] | [`NativeContext`]: object, function, `FFrame`, result; observes only |
+//! | a reflected function by path, or one without a marker | [`GameThread::before`] and [`after`](GameThread::after) (`ProcessEvent`), [`before_native`](GameThread::before_native) and [`after_native`](GameThread::after_native) (`Func`) | raw parameter bytes, or the same [`NativeContext`] |
+//! | every `ProcessEvent` call, including classes with no live object yet | [`GameThread::install_with`] with [`HookMode::Detour`] | nothing by itself: it widens what the rows above see |
+//! | a plain C++ function with no `UFunction` | `detour::Detour` (`detour` feature, Windows x86-64), with a signature | whatever the replacement takes |
+//!
+//! `hook_native` registers on `UFunction::Func` only. Every invocation of a
+//! function goes through that pointer, including the ones `ProcessEvent`
+//! makes (`UFunction::Invoke` calls it), so a native function hooked there is
+//! seen once per call, from Blueprint bytecode and from `ProcessEvent` alike.
+//! Registering it on `ProcessEvent` as well would fire twice for every call
+//! that comes through `ProcessEvent`.
+//!
+//! The two methods differ because the data differs. A script function is
+//! entered through `ProcessEvent`, which hands over the decoded parameter
+//! block. A native one is entered through `Func`, where the arguments sit in
+//! an `FFrame` whose layout depends on the caller, so there are no typed
+//! parameters. Two methods let the compiler check each callback's signature;
+//! a function of the wrong kind is a compile error that names the other
+//! method.
+//!
+//! # Which mode?
+//!
+//! [`GameThread::install`] swaps the `ProcessEvent` slot in the virtual tables
+//! it finds through live objects and patches no code ([`HookMode::Vtable`]).
+//! A class with no live object yet, or a later module load, needs a
+//! [`rescan`](GameThread::rescan). [`GameThread::install_with`] with
+//! [`HookMode::Detour`] detours the engine's `ProcessEvent` itself once, which
+//! needs the `detour` feature and Windows x86-64, and trusts the address the
+//! vote of virtual tables found instead of a signature an author wrote.
 
 mod guard;
 mod hook;
+mod mode;
 mod modload;
 mod native;
 mod os;
 mod patch;
 mod typed;
+mod unified;
 
 pub use guard::HookGuard;
 pub use hook::{CallContext, GameContext, GameThread, HookError, HookId, MIN_RESCAN_INTERVAL};
+pub use mode::HookMode;
 pub use modload::{FIRST_RESCAN, SECOND_RESCAN};
 pub use native::NativeContext;
-pub use typed::{FunctionKind, GameFunction, Native, NativeFunction, Script};
+pub use typed::{FunctionKind, GameFunction, Native, NativeFunction, Script, ScriptFunction};
+pub use unified::When;
 
 use core::ffi::c_void;
 use core::marker::PhantomData;

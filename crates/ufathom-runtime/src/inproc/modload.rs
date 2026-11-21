@@ -17,6 +17,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+use super::HookMode;
 use super::hook::{GameThread, HookError};
 
 #[cfg(windows)]
@@ -168,9 +169,10 @@ impl GameThread {
     /// Windows: nothing runs between loads. Use `start_auto_rescan` as well
     /// when a class can get its first instance with no module load.
     ///
-    /// Returns `false` when it is already running, and on platforms with no
-    /// module load notification (anything but Windows), where nothing is
-    /// started. [`uninstall`](Self::uninstall) stops it; so does
+    /// Returns `false` when it is already running, on platforms with no
+    /// module load notification (anything but Windows), and in
+    /// [`HookMode::Detour`], where the engine's function itself is hooked and
+    /// there is nothing to rescan. Nothing is started then. [`uninstall`](Self::uninstall) stops it; so does
     /// [`stop_rescan_on_module_load`](Self::stop_rescan_on_module_load).
     ///
     /// # Errors
@@ -179,6 +181,9 @@ impl GameThread {
     /// be registered, [`HookError::Thread`] when the thread cannot be
     /// started.
     pub fn start_rescan_on_module_load(&'static self) -> Result<bool, HookError> {
+        if self.mode == HookMode::Detour {
+            return Ok(false);
+        }
         #[cfg(windows)]
         {
             let mut slot = lock(&self.modload.watcher);
