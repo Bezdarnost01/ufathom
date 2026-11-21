@@ -10,8 +10,11 @@
 //! - callbacks registered for one function ([`GameThread::before`],
 //!   [`GameThread::after`]) see its object and parameters and may skip it.
 //!
-//! No machine code is patched: only data pointers in virtual tables change,
-//! and [`GameThread::uninstall`] puts them back.
+//! In the default [`HookMode::Vtable`] no machine code is patched: only data
+//! pointers in virtual tables change, and [`GameThread::uninstall`] puts them
+//! back. [`GameThread::install_with`] can instead detour the engine's
+//! `ProcessEvent` itself, once ([`HookMode::Detour`]); the same entry point,
+//! [`hooked_process_event`], serves both.
 //!
 //! # The game thread
 //!
@@ -33,6 +36,10 @@
 //!
 //! # Classes loaded later
 //!
+//! In [`HookMode::Detour`] there is nothing to catch up on: every call of the
+//! engine's implementation passes through the one detour. The rest of this
+//! section is about [`HookMode::Vtable`].
+//!
 //! A virtual table is found through a live object of its class, so a native
 //! class with no instance at install time is not hooked yet.
 //! [`GameThread::rescan`] hooks what appeared since. Two background threads
@@ -52,9 +59,9 @@
 //!
 //! # Unloading
 //!
-//! [`GameThread::uninstall_and_wait`] restores every slot and then waits
-//! until no thread runs inside the hook, so the module that holds it can be
-//! unloaded.
+//! [`GameThread::uninstall_and_wait`] restores every slot (or the detoured
+//! bytes) and then waits until no thread runs inside the hook, so the module
+//! that holds it can be unloaded.
 //!
 //! Mods that each link their own copy of this crate can hook the same slot:
 //! the one that hooked second saved the first one's hook as its original. The
@@ -62,7 +69,8 @@
 //! second one forwarding into unmapped code. Such a slot is left as it is and
 //! reported as [`HookError::Chained`]; the hook keeps forwarding, and
 //! [`uninstall`](GameThread::uninstall) can be called again once the other
-//! module has removed its hook.
+//! module has removed its hook. The same holds for the detour: bytes patched
+//! over by another tool are left alone and reported as [`HookError::Chained`].
 
 use core::ffi::c_void;
 use std::cell::{Cell, RefCell};
@@ -77,10 +85,11 @@ use std::time::{Duration, Instant};
 use ufathom_mem::{MemoryReaderExt, Pod, SelfMemory};
 
 use super::guard::owner_of_val;
+use super::mode::EngineDetour;
 use super::modload::ModuleLoadWatch;
 use super::native::NativeHooks;
 use super::patch::Restored;
-use super::{InProcessExecutor, ProcessEventFn, os, patch};
+use super::{HookMode, InProcessExecutor, ProcessEventFn, os, patch};
 use crate::desc::EngineDesc;
 use crate::object::UObjectBase;
 use crate::ptr::Ptr;
@@ -151,13 +160,36 @@ pub enum HookError {
         /// What that slot holds: the other module's hook.
         holder: u64,
         /// Slots left unrestored, `ProcessEvent` slots and `UFunction::Func`
-        /// fields together.
+        /// fields together. For a detoured `ProcessEvent`, `slot` is the
+        /// function, `holder` is where the foreign jump there leads (0 when
+        /// the bytes are not a `jmp rel32`) and this counts the detour as one.
         blocked: usize,
     },
     /// The notification that reports module loads could not be registered or
     /// removed.
     #[error("module load notification: {0}")]
     ModuleNotification(String),
+    /// [`HookMode::Detour`] was asked for in a build that cannot patch code:
+    /// it needs the `detour` feature of `ufathom-runtime`, on Windows x86-64.
+    #[error("HookMode::Detour needs the `detour` feature, on Windows x86-64")]
+    DetourUnavailable,
+    /// The engine's `ProcessEvent` could not be detoured, or its detour could
+    /// not be removed. The reason is the detour module's own error.
+    #[error("cannot detour ProcessEvent at {target:#x}: {reason}")]
+    Detour {
+        /// Address of the function.
+        target: u64,
+        /// What the safety analysis or the operating system said.
+        reason: String,
+    },
+    /// A hook is installed already, in another mode than the one asked for.
+    #[error("the hook is installed in {installed} mode, not {requested} mode")]
+    ModeConflict {
+        /// The mode of the installed hook.
+        installed: HookMode,
+        /// The mode asked for.
+        requested: HookMode,
+    },
 }
 
 /// Slots that could not be put back by an uninstall.
@@ -192,6 +224,32 @@ impl RestoreReport {
             }),
             None => Ok(()),
         }
+    }
+}
+
+/// The `ProcessEvent` slots of the virtual tables looked at.
+#[derive(Default)]
+struct Vote {
+    /// (address of the slot, what it holds) for each virtual table.
+    slots: Vec<(usize, usize)>,
+    /// The virtual tables those slots belong to.
+    looked_at: Vec<u64>,
+}
+
+impl Vote {
+    /// The value most slots hold, not counting `exclude` (the hook itself),
+    /// the larger one on a tie.
+    fn majority(&self, exclude: usize) -> Option<usize> {
+        let mut counts: HashMap<usize, usize> = HashMap::new();
+        for &(_, value) in &self.slots {
+            if value != exclude {
+                *counts.entry(value).or_default() += 1;
+            }
+        }
+        counts
+            .into_iter()
+            .max_by_key(|&(value, count)| (count, value))
+            .map(|(value, _)| value)
     }
 }
 
@@ -486,6 +544,7 @@ struct Rescanner {
 /// it from [`GameThread::install`] or [`GameThread::get`].
 pub struct GameThread {
     pub(super) desc: &'static EngineDesc,
+    pub(super) mode: HookMode,
     session: Session<SelfMemory>,
     process_event: u32,
     /// Serializes rescans, so two never patch at once.
@@ -506,11 +565,14 @@ pub struct GameThread {
     rescanner: Mutex<Option<Rescanner>>,
     pub(super) modload: ModuleLoadWatch,
     pub(super) native: NativeHooks,
+    /// The detour of [`HookMode::Detour`].
+    detour: EngineDetour,
 }
 
 static STATE: OnceLock<GameThread> = OnceLock::new();
-/// The `ProcessEvent` the hook forwards to.
-static ORIGINAL: AtomicUsize = AtomicUsize::new(0);
+/// The `ProcessEvent` the hook forwards to: the engine's implementation, or
+/// in [`HookMode::Detour`] the trampoline that runs it.
+pub(super) static ORIGINAL: AtomicUsize = AtomicUsize::new(0);
 /// Threads currently inside a hook of this module.
 pub(super) static ACTIVE: AtomicUsize = AtomicUsize::new(0);
 
@@ -524,7 +586,8 @@ thread_local! {
 }
 
 impl GameThread {
-    /// Installs the hook, or returns the one already installed.
+    /// Installs the hook in [`HookMode::Vtable`], or returns the one already
+    /// installed. See [`install_with`](Self::install_with) to choose the mode.
     ///
     /// Every live object's virtual table is read. The `ProcessEvent` slot
     /// value most of them share is taken as the engine's implementation, and
@@ -544,34 +607,103 @@ impl GameThread {
     /// [`HookError::Session`] when the session cannot be opened or the index
     /// is unknown, [`HookError::NothingToHook`] when no virtual table was
     /// found, [`HookError::Patch`] when a slot cannot be written (slots
-    /// patched before the failure stay patched; call `uninstall` to undo).
+    /// patched before the failure stay patched; call `uninstall` to undo),
+    /// [`HookError::ModeConflict`] when the installed hook is a detour.
     pub unsafe fn install(desc: &'static EngineDesc) -> Result<&'static Self, HookError> {
-        if let Some(state) = STATE.get() {
-            return Ok(state);
+        // SAFETY: the contract is the caller's.
+        unsafe { Self::install_with(desc, HookMode::Vtable) }
+    }
+
+    /// Installs the hook in `mode`, or returns the one already installed.
+    ///
+    /// Both modes take the vote [`install`](Self::install) describes to find
+    /// the engine's `ProcessEvent`. [`HookMode::Vtable`] then swaps the slot in
+    /// every virtual table that holds it and patches no code.
+    /// [`HookMode::Detour`] detours the function itself, once: the same
+    /// callbacks, tasks and game thread detection run, for every caller of
+    /// the engine's implementation, including classes with no live object
+    /// yet and classes that override `ProcessEvent` and call the base
+    /// implementation. A class whose override never calls the base is not
+    /// seen.
+    ///
+    /// A detour usually has an author's signature to check the target
+    /// against. Here the target is the vote's result, so its own current bytes
+    /// are the expected ones: the mode trusts the vote, and relies on the
+    /// [`detour`](crate::detour) module's analysis to refuse a function it
+    /// cannot move safely (`ret`, a trap, a branch into the stolen bytes).
+    /// That analysis cannot tell that the vote elected the wrong function, or
+    /// that another tool patched the bytes first.
+    ///
+    /// Asking again for the mode that is installed returns the hook, and for
+    /// the detour mode installs the detour if an earlier attempt failed. An
+    /// uninstalled detour is not installed again.
+    ///
+    /// # Safety
+    ///
+    /// As [`install`](Self::install). For [`HookMode::Detour`] also: the
+    /// majority `ProcessEvent` slot value is the start of the engine's
+    /// `UObject::ProcessEvent` (true of every Unreal Engine build, where the
+    /// one implementation is shared by nearly every class), and no other tool
+    /// is patching that function at this moment.
+    ///
+    /// # Errors
+    ///
+    /// As [`install`](Self::install), and [`HookError::DetourUnavailable`]
+    /// when `mode` is [`HookMode::Detour`] and the build has no `detour`
+    /// feature or is not Windows x86-64, [`HookError::Detour`] when the
+    /// function cannot be detoured, [`HookError::ModeConflict`] when a hook is
+    /// installed in the other mode.
+    pub unsafe fn install_with(
+        desc: &'static EngineDesc,
+        mode: HookMode,
+    ) -> Result<&'static Self, HookError> {
+        if mode == HookMode::Detour && !EngineDetour::AVAILABLE {
+            return Err(HookError::DetourUnavailable);
         }
-        let process_event = desc
-            .process_event_index
-            .ok_or(SessionError::Unknown("ProcessEvent vtable index"))?;
-        let fresh = Self {
-            desc,
-            session: Session::new(SelfMemory::new(), desc)?,
-            process_event,
-            scan: Mutex::new(()),
-            patched: Mutex::new(Vec::new()),
-            seen: Mutex::new(HashSet::new()),
-            tasks: Mutex::new(VecDeque::new()),
-            has_tasks: AtomicBool::new(false),
-            callbacks: Callbacks::new(),
-            next_id: AtomicU64::new(1),
-            game_thread: AtomicU64::new(0),
-            main_thread: os::main_thread_id(),
-            votes: Mutex::new(Vec::new()),
-            rescanner: Mutex::new(None),
-            modload: ModuleLoadWatch::new(),
-            native: NativeHooks::new(),
+        let existing = STATE.get();
+        let state = match existing {
+            Some(state) => state,
+            None => {
+                let process_event = desc
+                    .process_event_index
+                    .ok_or(SessionError::Unknown("ProcessEvent vtable index"))?;
+                let fresh = Self {
+                    desc,
+                    mode,
+                    session: Session::new(SelfMemory::new(), desc)?,
+                    process_event,
+                    scan: Mutex::new(()),
+                    patched: Mutex::new(Vec::new()),
+                    seen: Mutex::new(HashSet::new()),
+                    tasks: Mutex::new(VecDeque::new()),
+                    has_tasks: AtomicBool::new(false),
+                    callbacks: Callbacks::new(),
+                    next_id: AtomicU64::new(1),
+                    game_thread: AtomicU64::new(0),
+                    main_thread: os::main_thread_id(),
+                    votes: Mutex::new(Vec::new()),
+                    rescanner: Mutex::new(None),
+                    modload: ModuleLoadWatch::new(),
+                    native: NativeHooks::new(),
+                    detour: EngineDetour::new(),
+                };
+                STATE.get_or_init(|| fresh)
+            }
         };
-        let state = STATE.get_or_init(|| fresh);
-        state.rescan()?;
+        if state.mode != mode {
+            return Err(HookError::ModeConflict {
+                installed: state.mode,
+                requested: mode,
+            });
+        }
+        match mode {
+            HookMode::Vtable => {
+                if existing.is_none() {
+                    state.rescan()?;
+                }
+            }
+            HookMode::Detour => state.install_detour()?,
+        }
         Ok(state)
     }
 
@@ -579,6 +711,20 @@ impl GameThread {
     #[must_use]
     pub fn get() -> Option<&'static Self> {
         STATE.get()
+    }
+
+    /// How the installed hook intercepts `ProcessEvent`.
+    #[must_use]
+    pub fn mode(&self) -> HookMode {
+        self.mode
+    }
+
+    /// The function the detour of [`HookMode::Detour`] is patched into, while
+    /// it is. `None` in the other mode, before the detour exists and after it
+    /// was removed.
+    #[must_use]
+    pub fn detour_target(&self) -> Option<usize> {
+        self.detour.target()
     }
 
     /// Hooks virtual tables that appeared since the last scan, for example
@@ -592,69 +738,28 @@ impl GameThread {
     /// ([`start_rescan_on_module_load`](Self::start_rescan_on_module_load) or
     /// [`start_auto_rescan`](Self::start_auto_rescan)) to the game thread.
     ///
+    /// In [`HookMode::Detour`] there is nothing to catch up on, since the
+    /// engine's function itself is hooked: it does nothing and returns
+    /// `Ok(0)`.
+    ///
     /// # Errors
     ///
     /// As [`install`](Self::install).
     pub fn rescan(&self) -> Result<usize, HookError> {
+        if self.mode == HookMode::Detour {
+            return Ok(0);
+        }
         let _scan = lock(&self.scan);
-        let mem = self.session.memory();
-        let mut fresh: HashSet<u64> = HashSet::new();
-        {
-            let seen = lock(&self.seen);
-            self.session.for_each_object(|_, object| {
-                if let Ok(vtable) = mem.read_u64(object.addr())
-                    && vtable != 0
-                    && !seen.contains(&vtable)
-                {
-                    fresh.insert(vtable);
-                }
-                ControlFlow::Continue(())
-            })?;
-        }
+        let vote = self.collect_vote()?;
         let hook = hooked_process_event as *const () as usize;
-        let mut slots: Vec<(usize, usize)> = Vec::new();
-        let mut counts: HashMap<usize, usize> = HashMap::new();
-        let mut looked_at: Vec<u64> = Vec::new();
-        for vtable in fresh {
-            let Some(slot) = u64::from(self.process_event)
-                .checked_mul(8)
-                .and_then(|offset| vtable.checked_add(offset))
-                .and_then(|slot| usize::try_from(slot).ok())
-            else {
-                continue;
-            };
-            let Ok(value) = mem.read_u64(slot as u64) else {
-                continue;
-            };
-            let Ok(value) = usize::try_from(value) else {
-                continue;
-            };
-            if value == 0 {
-                continue;
-            }
-            looked_at.push(vtable);
-            if value != hook {
-                *counts.entry(value).or_default() += 1;
-            }
-            slots.push((slot, value));
-        }
         let mut original = ORIGINAL.load(Ordering::Acquire);
         if original == 0 {
-            original = counts
-                .iter()
-                .max_by_key(|&(&value, &count)| (count, value))
-                .map(|(&value, _)| value)
-                .ok_or_else(|| {
-                    HookError::NothingToHook(format!(
-                        "no object has a non-null virtual table slot {}",
-                        self.process_event
-                    ))
-                })?;
+            original = vote.majority(hook).ok_or_else(|| self.nothing_to_hook())?;
             ORIGINAL.store(original, Ordering::Release);
         }
         let mut patched = lock(&self.patched);
         let mut count = 0;
-        for (slot, value) in slots {
+        for &(slot, value) in &vote.slots {
             if value != original {
                 continue;
             }
@@ -672,15 +777,81 @@ impl GameThread {
                 count += 1;
             }
         }
-        lock(&self.seen).extend(looked_at);
+        lock(&self.seen).extend(vote.looked_at);
         self.modload.count_rescan();
         Ok(count)
+    }
+
+    /// Reads the `ProcessEvent` slot of every virtual table not seen since
+    /// the last uninstall.
+    fn collect_vote(&self) -> Result<Vote, HookError> {
+        let mem = self.session.memory();
+        let mut fresh: HashSet<u64> = HashSet::new();
+        {
+            let seen = lock(&self.seen);
+            self.session.for_each_object(|_, object| {
+                if let Ok(vtable) = mem.read_u64(object.addr())
+                    && vtable != 0
+                    && !seen.contains(&vtable)
+                {
+                    fresh.insert(vtable);
+                }
+                ControlFlow::Continue(())
+            })?;
+        }
+        let mut vote = Vote::default();
+        for vtable in fresh {
+            let Some(slot) = u64::from(self.process_event)
+                .checked_mul(8)
+                .and_then(|offset| vtable.checked_add(offset))
+                .and_then(|slot| usize::try_from(slot).ok())
+            else {
+                continue;
+            };
+            let Ok(value) = mem.read_u64(slot as u64) else {
+                continue;
+            };
+            let Ok(value) = usize::try_from(value) else {
+                continue;
+            };
+            if value == 0 {
+                continue;
+            }
+            vote.looked_at.push(vtable);
+            vote.slots.push((slot, value));
+        }
+        Ok(vote)
+    }
+
+    fn nothing_to_hook(&self) -> HookError {
+        HookError::NothingToHook(format!(
+            "no object has a non-null virtual table slot {}",
+            self.process_event
+        ))
+    }
+
+    /// Detours the engine's `ProcessEvent` for [`HookMode::Detour`], unless
+    /// that was done.
+    fn install_detour(&self) -> Result<(), HookError> {
+        let _scan = lock(&self.scan);
+        // SAFETY: the vote's winner is the engine's `ProcessEvent` and the
+        // replacement forwards to the trampoline, which the detour stores in
+        // `ORIGINAL` before it patches (contract of `install_with`).
+        unsafe {
+            self.detour.install(|| {
+                self.collect_vote()?
+                    .majority(0)
+                    .ok_or_else(|| self.nothing_to_hook())
+            })
+        }
     }
 
     /// Starts a background thread that calls [`rescan`](Self::rescan) every
     /// `interval` (at least [`MIN_RESCAN_INTERVAL`]), so classes that get
     /// their first instance later are hooked too. Returns `false` when one
-    /// is already running. [`stop_auto_rescan`](Self::stop_auto_rescan) and
+    /// is already running, and in [`HookMode::Detour`], where there is
+    /// nothing to rescan and no thread is started.
+    /// [`stop_auto_rescan`](Self::stop_auto_rescan) and
     /// [`uninstall`](Self::uninstall) stop it.
     ///
     /// Prefer [`start_rescan_on_module_load`](Self::start_rescan_on_module_load)
@@ -695,6 +866,9 @@ impl GameThread {
     ///
     /// [`HookError::Thread`] when the thread cannot be started.
     pub fn start_auto_rescan(&'static self, interval: Duration) -> Result<bool, HookError> {
+        if self.mode == HookMode::Detour {
+            return Ok(false);
+        }
         let interval = interval.max(MIN_RESCAN_INTERVAL);
         let mut slot = lock(&self.rescanner);
         if slot.is_some() {
@@ -736,14 +910,15 @@ impl GameThread {
     }
 
     /// Stops the [background rescans](Self::start_rescan_on_module_load), then
-    /// puts every patched slot and every [native function](Self::before_native)
-    /// back. A thread already inside the hook finishes its call normally.
+    /// puts every patched slot (or, in [`HookMode::Detour`], the detoured
+    /// bytes) and every [native function](Self::before_native) back. A thread
+    /// already inside the hook finishes its call normally.
     /// Queued tasks and callbacks are kept and run again after
     /// [`rescan`](Self::rescan); use [`remove_owned_by`](Self::remove_owned_by)
     /// to drop those of a module that is about to be unloaded.
     ///
     /// A slot that another module hooked after this one is not touched, see
-    /// the module docs. It stays registered with this hook, which
+    /// the module docs; nor is a detour whose bytes another tool patched over. It stays registered with this hook, which
     /// keeps forwarding (and running its callbacks) until the other module
     /// removes its own hook; call `uninstall` again after that.
     ///
@@ -787,6 +962,13 @@ impl GameThread {
             *patched = kept;
         }
         lock(&self.seen).clear();
+        match self.detour.uninstall() {
+            Ok(()) => {}
+            Err(HookError::Chained { slot, holder, .. }) => report.chained.push((slot, holder)),
+            Err(error) => {
+                report.error.get_or_insert(error);
+            }
+        }
         report.merge(self.native.restore_all());
         notification?;
         report.into_result()
@@ -797,6 +979,11 @@ impl GameThread {
     /// does, after which the module may be unloaded; `false` when a thread
     /// was still inside (for example, in a long game function called through
     /// the hook) and unloading would be unsafe.
+    ///
+    /// In [`HookMode::Detour`] it waits for the hook's own count and for the
+    /// detour's (threads in its replacement, relay or trampoline), then frees
+    /// the detour's memory. The detour's wait may take a little longer than
+    /// `timeout` after the hook's own was spent.
     ///
     /// # Errors
     ///
@@ -810,7 +997,11 @@ impl GameThread {
                 // restored and not entered yet.
                 thread::sleep(UNLOAD_GRACE);
                 if ACTIVE.load(Ordering::Acquire) == 0 {
-                    return Ok(true);
+                    // The detour needs a quiet period of its own.
+                    let left = deadline
+                        .saturating_duration_since(Instant::now())
+                        .max(UNLOAD_GRACE * 4);
+                    return self.detour.release(left);
                 }
             }
             if Instant::now() >= deadline {
@@ -820,7 +1011,9 @@ impl GameThread {
         }
     }
 
-    /// Number of virtual table slots currently patched.
+    /// Number of virtual table slots currently patched. Always 0 in
+    /// [`HookMode::Detour`], which patches none; see
+    /// [`detour_target`](Self::detour_target).
     #[must_use]
     pub fn hooked_slots(&self) -> usize {
         lock(&self.patched).len()
@@ -1101,6 +1294,7 @@ impl GameThread {
 impl core::fmt::Debug for GameThread {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("GameThread")
+            .field("mode", &self.mode)
             .field("process_event", &self.process_event)
             .field("hooked_slots", &self.hooked_slots())
             .field("game_thread", &self.game_thread_id())
@@ -1171,8 +1365,10 @@ pub(super) fn with_executor<R>(
     })
 }
 
-/// The hook written into virtual tables in place of `ProcessEvent`.
-unsafe extern "C" fn hooked_process_event(
+/// The hook written into virtual tables in place of `ProcessEvent`, and the
+/// target of the detour in [`HookMode::Detour`]: both modes run this one body,
+/// which forwards to whatever [`ORIGINAL`] holds.
+pub(super) unsafe extern "C" fn hooked_process_event(
     this: *mut c_void,
     function: *mut c_void,
     parms: *mut c_void,

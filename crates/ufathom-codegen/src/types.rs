@@ -5,7 +5,7 @@
 //! this crate. A property whose size in the dump differs from the size of its
 //! Rust type is degraded by the caller, never emitted with the wrong size.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ufathom_model::PropertyType;
 use ufathom_model::layout::FNameLayout;
@@ -331,6 +331,40 @@ impl TypeTable {
     }
 }
 
+/// The class an object pointer type points at, from its Rust text.
+///
+/// `rt::Ptr<crate::engine::UFoo>` gives `crate::engine::UFoo`. Anything else,
+/// including a pointer to a pointer or an array of pointers, gives `None`. The
+/// text is the one [`TypeTable::resolve`] writes, so the shape is fixed here.
+pub(crate) fn pointer_target(rust: &str) -> Option<&str> {
+    let target = rust
+        .strip_prefix(RT)?
+        .strip_prefix("::Ptr<")?
+        .strip_suffix('>')?;
+    (!target.is_empty() && !target.contains(['<', '>', ';', '[', ' '])).then_some(target)
+}
+
+/// Whether a value of this Rust type is plain data: it holds no pointer to
+/// memory the engine allocates and owns (a string, array, map, set, text,
+/// delegate or soft pointer), so writing a new value over it cannot leak or
+/// corrupt an allocation. Object pointers count as plain: the write stores an
+/// address and the engine's own checks decide what it means.
+///
+/// `plain_types` are the Rust paths of the enums and of the structs already
+/// known to be plain.
+pub(crate) fn is_plain_value(rust: &str, plain_types: &BTreeSet<String>) -> bool {
+    const PRIMITIVES: &[&str] = &[
+        "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64",
+    ];
+    PRIMITIVES.contains(&rust)
+        || rust == FNAME_ALIAS
+        || rust == "rt::UBool"
+        || rust == "rt::FWeakObjectPtr"
+        || rust == "rt::FLazyObjectPtr"
+        || pointer_target(rust).is_some()
+        || plain_types.contains(rust)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -542,5 +576,57 @@ mod tests {
             }),
             sa(size_of::<rt::Ptr<u8>>(), align_of::<rt::Ptr<u8>>())
         );
+    }
+
+    #[test]
+    fn pointer_targets_are_read_from_the_type_text() {
+        assert_eq!(
+            pointer_target("rt::Ptr<crate::engine::UFoo>"),
+            Some("crate::engine::UFoo")
+        );
+        assert_eq!(
+            pointer_target("rt::Ptr<rt::UObjectBase>"),
+            Some("rt::UObjectBase")
+        );
+        assert_eq!(
+            pointer_target("rt::Ptr<rt::Ptr<crate::engine::UFoo>>"),
+            None
+        );
+        assert_eq!(
+            pointer_target("rt::TArray<rt::Ptr<crate::engine::UFoo>>"),
+            None
+        );
+        assert_eq!(pointer_target("[rt::Ptr<crate::engine::UFoo>; 2]"), None);
+        assert_eq!(pointer_target("rt::FWeakObjectPtr"), None);
+        assert_eq!(pointer_target("f32"), None);
+    }
+
+    #[test]
+    fn plain_values_exclude_engine_owned_allocations() {
+        let plain: BTreeSet<String> = ["crate::engine::EMode".to_owned()].into();
+        for ok in [
+            "f32",
+            "u8",
+            "rt::UBool",
+            "crate::FName",
+            "rt::Ptr<crate::engine::UFoo>",
+            "rt::FWeakObjectPtr",
+            "crate::engine::EMode",
+        ] {
+            assert!(is_plain_value(ok, &plain), "{ok}");
+        }
+        for no in [
+            "rt::FString",
+            "rt::FText",
+            "rt::TArray<i32>",
+            "rt::TMap<i32, i32>",
+            "rt::TSet<i32>",
+            "rt::FSoftObjectPtr<crate::FName>",
+            "rt::FScriptDelegate<crate::FName>",
+            "rt::FScriptInterface<crate::engine::UFoo>",
+            "crate::engine::FNotKnownPlain",
+        ] {
+            assert!(!is_plain_value(no, &plain), "{no}");
+        }
     }
 }

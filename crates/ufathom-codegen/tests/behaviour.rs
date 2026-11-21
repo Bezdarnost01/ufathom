@@ -32,9 +32,9 @@ fn generated_sdk_reads_objects_and_calls_wrappers() {
     )
     .unwrap();
     let run = run_cargo(dir.path(), &["test"]);
-    // Nine tests in the generated crate, all passing.
+    // Thirteen tests in the generated crate, all passing.
     assert!(
-        run.stdout.contains("test result: ok. 9 passed; 0 failed"),
+        run.stdout.contains("test result: ok. 13 passed; 0 failed"),
         "unexpected output:
 {}",
         run.stdout
@@ -44,7 +44,7 @@ fn generated_sdk_reads_objects_and_calls_wrappers() {
     // fields can be written: two more tests, which exist only in that build.
     let run = run_cargo(dir.path(), &["test", "--features", "inproc"]);
     assert!(
-        run.stdout.contains("test result: ok. 11 passed; 0 failed"),
+        run.stdout.contains("test result: ok. 15 passed; 0 failed"),
         "unexpected output with inproc:
 {}",
         run.stdout

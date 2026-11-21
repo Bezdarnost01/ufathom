@@ -113,6 +113,25 @@ cargo build --release --bin ufathom-sdk-external
 
 The executable opens the PID with `ProcessMemory` and calls the same `run` function. Access is read-only and requires the same privileges as the target; access denial is reported, not bypassed. External mode does not provide a `ProcessEvent` executor.
 
+### Running an existing mod DLL next to the Rust one
+
+A team with a C++ mod DLL, perhaps loaded through its own `dsound.dll` proxy, can move to Rust one feature at a time: the Rust DLL loads the old DLL(s) too, so both run side by side. Put a plain text file `ufathom-companions.txt` in the **same folder as the built SDK DLL**. Any build reads it (proxy or not), on the worker thread and never in `DllMain`. With no file, nothing happens.
+
+```text
+# One DLL per line: a file name or a path relative to this folder.
+# A comment takes a whole line. Blank lines are ignored.
+legacy_mod.dll
+legacy\second.dll
+after-engine:needs_the_engine.dll
+unload-on-exit
+```
+
+- **Paths.** Absolute paths (a drive, a leading `\` or `/`, UNC) and any `..` component are refused: the line is logged with its line number (`OutputDebugString`, like the rest of the DLL's output) and skipped, and the other lines still load. A DLL that fails to load is logged and does not stop the rest. Each is loaded with `LoadLibraryExW(full_path, LOAD_WITH_ALTERED_SEARCH_PATH)`, so it finds its own dependencies in its own folder. The file may be UTF-8 with or without a byte order mark, with LF or CRLF line ends.
+- **Order.** Companions load in file order, at once when the worker thread starts, before the proxy build waits for the engine and before `run`, because legacy proxies often expect to run early. A line starting with `after-engine:` loads only once the engine is up (objects loaded and, when the build has one, `GEngine` set); a build that does not wait for the engine loads those right after the others.
+- **Unload.** With `hot-unload` the companions are **not** unloaded by default, because the old DLL may not support being unloaded. Add the line `unload-on-exit` to free them in reverse order, after the Rust hooks are removed, and only when the SDK DLL really unloads itself (it stays loaded, and so do they, when a thread is still inside a hook, and always in a proxy build).
+
+The parser is `ufathom_runtime::companions::parse`, a pure function with unit tests. The loading is tested with real DLLs on Windows; it has not been run next to a real game mod.
+
 ### Work with game objects
 
 `sdk::session(memory)` opens a `Session` for the build the SDK was generated from. It works in both modes:
@@ -126,7 +145,20 @@ for pawn in session.objects_of::<sdk::engine::APawn>()? {
 let world = session.gworld()?;
 ```
 
-It also provides `find_object` by path, `find_by_name`, `is_a`, `cast::<T>()`, `default_object::<T>()`, `gengine()` and checked field reads through `session.object(ptr).get(T::FIELD)`.
+It also provides `find_object` by path, `find_by_name`, `is_a`, `cast::<T>()`, `default_object::<T>()` and `gengine()`.
+
+Fields are read as a chain, the way C++ writes `actor->RootComponent->RelativeLocation`. Every link is a checked read and returns a `Result`, so `?` stops at the first one that fails:
+
+```rust
+use sdk::engine::*; // brings the accessor traits of this package into scope
+
+let loc = session.object(actor).root_component()?.relative_location()?;
+let hp = session.object(pawn).health()?; // `Health` is declared on `AActor`, read through an `APawn`
+```
+
+A plain field returns its value. An object pointer field returns an `ObjectRef` on the object it points to, so the chain continues. A null pointer is `ChainError::Null { field: "AActor::RootComponent" }`, so the error says where the chain broke; unreadable memory is `ChainError::Memory`. Reads do not check that an object is alive (a read cannot fault, but a stale object gives stale values). Each class gets an extension trait (`AActorFields`) implemented for every object of that class or a derived one, so inherited fields work with no extra code. Bit-field booleans return `bool`. A field name that clashes with an existing method (`get`, `read`, `addr`, `set`, ...) gets a `field_` prefix (`field_get()`), and a name an ancestor already uses gets a numeric suffix.
+
+The accessors are behind the `accessors` feature of the SDK, on by default; turn it off (`--no-default-features --features all`) for a shorter build. Without it, and for the cases a chain does not cover, read with the field constants: `session.object(ptr).get(AActor::ROOT_COMPONENT)` and `.get_bit(AActor::B_HIDDEN)`.
 
 Calling game functions works only inside the game. Build with `--features inproc` and attach on the game thread:
 
@@ -184,6 +216,23 @@ fn widen_fov(
 }
 ```
 
+With the `accessors` feature, the same writes read as setters, and a chain can lead to the object to write to. A pointer field returns a `LiveObject` on its target, and each write is checked on the object it reaches:
+
+```rust
+use sdk::engine::*; // the `...LiveFields` traits come with the `inproc` feature
+
+fn heal(
+    session: &rt::Session<rt::mem::SelfMemory>,
+    pawn: rt::Ptr<sdk::engine::APawn>,
+) -> Result<(), rt::ChainError> {
+    session.live_object(pawn).set_health(100.0)?;
+    session.live_object(pawn).controller()?.set_b_hidden(false)?;
+    Ok(())
+}
+```
+
+`ChainError` converts from `WriteError`, so one error type covers a chain with writes. Only fields that hold plain data have a setter (numbers, booleans, enums, names, pointers and structs made of those). A field that owns engine memory (a string, array, map, set, text or delegate) has none: write it through `set` with the field constant if you must. Reads of a live object go through `live.read_only()`.
+
 Before each write the object must still be in the object array slot its index names, the field must lie inside the `PropertiesSize` of the object's own class, and the page must be committed read-write (page protection is never changed). Any failure is a `WriteError` and nothing is written. `modify` and `set_bit` read, change and write back, so they are not atomic against the game: do them on the game thread, because a write from another thread races with the engine.
 
 Strings and names work the way they do in Dumper-7 SDKs:
@@ -201,7 +250,7 @@ println!("{}", ctx.session().fstring(&label)?);
 
 Strings and arrays the engine returns are allocated by the engine. Free them through it with `exec.take_string(&mut s)` (read, then free), `take_strings`, `free_string` and `free_array`. These hand the buffer back through `KismetArrayLibrary::Array_Clear`. `free_array` frees only the array's own buffer: free what the elements own first. Never pass `FStringBuf` or `TArrayBuf` as an out parameter.
 
-The hook changes only data pointers. It patches the `ProcessEvent` slot in the virtual tables of live native classes. Calls from other threads pass straight through. The game thread is chosen in this order:
+By default the hook changes only data pointers. It patches the `ProcessEvent` slot in the virtual tables of live native classes (see [Which mode?](#which-mode) for the alternative). Calls from other threads pass straight through. The game thread is chosen in this order:
 
 1. a thread named with `game.set_game_thread(id)`;
 2. the process main thread;
@@ -212,10 +261,43 @@ Tasks and callbacks get an executor, and calls made through that executor do not
 A few more parts of the hook:
 
 - **`before_native` and `after_native`** hook the `UFunction::Func` pointer. Blueprint code reaches native functions through it without `ProcessEvent`. `before_native_fn::<Marker>` and `after_native_fn::<Marker>` name the function by type and accept only functions the dump marks native; a script function does not compile.
+- **`hook::<Marker>(When::Before | When::After, callback)`** and **`hook_native::<Marker>(When, callback)`** pick the mechanism from the marker, so you need not know which engine path a function takes. A script function (`Kind = Script`) goes through `ProcessEvent` and the callback gets `(&mut CallContext, &mut Params)`. A native function (`Kind = Native`) goes through `UFunction::Func` and the callback gets `&mut NativeContext`. A native function is registered on `Func` alone: every invocation passes through it, including the ones `ProcessEvent` makes, so it fires once per call, whether Blueprint bytecode or `ProcessEvent` made it. Registering it on `ProcessEvent` as well would fire twice for the calls that come through there. Two methods, not one, because the callbacks have different types and the compiler cannot choose a closure signature from the marker; a function of the wrong kind does not compile, and the error names the other method. Both return the usual `HookId`.
 - **`start_rescan_on_module_load()`** (Windows) hooks the virtual tables of native classes that a module loaded later adds. The loader tells the hook when a DLL loads; a background thread then rescans one and five seconds later, and loads close together share their rescans. Nothing runs between loads. **`start_auto_rescan(interval)`** does the same on a timer: use it on other platforms, or as well when a class can get its first instance with no module load.
 - **`into_guard(game)`** turns the id a hook returns into a `HookGuard` that removes the callback when it drops; `forget()` keeps it. Every callback also records the module that holds its code, so `remove_owned_by(module_base)` and `remove_owned_by_current_module()` remove everything one module registered before it is unloaded.
 - **`uninstall()`** puts the slots back. `uninstall_and_wait(timeout)` also waits until no thread is inside a hook, so the module can be unloaded.
 - **Several mods hooking the same slots.** Two mods that each link this runtime can hook one virtual table slot, the second saving the first one's hook as its original. The first then cannot restore the slot, and unmapping it would crash the game. `uninstall` leaves such a slot alone and returns `HookError::Chained`; the hook keeps forwarding, and `hot-unload` keeps the DLL loaded. Call `uninstall` again once the other mod has removed its hook.
+
+### Which mode?
+
+`GameThread::install` is `install_with(desc, HookMode::Vtable)`: it swaps the `ProcessEvent` slot in the virtual tables it finds through live objects and patches no code. A class with no live object yet, and a class from a module loaded later, are hooked by a rescan. With `--features detour` (Windows x86-64) you can instead detour the engine's `ProcessEvent` itself, once:
+
+```rust
+// SAFETY: inside the game; the majority `ProcessEvent` slot value is the engine's implementation.
+let game = unsafe { GameThread::install_with(&sdk::ENGINE, HookMode::Detour) }?;
+// `sdk::game_thread()` and `GameThread::get()` return this hook afterwards.
+```
+
+| | `HookMode::Vtable` (default) | `HookMode::Detour` |
+|---|---|---|
+| Patches | data pointers in virtual tables | the first bytes of the engine's `ProcessEvent` |
+| Class with no live object yet | missed until a rescan | covered |
+| Class that overrides `ProcessEvent` | missed | covered when it calls the base implementation |
+| `rescan`, `start_auto_rescan`, `start_rescan_on_module_load` | needed | no-ops (`Ok(0)`, `Ok(false)`) |
+| Needs | nothing | the `detour` feature, Windows x86-64 (`HookError::DetourUnavailable` otherwise) |
+
+Callbacks, tasks, game thread choice, guards and `remove_owned_by` work the same in both modes, and native `Func` hooks are unaffected. The detour mode has no author signature to check the target against: it takes the address the vote of virtual tables found and checks that against its own current bytes. The detour analysis still refuses a function it cannot move (a `ret`, a trap, a branch into the stolen bytes), but it cannot notice that the vote elected the wrong function, or that another tool patched the bytes first. A class whose override never calls the base implementation is not seen. `uninstall_and_wait` restores the bytes and waits for threads inside the hook and inside the detour; bytes another tool patched over are left alone and reported as `HookError::Chained`, and the DLL must stay loaded. An uninstalled detour is not installed again.
+
+### Which hook do I use?
+
+| I want to intercept | Use | The callback gets |
+|---|---|---|
+| a script function (an event a Blueprint implements) | `hook::<Marker>(When, ...)` | `&mut CallContext` and the typed parameters; may change them and skip the function |
+| a native function that has a `UFunction` (`FUNC_Native`) | `hook_native::<Marker>(When, ...)` | `&mut NativeContext`: object, function, `FFrame`, result; observes only |
+| a reflected function by path, or one with no marker | `before` / `after` (`ProcessEvent`), `before_native` / `after_native` (`Func`) | raw parameter bytes, or the same `NativeContext` |
+| every `ProcessEvent` call, classes with no object yet included | `install_with(desc, HookMode::Detour)` | widens what the rows above see |
+| a plain C++ function with no `UFunction` | `Detour::install` with a signature (below) | whatever your replacement takes |
+
+A direct C++ call of a native function's implementation, bypassing the `UFunction`, is seen by neither `ProcessEvent` nor `Func`; that needs a `Detour`.
 
 ### Hook any native function
 

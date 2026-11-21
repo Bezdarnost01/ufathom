@@ -2,7 +2,10 @@
 
 use std::fmt::Write as _;
 
-use crate::build::{Built, ModuleInfo, PlannedEnum, PlannedField, PlannedFunction, PlannedStruct};
+use crate::build::{
+    AccessorKind, Built, FieldAccessor, ModuleInfo, PlannedEnum, PlannedField, PlannedFunction,
+    PlannedStruct,
+};
 use crate::names::doc_text;
 use crate::planner::{BaseMode, Item, Plan};
 
@@ -161,9 +164,18 @@ pub(crate) fn cargo_source(
     );
     wl!(out);
     wl!(out, "[features]");
-    wl!(out, "default = [\"all\"]");
+    wl!(out, "default = [\"all\", \"{ACCESSORS_FEATURE}\"]");
     let all: Vec<String> = built.modules.iter().map(|m| toml_string(&m.name)).collect();
     wl!(out, "all = [{}]", all.join(", "));
+    wl!(
+        out,
+        "# Chain accessors: `object.root_component()?.relative_location()?`, as extension"
+    );
+    wl!(
+        out,
+        "# traits per class. Turn off to shorten the build; the `FIELD` constants stay."
+    );
+    wl!(out, "{ACCESSORS_FEATURE} = []");
     wl!(
         out,
         "# Calls game functions through ProcessEvent: `attach()`. Inside the game only."
@@ -633,6 +645,172 @@ fn emit_struct(out: &mut String, s: &PlannedStruct) {
     out.push_str(body.trim_end_matches('\n'));
     wl!(out);
     wl!(out, "}}");
+    emit_accessor_traits(out, s);
+}
+
+/// The feature that gates the field accessor traits in the generated crate.
+pub(crate) const ACCESSORS_FEATURE: &str = "accessors";
+
+/// The chain accessors of a class or struct: an extension trait for read-only
+/// object handles and one for live objects.
+///
+/// Each trait is implemented for every handle whose class derives from this
+/// one (`IsA`), so an inherited field is reachable through a derived object
+/// with no code repeated per child. The methods are default bodies, so each
+/// accessor is one line.
+fn emit_accessor_traits(out: &mut String, s: &PlannedStruct) {
+    if s.accessors.is_empty() {
+        return;
+    }
+    let name = &s.rust_name;
+    let owner = |a: &FieldAccessor| -> Option<(&PlannedField, &str)> {
+        let f = s.fields.get(a.field)?;
+        Some((f, f.const_name.as_deref()?))
+    };
+    let kind = if s.is_class { "class" } else { "struct" };
+
+    let tr = &s.fields_trait;
+    wl!(out);
+    wl!(
+        out,
+        "/// Typed accessors for the fields of the {kind} [`{name}`], on `rt::ObjectRef`"
+    );
+    wl!(
+        out,
+        "/// of this {kind} or a derived one. A pointer field returns the object it points to: see `rt::ChainError`."
+    );
+    wl!(out, "#[cfg(feature = \"{ACCESSORS_FEATURE}\")]");
+    wl!(out, "pub trait {tr}<'m>: rt::AsObject<'m>");
+    wl!(out, "where");
+    wl!(out, "    Self::Class: rt::IsA<{name}>,");
+    wl!(out, "{{");
+    for a in &s.accessors {
+        let Some((f, c)) = owner(a) else { continue };
+        let getter = &a.names.getter;
+        wl!(
+            out,
+            "    /// Reads `{}` (offset {:#x}).",
+            doc_text(&f.name),
+            f.offset
+        );
+        match &a.kind {
+            AccessorKind::Pointer(target) => {
+                let field = format!("{name}::{}", f.name);
+                wl!(
+                    out,
+                    "    fn {getter}(&self) -> Result<rt::ObjectRef<'m, {target}>, rt::ChainError> {{ self.object().follow({name}::{c}, {field:?}) }}"
+                );
+            }
+            AccessorKind::Flag if f.bit_raw.is_some() => {
+                wl!(
+                    out,
+                    "    fn {getter}(&self) -> Result<bool, rt::MemError> {{ self.object().get_bit({name}::{c}) }}"
+                );
+            }
+            AccessorKind::Flag => {
+                wl!(
+                    out,
+                    "    fn {getter}(&self) -> Result<bool, rt::MemError> {{ self.object().get({name}::{c}).map(rt::UBool::get) }}"
+                );
+            }
+            AccessorKind::Value => {
+                wl!(
+                    out,
+                    "    fn {getter}(&self) -> Result<{}, rt::MemError> {{ self.object().get({name}::{c}) }}",
+                    field_type(f, None)
+                );
+            }
+        }
+    }
+    wl!(out, "}}");
+    wl!(out);
+    wl!(out, "#[cfg(feature = \"{ACCESSORS_FEATURE}\")]");
+    wl!(
+        out,
+        "impl<'m, H: rt::AsObject<'m>> {tr}<'m> for H where H::Class: rt::IsA<{name}> {{}}"
+    );
+
+    if s.live_trait.is_empty() {
+        return;
+    }
+    let tr = &s.live_trait;
+    wl!(out);
+    wl!(
+        out,
+        "/// Typed writers for the fields of the {kind} [`{name}`], on `rt::LiveObject` of this"
+    );
+    wl!(
+        out,
+        "/// {kind} or a derived one: `set_field(value)` is a checked write. A field that owns engine"
+    );
+    wl!(
+        out,
+        "/// memory (string, array, map, set, text, delegate) has no setter."
+    );
+    wl!(
+        out,
+        "#[cfg(all(feature = \"{ACCESSORS_FEATURE}\", feature = \"inproc\"))]"
+    );
+    wl!(out, "pub trait {tr}<'s>: rt::AsLive<'s>");
+    wl!(out, "where");
+    wl!(out, "    Self::Class: rt::IsA<{name}>,");
+    wl!(out, "{{");
+    for a in &s.accessors {
+        let Some((f, c)) = owner(a) else { continue };
+        let (getter, setter) = (&a.names.getter, &a.names.setter);
+        if let AccessorKind::Pointer(target) = &a.kind {
+            let field = format!("{name}::{}", f.name);
+            wl!(
+                out,
+                "    /// Follows `{}` to the object it points to.",
+                doc_text(&f.name)
+            );
+            wl!(
+                out,
+                "    fn {getter}(&self) -> Result<rt::LiveObject<'s, {target}>, rt::ChainError> {{ self.live().follow({name}::{c}, {field:?}) }}"
+            );
+        }
+        if !a.settable {
+            continue;
+        }
+        wl!(
+            out,
+            "    /// Writes `{}` (offset {:#x}).",
+            doc_text(&f.name),
+            f.offset
+        );
+        match &a.kind {
+            AccessorKind::Flag if f.bit_raw.is_some() => {
+                wl!(
+                    out,
+                    "    fn {setter}(&self, value: bool) -> Result<(), rt::WriteError> {{ self.live().set_bit({name}::{c}, value) }}"
+                );
+            }
+            AccessorKind::Flag => {
+                wl!(
+                    out,
+                    "    fn {setter}(&self, value: bool) -> Result<(), rt::WriteError> {{ self.live().set({name}::{c}, rt::UBool::from(value)) }}"
+                );
+            }
+            AccessorKind::Pointer(_) | AccessorKind::Value => {
+                wl!(
+                    out,
+                    "    fn {setter}(&self, value: {}) -> Result<(), rt::WriteError> {{ self.live().set({name}::{c}, value) }}",
+                    field_type(f, None)
+                );
+            }
+        }
+    }
+    wl!(out, "}}");
+    wl!(out);
+    wl!(
+        out,
+        "#[cfg(all(feature = \"{ACCESSORS_FEATURE}\", feature = \"inproc\"))]"
+    );
+    wl!(
+        out,
+        "impl<'s, H: rt::AsLive<'s>> {tr}<'s> for H where H::Class: rt::IsA<{name}> {{}}"
+    );
 }
 
 fn emit_wrapper(out: &mut String, f: &PlannedFunction) {

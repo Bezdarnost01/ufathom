@@ -55,3 +55,32 @@ impl UEntry {
     /// Offset of `Value`: Offset 0x30, `uint32`.
     pub const VALUE: rt::FieldRef<Self, u32> = rt::FieldRef::new(0x30);
 }
+
+/// Typed accessors for the fields of the class [`UEntry`], on `rt::ObjectRef`
+/// of this class or a derived one. A pointer field returns the object it points to: see `rt::ChainError`.
+#[cfg(feature = "accessors")]
+pub trait UEntryFields<'m>: rt::AsObject<'m>
+where
+    Self::Class: rt::IsA<UEntry>,
+{
+    /// Reads `Value` (offset 0x30).
+    fn value(&self) -> Result<u32, rt::MemError> { self.object().get(UEntry::VALUE) }
+}
+
+#[cfg(feature = "accessors")]
+impl<'m, H: rt::AsObject<'m>> UEntryFields<'m> for H where H::Class: rt::IsA<UEntry> {}
+
+/// Typed writers for the fields of the class [`UEntry`], on `rt::LiveObject` of this
+/// class or a derived one: `set_field(value)` is a checked write. A field that owns engine
+/// memory (string, array, map, set, text, delegate) has no setter.
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+pub trait UEntryLiveFields<'s>: rt::AsLive<'s>
+where
+    Self::Class: rt::IsA<UEntry>,
+{
+    /// Writes `Value` (offset 0x30).
+    fn set_value(&self, value: u32) -> Result<(), rt::WriteError> { self.live().set(UEntry::VALUE, value) }
+}
+
+#[cfg(all(feature = "accessors", feature = "inproc"))]
+impl<'s, H: rt::AsLive<'s>> UEntryLiveFields<'s> for H where H::Class: rt::IsA<UEntry> {}

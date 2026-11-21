@@ -138,6 +138,13 @@ pub unsafe fn attach() -> Result<{rt}::inproc::InProcessExecutor, {rt}::SessionE
 /// queue tasks that get an executor, `before` and `after` intercept calls of
 /// one game function. Installs once; later calls return the same hook.
 ///
+/// This swaps the `ProcessEvent` slot in the virtual tables of live objects
+/// and patches no code. To detour the engine's `ProcessEvent` itself, which
+/// also covers classes with no live object yet (it needs the `detour`
+/// feature), install first with
+/// `{rt}::inproc::GameThread::install_with(&ENGINE, {rt}::inproc::HookMode::Detour)`;
+/// this function then returns that hook.
+///
 /// # Safety
 ///
 /// As [`{rt}::inproc::GameThread::install`]: this code runs inside the game
@@ -149,6 +156,9 @@ pub unsafe fn attach() -> Result<{rt}::inproc::InProcessExecutor, {rt}::SessionE
 /// As [`{rt}::inproc::GameThread::install`].
 #[cfg(feature = \"inproc\")]
 pub unsafe fn game_thread() -> Result<&'static {rt}::inproc::GameThread, {rt}::inproc::HookError> {{
+    if let Some(game) = {rt}::inproc::GameThread::get() {{
+        return Ok(game);
+    }}
     // SAFETY: the caller upholds the contract above, which is the contract of
     // `GameThread::install` for `ENGINE`.
     unsafe {{ {rt}::inproc::GameThread::install(&ENGINE) }}
