@@ -19,15 +19,29 @@
 //!   every inline detour still installed is removed too, and the DLL stays
 //!   loaded if a thread is still inside a replacement or its trampoline.
 //!   Without this feature the DLL stays loaded until the game exits.
+//!
+//! Companion DLLs: a plain text file `ufathom-companions.txt` beside this DLL
+//! lists older mod DLLs (a C++ mod, say) to load next to it, so a team can move
+//! to Rust one feature at a time. It is read on the worker thread, never in
+//! `DllMain`, in any build. One DLL name or relative path per line; `#`
+//! starts a comment line; absolute paths and `..` are refused and skipped.
+//! A DLL loads when the worker starts, before the engine wait, unless its
+//! line starts with `after-engine:`. The companions stay loaded when this DLL
+//! unloads, because an old DLL may not survive being unloaded, unless the file
+//! has a line `unload-on-exit` (with `hot-unload`: they are then freed in
+//! reverse order after the hooks are removed). A missing file does nothing.
+//! The format is documented in `ufathom_runtime::companions`.
 
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ufathom_runtime::mem::SelfMemory;
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, HINSTANCE, HMODULE};
+use ufathom_runtime::companions::{CompanionList, LoadTime};
+use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE, HINSTANCE, HMODULE};
 use windows_sys::Win32::System::Diagnostics::Debug::OutputDebugStringW;
 use windows_sys::Win32::System::LibraryLoader::{
-    DisableThreadLibraryCalls, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GetModuleHandleExW,
+    DisableThreadLibraryCalls, GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GetModuleFileNameW,
+    GetModuleHandleExW, LOAD_WITH_ALTERED_SEARCH_PATH, LoadLibraryExW,
 };
 use windows_sys::Win32::System::SystemServices::DLL_PROCESS_ATTACH;
 use windows_sys::Win32::System::Threading::CreateThread;
@@ -111,22 +125,153 @@ extern "system" fn worker_entry(_parameter: *mut c_void) -> u32 {
         return 0;
     }
 
-    match std::panic::catch_unwind(|| -> Result<(), Box<dyn std::error::Error>> {
-        let memory = SelfMemory::new();
-        #[cfg(ufathom_proxy)]
-        if !wait_for_engine(&memory) {
-            return Err("the engine did not start in time".into());
-        }
-        run(&memory)
-    }) {
+    let mut companions = Companions::default();
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        || -> Result<(), Box<dyn std::error::Error>> {
+            // Legacy proxies often expect to run early, so these go first.
+            companions = Companions::read(own_module);
+            companions.load(LoadTime::Immediately);
+            let memory = SelfMemory::new();
+            #[cfg(ufathom_proxy)]
+            if !wait_for_engine(&memory) {
+                return Err("the engine did not start in time".into());
+            }
+            // A build that does not wait for the engine has it already.
+            companions.load(LoadTime::AfterEngine);
+            run(&memory)
+        },
+    )) {
         Ok(Ok(())) => {}
         Ok(Err(error)) => debug(&format!("ufathom SDK: {error}")),
         Err(_) => debug("ufathom SDK: application panicked"),
     }
 
     #[cfg(feature = "hot-unload")]
-    unload(own_module);
+    unload(own_module, &mut companions);
     0
+}
+
+/// The older mod DLLs named by `ufathom-companions.txt` and where they live.
+#[derive(Default)]
+struct Companions {
+    list: CompanionList,
+    /// The folder of this DLL, in UTF-16 without a trailing separator.
+    folder: Vec<u16>,
+    /// The loaded DLLs in load order, kept for `unload-on-exit`.
+    #[cfg(feature = "hot-unload")]
+    loaded: Vec<HMODULE>,
+}
+
+impl Companions {
+    /// Reads the list beside `module`. A missing file gives an empty list.
+    fn read(module: HMODULE) -> Self {
+        use std::os::windows::ffi::OsStringExt;
+
+        let Some(folder) = module_folder(module) else {
+            debug("ufathom SDK: cannot find the folder of this DLL; no companions");
+            return Self::default();
+        };
+        let path = std::path::PathBuf::from(std::ffi::OsString::from_wide(&folder))
+            .join(ufathom_runtime::companions::FILE_NAME);
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Self::default();
+            }
+            Err(error) => {
+                debug(&format!("ufathom SDK: cannot read {}: {error}", path.display()));
+                return Self::default();
+            }
+        };
+        let list = ufathom_runtime::companions::parse(&String::from_utf8_lossy(&bytes));
+        for error in &list.rejected {
+            debug(&format!(
+                "ufathom SDK: {}: {error}; skipped",
+                ufathom_runtime::companions::FILE_NAME
+            ));
+        }
+        Self {
+            list,
+            folder,
+            #[cfg(feature = "hot-unload")]
+            loaded: Vec::new(),
+        }
+    }
+
+    /// Loads the companions listed for `time`, in file order. One that
+    /// fails to load is logged and does not stop the others.
+    fn load(&mut self, time: LoadTime) {
+        for companion in self.list.at(time) {
+            let mut full = self.folder.clone();
+            full.push(u16::from(b'\\'));
+            full.extend(companion.path.encode_utf16());
+            full.push(0);
+            // SAFETY: `full` is a NUL-terminated path that lives through the
+            // call, and the file handle must be null. The altered search path
+            // lets the companion find its own dependencies in its folder.
+            let handle = unsafe {
+                LoadLibraryExW(
+                    full.as_ptr(),
+                    std::ptr::null_mut(),
+                    LOAD_WITH_ALTERED_SEARCH_PATH,
+                )
+            };
+            if handle.is_null() {
+                // SAFETY: reads the calling thread's last error.
+                let code = unsafe { GetLastError() };
+                debug(&format!(
+                    "ufathom SDK: cannot load companion {} (error {code})",
+                    companion.path
+                ));
+                continue;
+            }
+            debug(&format!("ufathom SDK: loaded companion {}", companion.path));
+            #[cfg(feature = "hot-unload")]
+            self.loaded.push(handle);
+        }
+    }
+
+    /// With `unload-on-exit`, frees the loaded companions in reverse order.
+    #[cfg(feature = "hot-unload")]
+    fn release(&mut self) {
+        use windows_sys::Win32::Foundation::FreeLibrary;
+
+        if !self.list.unload_on_exit {
+            return;
+        }
+        while let Some(handle) = self.loaded.pop() {
+            // SAFETY: the handle came from `LoadLibraryExW` in `load` and is
+            // freed once, because `pop` removed it.
+            unsafe { FreeLibrary(handle) };
+        }
+    }
+}
+
+/// The folder of `module`, in UTF-16 without a trailing separator.
+fn module_folder(module: HMODULE) -> Option<Vec<u16>> {
+    // The longest path Windows allows is about 32 768 UTF-16 units.
+    const MAX_PATH_UNITS: usize = 32_768;
+    let mut path = vec![0u16; 1024];
+    let length = loop {
+        let capacity = u32::try_from(path.len()).ok()?;
+        // SAFETY: `path` holds `capacity` units and is written up to there.
+        let length = unsafe { GetModuleFileNameW(module, path.as_mut_ptr(), capacity) } as usize;
+        if length == 0 {
+            return None;
+        }
+        // A result as long as the buffer means the path was cut off.
+        if length < path.len() {
+            break length;
+        }
+        if path.len() >= MAX_PATH_UNITS {
+            return None;
+        }
+        path.resize(path.len().saturating_mul(2), 0);
+    };
+    path.truncate(length);
+    let separator = path.iter().rposition(|&unit| unit == u16::from(b'\\'))?;
+    path.truncate(separator);
+    Some(path)
 }
 
 /// Waits until the engine has objects and, when this build has one, a
@@ -150,9 +295,11 @@ fn wait_for_engine(memory: &SelfMemory) -> bool {
 
 /// Removes the hooks, then drops this thread's pin and the loader's
 /// reference and exits, so the module is unmapped. Returns, leaving the
-/// module loaded, when unloading would be unsafe.
+/// module loaded, when unloading would be unsafe. Companion DLLs are freed
+/// only if the file asks for it (`unload-on-exit`) and only here, once this
+/// module is certain to unload.
 #[cfg(feature = "hot-unload")]
-fn unload(own_module: HMODULE) {
+fn unload(own_module: HMODULE, companions: &mut Companions) {
     use windows_sys::Win32::Foundation::FreeLibrary;
     use windows_sys::Win32::System::LibraryLoader::FreeLibraryAndExitThread;
 
@@ -196,6 +343,7 @@ fn unload(own_module: HMODULE) {
         // The game imports this module; it cannot be unloaded.
         return;
     }
+    companions.release();
     // SAFETY: drops the reference `GetModuleHandleExW` added above. The
     // loader's own reference keeps the module mapped.
     unsafe { FreeLibrary(own_module) };
