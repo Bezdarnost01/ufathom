@@ -111,6 +111,13 @@ pub unsafe fn attach() -> Result<::ufathom_runtime::inproc::InProcessExecutor, :
 /// queue tasks that get an executor, `before` and `after` intercept calls of
 /// one game function. Installs once; later calls return the same hook.
 ///
+/// This swaps the `ProcessEvent` slot in the virtual tables of live objects
+/// and patches no code. To detour the engine's `ProcessEvent` itself, which
+/// also covers classes with no live object yet (it needs the `detour`
+/// feature), install first with
+/// `::ufathom_runtime::inproc::GameThread::install_with(&ENGINE, ::ufathom_runtime::inproc::HookMode::Detour)`;
+/// this function then returns that hook.
+///
 /// # Safety
 ///
 /// As [`::ufathom_runtime::inproc::GameThread::install`]: this code runs inside the game
@@ -122,6 +129,9 @@ pub unsafe fn attach() -> Result<::ufathom_runtime::inproc::InProcessExecutor, :
 /// As [`::ufathom_runtime::inproc::GameThread::install`].
 #[cfg(feature = "inproc")]
 pub unsafe fn game_thread() -> Result<&'static ::ufathom_runtime::inproc::GameThread, ::ufathom_runtime::inproc::HookError> {
+    if let Some(game) = ::ufathom_runtime::inproc::GameThread::get() {
+        return Ok(game);
+    }
     // SAFETY: the caller upholds the contract above, which is the contract of
     // `GameThread::install` for `ENGINE`.
     unsafe { ::ufathom_runtime::inproc::GameThread::install(&ENGINE) }

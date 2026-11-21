@@ -238,6 +238,8 @@ fn unload(own_module: HMODULE) {
     if let Some(game) = ufathom_runtime::inproc::GameThread::get() {
         // Callbacks and tasks hold code of this module: drop them first.
         game.remove_owned_by_current_module();
+        // Restores the virtual tables, or the detoured `ProcessEvent` of
+        // `HookMode::Detour`, and waits for threads inside either.
         match game.uninstall_and_wait(HOOK_DRAIN) {
             Ok(true) => {}
             Ok(false) => {
