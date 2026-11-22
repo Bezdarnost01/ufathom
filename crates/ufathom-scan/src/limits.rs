@@ -285,3 +285,15 @@ pub const MAX_CODE_SCAN_BYTES: u64 = 1 << 30;
 /// as a global the code uses. A cache or a one-off static is written once and
 /// never consulted, so it falls below this.
 pub const MIN_GLOBAL_REFERENCES: u64 = 4;
+
+/// Items read to find the serial number field. Most items have no serial
+/// number yet, so a wider sample than the array fit uses is needed to see
+/// enough non-zero values.
+pub const SERIAL_SAMPLE_COUNT: u32 = 4096;
+
+/// Fewest non-zero values a field needs to be taken as the serial number.
+pub const MIN_SERIAL_VALUES: usize = 8;
+
+/// Share, in percent, of a field's non-zero values that must differ for it to
+/// be the serial number.
+pub const SERIAL_DISTINCT_PERCENT: usize = 98;

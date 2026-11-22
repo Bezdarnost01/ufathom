@@ -73,6 +73,9 @@ pub enum ChainOrder {
     FunctionsFirst,
 }
 
+/// With lazy serials, one object in this many has a serial number.
+const LAZY_SERIAL_EVERY: usize = 5;
+
 /// Settings for [`write`].
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -83,6 +86,10 @@ pub struct Config {
     /// Number of objects whose comparison name is a case-mangled twin of
     /// the display name.
     pub mangled_display_names: usize,
+    /// Leave the item serial number at zero for objects that no weak pointer
+    /// has referenced yet, as the engine does: it assigns a serial number the
+    /// first time one is asked for. Every fifth object keeps one.
+    pub lazy_serials: bool,
 }
 
 /// One object that is in the global object array, as ground truth.
@@ -225,6 +232,7 @@ pub fn write(
     rng: Rng,
     cfg: Config,
 ) -> Reflection {
+    let lazy_serials = cfg.lazy_serials;
     let mut sizes = BTreeMap::new();
     for def in &schema.structs {
         sizes.insert(def.path.clone(), (def.size, def.alignment));
@@ -264,7 +272,15 @@ pub fn write(
     writer.plan_instances();
     writer.plan_fillers();
     writer.write_objects();
-    writer.finish()
+    let mut reflection = writer.finish();
+    if lazy_serials {
+        for (index, slot) in reflection.slots.iter_mut().enumerate() {
+            if slot.object != 0 && index % LAZY_SERIAL_EVERY != 0 {
+                slot.serial = 0;
+            }
+        }
+    }
+    reflection
 }
 
 impl Writer<'_> {

@@ -367,3 +367,36 @@ fn discovery_reads_pages_and_not_slots() {
     }
     let _ = absolute;
 }
+
+/// The engine hands out an item's serial number the first time a weak pointer
+/// asks for it, so most items of a live game have none yet. The serial field is
+/// the one whose non-zero values are all different, however few there are.
+#[test]
+fn the_item_serial_is_found_when_most_items_have_none() {
+    let profiles = [
+        Profile::ue4_21_measured(),
+        Profile::ue4_22_case_preserving_measured(),
+        Profile::ue4_25_case_preserving_measured(),
+        named("ue5.7-cp"),
+        Profile::shuffled(3),
+    ];
+    for profile in profiles {
+        let name = profile.name.clone();
+        let fx = FixtureBuilder::new(profile)
+            .seed(5)
+            .filler_objects(3000)
+            .name_blocks(3)
+            .lazy_serials(true)
+            .build();
+        let d = run(&fx);
+        assert!(
+            fx.layout.objects.item_serial.is_some(),
+            "{name}: the profile has no serial"
+        );
+        assert_eq!(
+            d.layout.objects.item_serial, fx.layout.objects.item_serial,
+            "{name}: item_serial; warnings {:?}",
+            d.warnings
+        );
+    }
+}
