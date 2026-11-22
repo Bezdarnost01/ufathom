@@ -394,6 +394,14 @@ pub(crate) fn member_manifest(
         .map(|d| toml_string(&format!("{}/{ACCESSORS_FEATURE}", d.name)))
         .collect();
     let _ = writeln!(out, "{ACCESSORS_FEATURE} = [{}]", accessors.join(", "));
+    let _ = writeln!(out);
+    // An explicit empty table: the workspace lints are for the vendored
+    // runtime, and newer cargo warns about a member that does not say so.
+    let _ = writeln!(
+        out,
+        "# The workspace lints are for the vendored runtime, not for generated code."
+    );
+    let _ = writeln!(out, "[lints]");
     out
 }
 

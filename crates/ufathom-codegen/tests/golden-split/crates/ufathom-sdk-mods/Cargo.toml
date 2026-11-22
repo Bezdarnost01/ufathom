@@ -13,3 +13,6 @@ ufathom-sdk-engine = { path = "../ufathom-sdk-engine" }
 [features]
 inproc = ["ufathom-runtime/inproc", "ufathom-sdk-core-uobject/inproc", "ufathom-sdk-engine/inproc"]
 accessors = ["ufathom-sdk-core-uobject/accessors", "ufathom-sdk-engine/accessors"]
+
+# The workspace lints are for the vendored runtime, not for generated code.
+[lints]
