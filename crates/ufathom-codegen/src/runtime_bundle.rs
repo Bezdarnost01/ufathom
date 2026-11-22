@@ -19,7 +19,7 @@ default-members = ["."]
 [workspace.package]
 version = "{}"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Bezdarnost01/ufathom"
 
@@ -282,6 +282,14 @@ static EMBEDDED: &[(&str, &str)] = &[
     (
         "vendor/ufathom-mem/src/sys/mod.rs",
         include_str!("../../ufathom-mem/src/sys/mod.rs"),
+    ),
+    (
+        "vendor/ufathom-mem/src/sys/fastpath.rs",
+        include_str!("../../ufathom-mem/src/sys/fastpath.rs"),
+    ),
+    (
+        "vendor/ufathom-mem/src/sys/guarded.rs",
+        include_str!("../../ufathom-mem/src/sys/guarded.rs"),
     ),
     (
         "vendor/ufathom-mem/src/sys/windows.rs",

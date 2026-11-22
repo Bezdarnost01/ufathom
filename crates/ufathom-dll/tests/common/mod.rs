@@ -485,10 +485,10 @@ impl Host {
                 .lines
                 .recv_timeout(left)
                 .unwrap_or_else(|_| panic!("timed out waiting for {what}"));
-            if let Ok(value) = serde_json::from_str::<Value>(&line) {
-                if matches(&value) {
-                    return value;
-                }
+            if let Ok(value) = serde_json::from_str::<Value>(&line)
+                && matches(&value)
+            {
+                return value;
             }
         }
     }

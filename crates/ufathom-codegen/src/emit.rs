@@ -394,11 +394,11 @@ fn emit_layout(
     wl!(out, "#[repr(C, align({}))]", plan.align);
     wl!(out, "#[derive(Clone, Copy, Debug)]");
     wl!(out, "pub struct {name} {{");
-    if plan.base == BaseMode::Embedded {
-        if let Some(base) = base_path {
-            wl!(out, "    /// The parent class.");
-            wl!(out, "    pub base: {base},");
-        }
+    if plan.base == BaseMode::Embedded
+        && let Some(base) = base_path
+    {
+        wl!(out, "    /// The parent class.");
+        wl!(out, "    pub base: {base},");
     }
     for item in &plan.items {
         match item {

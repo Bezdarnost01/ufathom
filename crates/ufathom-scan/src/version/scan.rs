@@ -178,7 +178,8 @@ impl Scanner {
         let rva_of = |index: usize| -> u32 {
             u32::try_from(u64::from(section.rva) + window_start + index as u64).unwrap_or(u32::MAX)
         };
-        let even = |index: usize| (u64::from(section.rva) + window_start + index as u64) % 2 == 0;
+        let even =
+            |index: usize| (u64::from(section.rva) + window_start + index as u64).is_multiple_of(2);
 
         let ascii: Vec<usize> = self
             .plus_ascii
