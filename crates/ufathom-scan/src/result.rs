@@ -37,6 +37,12 @@ pub struct Globals {
     pub gworld_slots: Vec<Location>,
     /// Every slot, in any module, holding a pointer to a live `GameEngine`.
     pub gengine_slots: Vec<Location>,
+    /// Slots holding a live `World` that were set aside: they lie outside the
+    /// module of the object array while that module has candidates of its own.
+    pub gworld_ignored_slots: Vec<Location>,
+    /// Slots holding a live `GameEngine` that were set aside, as
+    /// [`gworld_ignored_slots`](Self::gworld_ignored_slots).
+    pub gengine_ignored_slots: Vec<Location>,
     /// Virtual table index of `UObject::ProcessEvent`.
     pub process_event_index: Option<u32>,
     /// RVA of `UObject::ProcessEvent` inside

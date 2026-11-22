@@ -66,6 +66,10 @@ pub struct GlobalsRecord {
     pub gworld_slots: Vec<Location>,
     /// Every `GameEngine` slot in any module.
     pub gengine_slots: Vec<Location>,
+    /// `World` slots set aside because they lie outside the object array's module.
+    pub gworld_ignored_slots: Vec<Location>,
+    /// `GameEngine` slots set aside for the same reason.
+    pub gengine_ignored_slots: Vec<Location>,
     /// Virtual table index of `ProcessEvent`.
     pub process_event_index: Option<u32>,
     /// RVA of `ProcessEvent`.
@@ -82,6 +86,8 @@ impl From<&Globals> for GlobalsRecord {
             gengine: globals.gengine.clone(),
             gworld_slots: globals.gworld_slots.clone(),
             gengine_slots: globals.gengine_slots.clone(),
+            gworld_ignored_slots: globals.gworld_ignored_slots.clone(),
+            gengine_ignored_slots: globals.gengine_ignored_slots.clone(),
             process_event_index: globals.process_event_index,
             process_event_rva: globals.process_event_rva,
             process_event_module: globals.process_event_module.clone(),
