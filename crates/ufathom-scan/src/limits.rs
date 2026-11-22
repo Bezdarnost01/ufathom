@@ -275,3 +275,25 @@ pub const PAYLOAD_AGREEMENT_PERCENT: usize = 90;
 /// `GEngine`, over all modules. Each module's data is read once, in large
 /// requests.
 pub const MAX_GLOBALS_SCAN_BYTES: u64 = 2 << 30;
+
+/// Most bytes of executable code scanned for references to candidate global
+/// slots, over all modules. Only done when several slots in the module of the
+/// object array hold a live instance.
+pub const MAX_CODE_SCAN_BYTES: u64 = 1 << 30;
+
+/// Fewest instructions that must address a slot (RIP-relative) for it to count
+/// as a global the code uses. A cache or a one-off static is written once and
+/// never consulted, so it falls below this.
+pub const MIN_GLOBAL_REFERENCES: u64 = 4;
+
+/// Items read to find the serial number field. Most items have no serial
+/// number yet, so a wider sample than the array fit uses is needed to see
+/// enough non-zero values.
+pub const SERIAL_SAMPLE_COUNT: u32 = 4096;
+
+/// Fewest non-zero values a field needs to be taken as the serial number.
+pub const MIN_SERIAL_VALUES: usize = 8;
+
+/// Share, in percent, of a field's non-zero values that must differ for it to
+/// be the serial number.
+pub const SERIAL_DISTINCT_PERCENT: usize = 98;

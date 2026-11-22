@@ -248,6 +248,22 @@ impl<'a> Ctx<'a> {
             .collect()
     }
 
+    /// Executable, readable ranges of module `index` as `(base, size)`.
+    pub(crate) fn module_executable(&self, index: usize) -> Vec<(u64, u64)> {
+        let Some(module) = self.modules.get(index) else {
+            return Vec::new();
+        };
+        self.regions
+            .iter()
+            .filter(|r| r.perms.read && r.perms.execute)
+            .filter_map(|r| {
+                let start = r.base.max(module.base);
+                let end = r.base.saturating_add(r.size).min(module.end());
+                (start < end).then(|| (start, end - start))
+            })
+            .collect()
+    }
+
     /// Reads `len` bytes straight from the target, in large requests that
     /// bypass the page cache: a scan touches every page once, and caching them
     /// would only evict the pages the solver reads again. Pages that cannot be

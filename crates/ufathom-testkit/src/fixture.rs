@@ -173,6 +173,7 @@ pub struct FixtureBuilder {
     filler_objects: usize,
     name_blocks: usize,
     mangled_display_names: usize,
+    lazy_serials: bool,
     corruptions: Vec<Corruption>,
     chain_order: ChainOrder,
     placement: Placement,
@@ -188,6 +189,7 @@ impl FixtureBuilder {
             filler_objects: 6000,
             name_blocks: 1,
             mangled_display_names: 0,
+            lazy_serials: false,
             corruptions: Vec::new(),
             chain_order: ChainOrder::default(),
             placement: Placement::Snapshot,
@@ -225,6 +227,14 @@ impl FixtureBuilder {
     #[must_use]
     pub fn mangled_display_names(mut self, count: usize) -> Self {
         self.mangled_display_names = count;
+        self
+    }
+
+    /// Leaves the item serial number zero for four objects in five, as an
+    /// engine that assigns serial numbers on first use does.
+    #[must_use]
+    pub fn lazy_serials(mut self, lazy: bool) -> Self {
+        self.lazy_serials = lazy;
         self
     }
 
@@ -323,6 +333,7 @@ impl FixtureBuilder {
                 filler_objects: self.filler_objects,
                 chain_order: self.chain_order,
                 mangled_display_names: self.mangled_display_names,
+                lazy_serials: self.lazy_serials,
             },
         );
         code.noise(&mut mem, 60);

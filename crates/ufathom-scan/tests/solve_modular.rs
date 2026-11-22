@@ -395,3 +395,139 @@ fn when_every_candidate_is_rejected_the_error_lists_them_all() {
         ),
     }
 }
+
+// ---- globals: foreign slots and code references ----
+
+/// A module that is not part of the engine and keeps copies of the world and
+/// engine pointers, as a mod DLL loaded next to the game does.
+const MOD_PROXY: &str = "ModProxy.dll";
+
+/// The part of kind `kind` and the offset of its last `len` bytes, which the
+/// fixture leaves unused (zero or int3 padding).
+fn tail_of(parts: &[Part], kind: PartKind, len: usize) -> (u64, usize) {
+    let part = parts.iter().find(|p| p.kind == kind).unwrap();
+    let at = part.bytes.len() - len;
+    assert!(
+        part.bytes[at..].iter().all(|&b| b == 0 || b == 0xCC),
+        "the tail of the {kind:?} part is in use"
+    );
+    (part.addr, at)
+}
+
+/// Writes a RIP-relative `mov rax, [rip+disp32]` at `at` that addresses `slot`.
+fn poke_reference(parts: &mut [Part], at: u64, slot: u64) {
+    let disp = (slot as i64 - (at as i64 + 7)) as i32;
+    let mut code = vec![0x48, 0x8B, 0x05];
+    code.extend(disp.to_le_bytes());
+    poke(parts, at, &code);
+}
+
+/// The fixture with a second `GWorld` candidate in the main module's data and
+/// `references` instructions addressing the real slot and `decoy_references`
+/// the decoy. Returns the snapshot and the decoy slot.
+fn two_world_slots(references: usize, decoy_references: usize) -> (Fixture, Snapshot, u64) {
+    let fx = build(Profile::ue4_25_case_preserving_measured(), 3, 300);
+    let mut parts = fx.parts.clone();
+    let world = peek_u64(&parts, fx.anchors.data.gworld);
+    let (data_base, data_at) = tail_of(&parts, PartKind::Data, 64);
+    let decoy = data_base + data_at as u64;
+    poke(&mut parts, decoy, &world.to_le_bytes());
+    let (text_base, text_at) = tail_of(&parts, PartKind::Text, 256);
+    let code = text_base + text_at as u64;
+    for n in 0..references {
+        poke_reference(&mut parts, code + 8 * n as u64, fx.anchors.data.gworld);
+    }
+    for n in 0..decoy_references {
+        poke_reference(&mut parts, code + 128 + 8 * n as u64, decoy);
+    }
+    let snapshot = snapshot(&fx, &parts, &[]);
+    (fx, snapshot, decoy)
+}
+
+#[test]
+fn copies_of_the_globals_in_another_module_are_set_aside_not_ambiguous() {
+    let fx = build(Profile::ue4_25_case_preserving_measured(), 3, 300);
+    let base = fx.addresses.module_base + 0x4000_0000;
+    let world = peek_u64(&fx.parts, fx.anchors.data.gworld);
+    let engine = peek_u64(&fx.parts, fx.anchors.data.gengine);
+    let mut data = vec![0u8; 0x100];
+    data[0x20..0x28].copy_from_slice(&world.to_le_bytes());
+    for at in [0x40, 0x60, 0x80] {
+        data[at..at + 8].copy_from_slice(&engine.to_le_bytes());
+    }
+    let moved = [Moved {
+        name: MOD_PROXY,
+        base,
+        data,
+    }];
+    let snapshot = snapshot(&fx, &fx.parts, &moved);
+    let d = discover(&snapshot, &DiscoverOptions::default()).unwrap();
+
+    let main = Location::Rva {
+        module: fx.module_name().to_owned(),
+        rva: fx.globals.gworld_rva,
+    };
+    assert_eq!(d.globals.gworld, [fx.globals.gworld_rva]);
+    assert_eq!(d.globals.gengine, [fx.globals.gengine_rva]);
+    assert_eq!(d.globals.gworld_slots, [main]);
+    assert_eq!(d.globals.gengine_slots.len(), 1);
+    // The copies are recorded, with their module, and are no ambiguity.
+    assert_eq!(d.globals.gworld_ignored_slots.len(), 1);
+    assert_eq!(d.globals.gengine_ignored_slots.len(), 3);
+    for slot in d
+        .globals
+        .gworld_ignored_slots
+        .iter()
+        .chain(&d.globals.gengine_ignored_slots)
+    {
+        assert_eq!(module_of(slot), MOD_PROXY);
+    }
+    let ignored = d.evidence_for("globals.gworld.ignored_slots").unwrap();
+    assert!(ignored.method.contains(MOD_PROXY), "{}", ignored.method);
+    assert!(d.evidence_for("globals.gengine.ignored_slots").is_some());
+    assert!(
+        d.warnings.iter().all(|w| !w.contains("none is chosen")),
+        "{:?}",
+        d.warnings
+    );
+}
+
+#[test]
+fn a_global_that_code_addresses_wins_over_a_cache_in_the_same_module() {
+    let (fx, snapshot, decoy) = two_world_slots(6, 1);
+    let d = discover(&snapshot, &DiscoverOptions::default()).unwrap();
+    assert_eq!(d.globals.gworld, [fx.globals.gworld_rva]);
+    assert_ne!(decoy, fx.anchors.data.gworld);
+    let record = d.evidence_for("globals.gworld").unwrap();
+    assert_eq!(record.value, fx.globals.gworld_rva);
+    assert!(
+        record.method.contains("code addresses"),
+        "{}",
+        record.method
+    );
+    assert!(
+        d.warnings.iter().all(|w| !w.contains("gworld")),
+        "{:?}",
+        d.warnings
+    );
+}
+
+#[test]
+fn two_globals_that_code_addresses_equally_stay_ambiguous() {
+    let (_, snapshot, _) = two_world_slots(6, 6);
+    let d = discover(&snapshot, &DiscoverOptions::default()).unwrap();
+    assert_eq!(d.globals.gworld.len(), 2);
+    assert!(d.evidence_for("globals.gworld").is_none());
+    assert!(
+        d.warnings.iter().any(|w| w.contains("gworld")),
+        "{:?}",
+        d.warnings
+    );
+}
+
+#[test]
+fn two_unreferenced_slots_stay_ambiguous() {
+    let (_, snapshot, _) = two_world_slots(1, 1);
+    let d = discover(&snapshot, &DiscoverOptions::default()).unwrap();
+    assert_eq!(d.globals.gworld.len(), 2);
+}

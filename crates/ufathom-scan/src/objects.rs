@@ -20,8 +20,9 @@ use crate::limits::{
     ARRAY_SAMPLE_COUNT, ARRAY_SAMPLE_EDGE, ITEM_FAILURES_TO_GIVE_UP, ITEM_SIZE_RANGE,
     LAST_LIVE_PROBE, MAX_ARRAY_CHUNKS, MAX_CLASS_HOPS, MAX_ITEMS_PER_CHUNK, MAX_OBJECT_COUNT,
     MAX_TUPLES_PER_SLOT, MAX_UOBJECT_OFFSET, MIN_CONFIRMING_ITEMS, MIN_FIXED_POINTS,
-    MIN_INDEX_AGREEMENT, MIN_ITEMS_PER_CHUNK, MIN_OBJECTS, OBJECT_ARRAY_WINDOW, OBJECT_PROBE_BYTES,
-    QUICK_FIT_MATCHES, STRUCTURE_FIXED_POINT_PERCENT, STRUCTURE_IN_ARRAY_PERCENT,
+    MIN_INDEX_AGREEMENT, MIN_ITEMS_PER_CHUNK, MIN_OBJECTS, MIN_SERIAL_VALUES, OBJECT_ARRAY_WINDOW,
+    OBJECT_PROBE_BYTES, QUICK_FIT_MATCHES, SERIAL_DISTINCT_PERCENT, SERIAL_SAMPLE_COUNT,
+    STRUCTURE_FIXED_POINT_PERCENT, STRUCTURE_IN_ARRAY_PERCENT,
 };
 
 /// A candidate set of 32-bit fields around an `Objects` pointer. Offsets are
@@ -665,11 +666,22 @@ fn interpret(ctx: &Ctx<'_>, candidate: &ShapeCandidate) -> Vec<ArrayCandidate> {
     out
 }
 
-/// Finds the serial number offset inside an item: a 32-bit field that is
-/// non-zero and different in nearly every occupied item.
-fn find_serial(ctx: &Ctx<'_>, source: Source, fit: &ItemFit, num: u32) -> Option<u32> {
-    let items: Vec<Vec<u8>> = sample_indices(num)
-        .into_iter()
+/// Finds the serial number offset inside an item: a non-negative 32-bit field
+/// whose non-zero values are all different.
+///
+/// The engine assigns an item's serial number the first time a weak pointer
+/// asks for it, so most items of a live game have none (zero) and a few have
+/// one. Such a field is only recognised by its non-zero values: a flags field
+/// repeats a few values, a cluster root index repeats the root's, padding is
+/// always zero. When a field that is non-zero in nearly every item is also
+/// unique, it wins, as in an engine that assigns the serial on creation.
+///
+/// Returns the offset and, when none is found, what the best fields looked
+/// like, for the warning.
+fn find_serial(ctx: &Ctx<'_>, source: Source, fit: &ItemFit, num: u32) -> (Option<u32>, String) {
+    let step = (num / SERIAL_SAMPLE_COUNT).max(1);
+    let items: Vec<Vec<u8>> = (0..num)
+        .step_by(usize::try_from(step).unwrap_or(1))
         .filter_map(|i| {
             let at = source.item(ctx, i, fit.item_size)?;
             let bytes = ctx.read(at, usize::try_from(fit.item_size).ok()?)?;
@@ -678,9 +690,11 @@ fn find_serial(ctx: &Ctx<'_>, source: Source, fit: &ItemFit, num: u32) -> Option
         })
         .collect();
     if items.len() < MIN_CONFIRMING_ITEMS {
-        return None;
+        return (None, format!("only {} readable items", items.len()));
     }
-    let mut found = Vec::new();
+    let mut dense = Vec::new();
+    let mut sparse = Vec::new();
+    let mut seen = Vec::new();
     for offset in (0..fit.item_size.saturating_sub(3)).step_by(4) {
         let overlaps = offset < fit.item_object + 8 && offset + 4 > fit.item_object;
         if overlaps {
@@ -690,18 +704,29 @@ fn find_serial(ctx: &Ctx<'_>, source: Source, fit: &ItemFit, num: u32) -> Option
             .iter()
             .filter_map(|bytes| le_u32(bytes, offset as usize))
             .collect();
-        let nonzero = values.iter().filter(|&&v| v != 0).count();
-        let mut distinct = values.clone();
-        distinct.sort_unstable();
-        distinct.dedup();
-        if nonzero * 100 >= values.len() * 95 && distinct.len() * 10 >= values.len() * 9 {
-            found.push(offset);
+        let mut nonzero: Vec<u32> = values.iter().copied().filter(|&v| v != 0).collect();
+        let count = nonzero.len();
+        nonzero.sort_unstable();
+        nonzero.dedup();
+        let distinct = nonzero.len();
+        seen.push(format!(
+            "+{offset:#x}: {count} of {} non-zero, {distinct} distinct",
+            values.len()
+        ));
+        let positive = nonzero.iter().all(|&v| v < 0x8000_0000);
+        let all_different = distinct * 100 >= count * SERIAL_DISTINCT_PERCENT;
+        if positive && all_different && count >= MIN_SERIAL_VALUES {
+            if count * 100 >= values.len() * 95 {
+                dense.push(offset);
+            }
+            sparse.push(offset);
         }
     }
-    match found.as_slice() {
-        [only] => Some(*only),
+    let found = match (dense.as_slice(), sparse.as_slice()) {
+        ([only], _) | ([], [only]) => Some(*only),
         _ => None,
-    }
+    };
+    (found, seen.join("; "))
 }
 
 /// Finds and confirms the object array.
@@ -873,18 +898,20 @@ pub(crate) fn build_result(
         fit.occupied,
         fit.matched,
     );
-    let serial_solved = find_serial(ctx, best.source, &fit, tuple.num_value);
+    let (serial_solved, serial_seen) = find_serial(ctx, best.source, &fit, tuple.num_value);
     let item_serial = ctx.resolve_optional("objects.item_serial", serial_solved)?;
     match item_serial {
         Some(serial) if serial_solved.is_some() => ctx.evidence(
             "objects.item_serial",
             u64::from(serial),
-            "non-zero 32-bit item field that differs in nearly every item",
+            "non-negative 32-bit item field whose non-zero values all differ (the engine assigns serials on first use)",
             fit.occupied,
             fit.occupied,
         ),
         Some(_) => {}
-        None => ctx.warn("objects.item_serial: no item field is unique per item"),
+        None => ctx.warn(format!(
+            "objects.item_serial: no item field has all-different non-zero values ({serial_seen})"
+        )),
     }
 
     let layout = ObjectArrayLayout {

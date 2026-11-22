@@ -2,8 +2,17 @@
 //!
 //! - A global slot is a pointer slot in writable module data that holds a
 //!   live (in the object array, not a default object) instance of `World`, or
-//!   of a class derived from `GameEngine`. When several slots qualify, all are
-//!   reported and none is chosen.
+//!   of a class derived from `GameEngine`.
+//!   - Slots in the module of the object array are the candidates. Slots in
+//!     other modules (a mod that keeps a copy of the pointer, say) are set
+//!     aside and recorded as evidence, not counted as ambiguity. Only when the
+//!     module of the array has none (a modular build keeps the globals in the
+//!     engine module) are the slots of the other modules the candidates.
+//!   - When several candidates remain, the ones that code addresses at least
+//!     [`MIN_GLOBAL_REFERENCES`] times (RIP-relative operands in executable
+//!     sections) are kept: a global the game consults is read all over the
+//!     code, a one-off static is not. If exactly one is left, it is chosen.
+//!     Otherwise all candidates are reported and none is chosen.
 //! - `ProcessEvent` is the virtual function of object 0 that tests
 //!   `FunctionFlags` for `FUNC_Native` and `FUNC_HasOutParms`, found by
 //!   reading the machine code of each virtual function. Nothing is executed.
@@ -14,8 +23,8 @@ use ufathom_model::flags::{FUNC_HAS_OUT_PARMS, FUNC_NATIVE, RF_CLASS_DEFAULT_OBJ
 
 use crate::ctx::{Ctx, le_u32};
 use crate::limits::{
-    LOCAL_READ_CHUNK, MAX_GLOBALS_SCAN_BYTES, MAX_VTABLE_SLOTS, PROCESS_EVENT_WINDOW,
-    VTABLE_SAMPLE_OBJECTS,
+    LOCAL_READ_CHUNK, MAX_CODE_SCAN_BYTES, MAX_GLOBALS_SCAN_BYTES, MAX_VTABLE_SLOTS,
+    MIN_GLOBAL_REFERENCES, PROCESS_EVENT_WINDOW, VTABLE_SAMPLE_OBJECTS,
 };
 use crate::result::Globals;
 use crate::structs::derives_from;
@@ -246,6 +255,129 @@ fn find_process_event(ctx: &Ctx<'_>, input: &GlobalsInput<'_>) -> (Option<u32>, 
     }
 }
 
+/// How many instructions address each of `targets` through a RIP-relative
+/// operand, over the executable sections of every module. The operand is a
+/// 32-bit displacement counted from the end of the instruction, which may end
+/// with a 1 or 4 byte immediate after it (`cmp [rip+x], imm`).
+fn code_references(ctx: &Ctx<'_>, targets: &[u64]) -> Vec<u64> {
+    let mut counts = vec![0u64; targets.len()];
+    let mut budget = MAX_CODE_SCAN_BYTES;
+    for index in 0..ctx.module_count() {
+        for (base, size) in ctx.module_executable(index) {
+            let size = size.min(budget);
+            if size == 0 {
+                continue;
+            }
+            budget -= size;
+            let mut offset = 0u64;
+            while offset < size {
+                let step = (size - offset).min(LOCAL_READ_CHUNK as u64);
+                // Read three bytes more, so an operand that crosses the end
+                // of this chunk is seen once, by the chunk it starts in.
+                let take =
+                    usize::try_from((size - offset).min(step + 3)).unwrap_or(LOCAL_READ_CHUNK);
+                let bytes = ctx.read_scan(base + offset, take);
+                let starts = usize::try_from(step).unwrap_or(LOCAL_READ_CHUNK);
+                for (n, window) in bytes.windows(4).enumerate().take(starts) {
+                    let Ok(raw) = <[u8; 4]>::try_from(window) else {
+                        continue;
+                    };
+                    let end = (base + offset + n as u64 + 4) as i64;
+                    let after = end.wrapping_add(i64::from(i32::from_le_bytes(raw)));
+                    for (count, &target) in counts.iter_mut().zip(targets) {
+                        if matches!((target as i64).wrapping_sub(after), 0 | 1 | 4) {
+                            *count += 1;
+                        }
+                    }
+                }
+                offset += step;
+            }
+        }
+    }
+    counts
+}
+
+/// The candidate slots for one global, and the slots set aside.
+///
+/// Slots in the module of the object array come first; slots in other modules
+/// are set aside (and recorded) unless the module of the array has none. When
+/// several candidates remain, the one that code addresses is chosen if it is
+/// the only one that is.
+fn narrow_candidates(
+    ctx: &Ctx<'_>,
+    input: &GlobalsInput<'_>,
+    name: &str,
+    slots: Vec<u64>,
+) -> (Vec<u64>, Vec<u64>) {
+    let (inside, outside): (Vec<u64>, Vec<u64>) = slots.into_iter().partition(|&slot| {
+        matches!(ctx.location(slot), Location::Rva { module, .. } if module == input.module)
+    });
+    let (mut candidates, ignored) = if inside.is_empty() {
+        (outside, Vec::new())
+    } else {
+        (inside, outside)
+    };
+    let describe = |slots: &[u64]| {
+        slots
+            .iter()
+            .map(|&slot| match ctx.location(slot) {
+                Location::Rva { module, rva } => format!("{module}+{rva:#x}"),
+                Location::Absolute(address) => format!("{address:#x}"),
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    if !ignored.is_empty() {
+        ctx.evidence(
+            &format!("globals.{name}.ignored_slots"),
+            ignored.len() as u64,
+            format!(
+                "slots in other modules than the object array's `{}` are not candidates: {}",
+                input.module,
+                describe(&ignored)
+            ),
+            ignored.len() + candidates.len(),
+            ignored.len(),
+        );
+    }
+    if candidates.len() > 1 {
+        let counts = code_references(ctx, &candidates);
+        let used: Vec<usize> = (0..candidates.len())
+            .filter(|&i| counts.get(i).is_some_and(|&c| c >= MIN_GLOBAL_REFERENCES))
+            .collect();
+        let detail = candidates
+            .iter()
+            .zip(&counts)
+            .map(|(&slot, count)| format!("{} {count}", describe(&[slot])))
+            .collect::<Vec<_>>()
+            .join("; ");
+        if let [only] = used.as_slice()
+            && let Some(&slot) = candidates.get(*only)
+        {
+            let value = match ctx.location(slot) {
+                Location::Rva { rva, .. } => rva,
+                Location::Absolute(address) => address,
+            };
+            ctx.evidence(
+                &format!("globals.{name}"),
+                value,
+                format!(
+                    "the only one of {} candidate slots that code addresses at least {MIN_GLOBAL_REFERENCES} times (references: {detail})",
+                    candidates.len()
+                ),
+                candidates.len(),
+                1,
+            );
+            candidates = vec![slot];
+        } else {
+            ctx.warn(format!(
+                "{name}: code references do not single out one slot ({detail})"
+            ));
+        }
+    }
+    (candidates, ignored)
+}
+
 /// Finds the globals.
 pub(crate) fn find_globals(ctx: &Ctx<'_>, input: &GlobalsInput<'_>) -> Globals {
     let worlds = input
@@ -274,11 +406,11 @@ pub(crate) fn find_globals(ctx: &Ctx<'_>, input: &GlobalsInput<'_>) -> Globals {
     }
     gworld_slots.sort_unstable();
     gengine_slots.sort_unstable();
-    let gworld: Vec<u64> = gworld_slots.clone();
-    let gengine: Vec<u64> = gengine_slots.clone();
     if input.game_engine.is_none() && input.engine.is_some() {
         ctx.warn("gengine: no GameEngine class in the image; slots holding any Engine instance are listed");
     }
+    let (gworld, gworld_ignored) = narrow_candidates(ctx, input, "gworld", gworld_slots);
+    let (gengine, gengine_ignored) = narrow_candidates(ctx, input, "gengine", gengine_slots);
     for (name, slots) in [("gworld", &gworld), ("gengine", &gengine)] {
         match slots.len() {
             0 => ctx.warn(format!("{name}: no slot holds a live instance")),
@@ -309,6 +441,14 @@ pub(crate) fn find_globals(ctx: &Ctx<'_>, input: &GlobalsInput<'_>) -> Globals {
         gengine: in_module(&gengine),
         gworld_slots: gworld.iter().map(|&slot| ctx.location(slot)).collect(),
         gengine_slots: gengine.iter().map(|&slot| ctx.location(slot)).collect(),
+        gworld_ignored_slots: gworld_ignored
+            .iter()
+            .map(|&slot| ctx.location(slot))
+            .collect(),
+        gengine_ignored_slots: gengine_ignored
+            .iter()
+            .map(|&slot| ctx.location(slot))
+            .collect(),
         process_event_index,
         process_event_rva,
         process_event_module,
