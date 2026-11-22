@@ -159,6 +159,26 @@ pub struct RuntimeArgs {
     pub runtime_version: Option<String>,
 }
 
+/// How the generated SDK is laid out on disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum SdkLayoutArg {
+    /// One crate with one module per package.
+    Single,
+    /// A Cargo workspace of member crates plus a root crate that re-exports
+    /// them and holds your code, so a change to your code rebuilds only the
+    /// root crate.
+    Split,
+}
+
+impl From<SdkLayoutArg> for ufathom_codegen::SdkLayout {
+    fn from(arg: SdkLayoutArg) -> Self {
+        match arg {
+            SdkLayoutArg::Single => Self::Single,
+            SdkLayoutArg::Split => Self::Split,
+        }
+    }
+}
+
 /// `ufathom quick`.
 #[derive(Debug, Args)]
 pub struct QuickArgs {
@@ -189,6 +209,9 @@ pub struct DumpArgs {
     /// The runtime dependency of the SDK.
     #[command(flatten)]
     pub runtime: RuntimeArgs,
+    /// How the SDK is laid out. The default is the split layout.
+    #[arg(long = "sdk-layout", value_enum, value_name = "LAYOUT")]
+    pub sdk_layout: Option<SdkLayoutArg>,
     /// Threads used to read the target. Defaults to the number of CPUs.
     #[arg(long, value_name = "N")]
     pub threads: Option<usize>,
@@ -209,6 +232,9 @@ pub struct GenArgs {
     /// The runtime dependency of the SDK.
     #[command(flatten)]
     pub runtime: RuntimeArgs,
+    /// How the SDK is laid out. The default is the split layout.
+    #[arg(long, visible_alias = "sdk-layout", value_enum, value_name = "LAYOUT")]
+    pub layout: Option<SdkLayoutArg>,
 }
 
 /// `ufathom usmap`.

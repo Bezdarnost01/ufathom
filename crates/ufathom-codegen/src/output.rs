@@ -71,6 +71,18 @@ fn read_manifest(dir: &Path) -> BTreeMap<String, String> {
         .collect()
 }
 
+/// Removes the folders a removed file leaves empty, up to but not including
+/// `root`. A folder that still holds anything stays.
+fn remove_empty_parents(root: &Path, removed: &Path) {
+    let mut current = removed.parent();
+    while let Some(folder) = current {
+        if folder == root || !folder.starts_with(root) || fs::remove_dir(folder).is_err() {
+            break;
+        }
+        current = folder.parent();
+    }
+}
+
 /// Writes every file whose hash differs from the manifest or that is missing,
 /// removes files of the previous run that are no longer generated, and
 /// rewrites the manifest if it changed.
@@ -112,7 +124,10 @@ pub(crate) fn write_files(dir: &Path, files: &[OutFile]) -> Result<Written, Code
         if let Some(rel) = safe_relative(stale) {
             let full = dir.join(rel);
             match fs::remove_file(&full) {
-                Ok(()) => result.removed.push(stale.clone()),
+                Ok(()) => {
+                    result.removed.push(stale.clone());
+                    remove_empty_parents(dir, &full);
+                }
                 Err(e) if e.kind() == io::ErrorKind::NotFound => {}
                 Err(e) => return Err(io_err(&full, e)),
             }

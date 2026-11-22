@@ -107,6 +107,9 @@ pub fn print_gen_report(report: &GenReport, folder: &Path) {
     for (reason, count) in report.by_reason() {
         println!("                 {count:>6}  {reason}");
     }
+    if !report.crates.is_empty() {
+        println!("               {} member crates", report.crates.len());
+    }
     println!(
         "               {} files written, {} unchanged, {} removed in {}",
         report.files_written.len(),

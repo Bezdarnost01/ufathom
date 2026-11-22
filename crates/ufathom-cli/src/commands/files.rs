@@ -12,7 +12,10 @@ use crate::error::{CliError, Outcome};
 
 /// `ufathom gen`.
 pub fn generate(args: &GenArgs) -> Outcome {
-    let options = runtime_options(&args.runtime)?;
+    let mut options = runtime_options(&args.runtime)?;
+    if let Some(layout) = args.layout {
+        options.layout = layout.into();
+    }
     let dump = read_dump(&args.dump)?;
     let report = generate_sdk(&dump, &options, &args.output)?;
     print_gen_report(&report, &args.output);

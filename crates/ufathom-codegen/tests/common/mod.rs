@@ -77,6 +77,26 @@ pub struct CargoRun {
     pub stderr: String,
 }
 
+/// The target directory cargo uses for the SDK in `dir`.
+///
+/// A single-crate SDK shares `target/sdk-check` with every other one. The
+/// member crates of a split SDK have the same names and, being workspace
+/// members, the same build identity in every SDK, so two different SDKs in
+/// one target directory could reuse each other's artifacts. A split SDK gets
+/// a directory named after its temp folder without the random suffix.
+pub fn target_dir(dir: &Path) -> PathBuf {
+    let base = workspace_root().join("target");
+    if !dir.join("crates").is_dir() {
+        return base.join("sdk-check");
+    }
+    let name = dir
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    // `tempfile` appends six random characters.
+    let key = name.get(..name.len().saturating_sub(6)).unwrap_or(&name);
+    base.join("sdk-check-split").join(key.trim())
+}
+
 /// Runs `cargo <args>` on the crate in `dir`, offline, with a target directory
 /// shared by every test under `target/`.
 ///
@@ -105,7 +125,7 @@ pub fn run_cargo(dir: &Path, args: &[&str]) -> CargoRun {
 /// instead of panicking, for tests that expect cargo to refuse.
 pub fn run_cargo_unchecked(dir: &Path, args: &[&str]) -> CargoRun {
     let root = workspace_root();
-    let target = root.join("target").join("sdk-check");
+    let target = target_dir(dir);
     let lock = root.join("Cargo.lock");
     if lock.is_file() && !dir.join("Cargo.lock").exists() {
         // Resolve to the versions the workspace already uses, offline.
@@ -154,6 +174,51 @@ pub fn generate_and_check(dump: &Dump, label: &str) -> (tempfile::TempDir, GenRe
         run.stderr
     );
     (dir, report, run.elapsed)
+}
+
+/// The generated source file of a package module, in either layout: `src/` of
+/// a single-crate SDK or `src/` of the member crate that holds it.
+pub fn module_file(dir: &Path, module: &str) -> PathBuf {
+    let name = format!("{module}.rs");
+    let own = dir.join("src").join(&name);
+    if own.is_file() {
+        return own;
+    }
+    std::fs::read_dir(dir.join("crates"))
+        .expect("a split SDK has a crates folder")
+        .map(|e| e.expect("entry").path().join("src").join(&name))
+        .find(|p| p.is_file())
+        .unwrap_or_else(|| panic!("no source file for module {module}"))
+}
+
+/// The text of every module file of a generated SDK, in either layout, in
+/// path order. The root crate's own files (`lib.rs`, `main.rs`, `dll.rs`) and
+/// the member crates' `lib.rs` are not included.
+pub fn all_module_sources(dir: &Path) -> String {
+    let mut folders = vec![dir.join("src")];
+    if let Ok(members) = std::fs::read_dir(dir.join("crates")) {
+        let mut members: Vec<_> = members.map(|e| e.expect("entry").path()).collect();
+        members.sort();
+        folders.extend(members.into_iter().map(|m| m.join("src")));
+    }
+    let mut text = String::new();
+    for folder in folders {
+        let mut files: Vec<_> = std::fs::read_dir(&folder)
+            .expect("read dir")
+            .map(|e| e.expect("entry").path())
+            .filter(|p| {
+                !matches!(
+                    p.file_name().and_then(|n| n.to_str()),
+                    Some("lib.rs" | "main.rs" | "dll.rs")
+                )
+            })
+            .collect();
+        files.sort();
+        for file in files {
+            text.push_str(&std::fs::read_to_string(file).expect("utf-8 file"));
+        }
+    }
+    text
 }
 
 /// Reads every file under `dir` as `(relative path with '/', text with LF)`.

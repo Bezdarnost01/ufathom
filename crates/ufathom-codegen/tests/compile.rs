@@ -17,7 +17,7 @@ mod common;
 
 use common::dumps::{golden_dump, testkit_dump};
 use common::{generate_and_check, run_cargo};
-use ufathom_codegen::generate;
+use ufathom_codegen::{GenOptions, SdkLayout, generate};
 use ufathom_model::EngineVersion;
 use ufathom_testkit::Profile;
 
@@ -49,6 +49,39 @@ fn golden_dump_compiles() {
         "compile test golden detour: cargo check {:.1?}",
         run.elapsed
     );
+}
+
+#[test]
+fn golden_dump_compiles_in_the_single_crate_layout() {
+    // The default layout is the split one, which every other test here builds.
+    let dir = tempfile::Builder::new()
+        .prefix("sdk-single-")
+        .tempdir()
+        .unwrap();
+    let options = GenOptions {
+        layout: SdkLayout::Single,
+        ..common::local_options()
+    };
+    generate(&golden_dump(), &options, dir.path()).unwrap();
+    for args in [
+        &["check", "--all-targets"][..],
+        &["check", "--features", "inproc"][..],
+        &[
+            "check",
+            "--no-default-features",
+            "--features",
+            "engine,accessors",
+        ][..],
+        &["check", "--no-default-features", "--features", "mods"][..],
+    ] {
+        let run = run_cargo(dir.path(), args);
+        assert!(
+            !run.stderr.contains("warning:"),
+            "{args:?}:
+{}",
+            run.stderr
+        );
+    }
 }
 
 #[test]

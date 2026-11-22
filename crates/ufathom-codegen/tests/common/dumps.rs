@@ -1206,3 +1206,73 @@ pub fn testkit_dump(profile: Profile) -> Dump {
 pub fn layout_of(profile: &Profile) -> EngineLayout {
     profile.layout.clone()
 }
+
+pub const ALPHA: &str = "/Script/Alpha";
+pub const BETA: &str = "/Script/Beta";
+pub const GAMMA: &str = "/Script/Gamma";
+pub const DELTA: &str = "/Script/Delta";
+
+/// Packages that reference each other: `Alpha` and `Beta` hold pointers to
+/// each other's classes (a package cycle), `Gamma` derives from a class of
+/// `Alpha` and points into `Beta`, and `Delta` only uses `CoreUObject`.
+pub fn cyclic_packages_dump() -> Dump {
+    let layout = Profile::ue4_21_measured().layout;
+    let object = path(CORE, "Object");
+    let alpha = path(ALPHA, "Thing");
+    let beta = path(BETA, "Thing");
+    let structs = vec![
+        class(CORE, "Object", None, 0x28, Vec::new(), Vec::new()),
+        class(
+            ALPHA,
+            "Thing",
+            Some(&object),
+            0x30,
+            vec![field(
+                "Partner",
+                0x28,
+                PropertyType::Object {
+                    class: beta.clone(),
+                },
+                8,
+            )],
+            Vec::new(),
+        ),
+        class(
+            BETA,
+            "Thing",
+            Some(&object),
+            0x30,
+            vec![field(
+                "Partner",
+                0x28,
+                PropertyType::Object {
+                    class: alpha.clone(),
+                },
+                8,
+            )],
+            Vec::new(),
+        ),
+        class(
+            GAMMA,
+            "Child",
+            Some(&alpha),
+            0x38,
+            vec![field(
+                "Other",
+                0x30,
+                PropertyType::Object { class: beta },
+                8,
+            )],
+            Vec::new(),
+        ),
+        class(
+            DELTA,
+            "Leaf",
+            Some(&object),
+            0x2C,
+            vec![field("Count", 0x28, PropertyType::Int32, 4)],
+            Vec::new(),
+        ),
+    ];
+    make_dump(layout, structs, Vec::new())
+}

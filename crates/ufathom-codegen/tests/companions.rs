@@ -225,7 +225,7 @@ fn sdk_dll(features: &[&str]) -> Vec<u8> {
         "warnings while building {features:?}:\n{}",
         run.stderr
     );
-    std::fs::read(workspace_root().join("target/sdk-check/debug/ufathom_sdk.dll")).unwrap()
+    std::fs::read(common::target_dir(sdk.path()).join("debug/ufathom_sdk.dll")).unwrap()
 }
 
 fn plain_sdk() -> &'static [u8] {

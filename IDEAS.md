@@ -39,8 +39,8 @@ Ranked by value for the first goal, a DLL that dumps UE 4.11 to 5.8 games better
 - **Gives:** exact layout checked at compile time. Sound reads of arbitrary memory.
 - **Solves:** SDK compile failures, and undefined behaviour from reading unknown enum values.
 - **Complexity:** medium to high.
-- **Architecture:** planning pass with byte fallback. `Pod` everywhere. One crate with feature-gated modules.
-- **Better because:** package cycle handling disappears, and enums and booleans are modeled correctly for untrusted memory.
+- **Architecture:** planning pass with byte fallback. `Pod` everywhere. Feature-gated package modules, in one crate or in member crates re-exported by a root crate (cyclic packages share a crate).
+- **Better because:** no package cycle elimination is needed, and enums and booleans are modeled correctly for untrusted memory.
 
 ## 6. Oracle comparison
 

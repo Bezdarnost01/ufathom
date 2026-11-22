@@ -16,28 +16,49 @@ use std::path::Path;
 
 use common::dumps::golden_dump;
 use common::read_tree;
-use ufathom_codegen::{DegradeReason, GenOptions, generate};
+use ufathom_codegen::{DegradeReason, GenOptions, SdkLayout, generate};
 
-fn golden_dir() -> std::path::PathBuf {
+fn golden_dir(name: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
-        .join("golden")
+        .join(name)
 }
 
 /// Keep the golden files focused on generated types, not vendored sources.
+/// The single-crate layout, which `tests/golden` holds.
 fn golden_options() -> GenOptions {
     GenOptions {
         runtime: ufathom_codegen::RuntimeDependency::Version("0.1.0".to_owned()),
+        layout: SdkLayout::Single,
         ..GenOptions::default()
+    }
+}
+
+/// The split layout, `tests/golden-split`, with a crate for every package so
+/// the member crates and the re-exports are all there to read.
+fn golden_split_options() -> GenOptions {
+    GenOptions {
+        layout: SdkLayout::Split,
+        split_crate_bytes: 0,
+        ..golden_options()
     }
 }
 
 #[test]
 fn generated_text_matches_the_golden_files() {
+    compare_with_golden(&golden_options(), "golden");
+}
+
+#[test]
+fn split_text_matches_the_golden_files() {
+    compare_with_golden(&golden_split_options(), "golden-split");
+}
+
+fn compare_with_golden(options: &GenOptions, name: &str) {
     let dir = tempfile::tempdir().unwrap();
-    generate(&golden_dump(), &golden_options(), dir.path()).unwrap();
+    generate(&golden_dump(), options, dir.path()).unwrap();
     let actual = read_tree(dir.path());
-    let golden = golden_dir();
+    let golden = golden_dir(name);
     if std::env::var_os("UPDATE_GOLDEN").is_some() {
         if golden.exists() {
             std::fs::remove_dir_all(&golden).unwrap();
@@ -56,10 +77,10 @@ fn generated_text_matches_the_golden_files() {
         names(&expected),
         "set of files differs; run with UPDATE_GOLDEN=1"
     );
-    for ((name, got), (_, want)) in actual.iter().zip(&expected) {
+    for ((file, got), (_, want)) in actual.iter().zip(&expected) {
         assert!(
             got == want,
-            "{name} differs from tests/golden/{name}; run with UPDATE_GOLDEN=1 and review the diff"
+            "{file} differs from tests/{name}/{file}; run with UPDATE_GOLDEN=1 and review the diff"
         );
     }
 }
