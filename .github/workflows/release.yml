@@ -58,10 +58,12 @@ jobs:
 
       # The same gates as CI.
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       # The DLL host tests load the real DLL, which `cargo test` does not build.
       - run: cargo build -p ufathom-dll -p ufathom-testkit --bins --lib
-      - run: cargo test --workspace
+      # `--all-features` as in CI: the bundled-SDK tests build optional runtime
+      # features offline, so their dependencies must already be fetched.
+      - run: cargo test --workspace --all-features
 
       # Two invocations on purpose. The DLL library is named `ufathom_dll` so that its
       # debug symbols no longer collide with the CLI's ufathom.pdb, but separate builds
