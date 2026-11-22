@@ -4,6 +4,10 @@ All notable changes are recorded here, in the [Keep a Changelog](https://keepach
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-22
+
+> The mod toolkit in this release (hooks, detours, proxy DLLs, field writes, fast reads) is tested on synthetic engines and hand-written machine code only. None of it has run in a real game yet; treat it as experimental.
+
 ### Added
 
 - **Split SDK layout, now the default.** `ufathom gen`, `quick`, `dump --sdk` and the DLL's `rust-sdk` format write the SDK as a small Cargo workspace: the packages are member crates under `crates/`, and the root crate re-exports them under the same module paths (`ufathom_sdk::engine::AActor` is unchanged), holds `ENGINE`, `session`, the DLL and executable entry points and your `src/main.rs`, and enables a member crate with the package feature (`engine = ["dep:ufathom-sdk-engine", ...]`; `inproc` and `accessors` are passed on to the enabled members). The module files are the same text as in the single-crate layout. Packages that reference each other cyclically cannot be separate crates, so the strongly connected components of the package reference graph (iterative Tarjan) stay in one crate each, and the other packages are packed by depth into crates of about 512 KiB of source (`GenOptions::split_crate_bytes`). Why: with one crate, your `main.rs` was part of the same compilation unit as a million generated lines, so a release build after any edit took over a minute. On a UE 4.21 shipping dump with 4,381 packages (59 member crates, the largest holding the four cyclic engine packages), rebuilding after a change to `main.rs` takes about 2 seconds in release instead of 70-83, and 1.3 seconds in debug instead of 40; the first build is shorter too (release 57-80 s against 82-97 s) but still limited by the engine crate. `--layout single` (`--sdk-layout` for `dump`; `GenOptions { layout: SdkLayout::Single, .. }`) keeps the old layout. Regenerating an SDK with the other layout keeps `src/main.rs`, removes the files the previous layout wrote (and the folders that leave empty) and leaves files you added. `GenReport::crates` lists the member crates with their packages and dependencies. Tested on the golden dump in both layouts (`tests/golden`, `tests/golden-split`), on a dump with a package cycle, by building the split SDK standalone (all packages, one package, `inproc`, `detour`, bundled runtime) and by running the behaviour tests through the root crate.
@@ -132,7 +136,8 @@ First pre-release. Windows x86-64 only for the DLL. Expect breaking changes in t
   - the generated SDK compiles.
 - **Other engine versions:** tested on synthetic images only. See `COMPATIBILITY.md`.
 
-[Unreleased]: https://github.com/Bezdarnost01/ufathom/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Bezdarnost01/ufathom/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Bezdarnost01/ufathom/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Bezdarnost01/ufathom/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Bezdarnost01/ufathom/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Bezdarnost01/ufathom/compare/v0.1.1...v0.2.0
