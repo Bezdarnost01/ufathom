@@ -86,7 +86,7 @@ fn bundled_sdk_compiles_without_an_ufathom_checkout() {
     // of the system version.dll, or the game would fail to start with it.
     #[cfg(windows)]
     {
-        let debug = common::workspace_root().join("target/sdk-check/debug");
+        let debug = common::target_dir(dir.path()).join("debug");
         let dll = debug.join("ufathom_sdk.dll");
         let exports = common::pe_exports(&std::fs::read(&dll).unwrap());
         for export in ufathom_runtime::proxy::VERSION.exports {

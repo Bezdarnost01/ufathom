@@ -20,6 +20,8 @@ use ufathom_model::{FieldDef, PropertyType};
 fn options() -> GenOptions {
     GenOptions {
         runtime: ufathom_codegen::RuntimeDependency::Version("0.1.0".to_owned()),
+        // The split layout has its own tests in `split.rs`.
+        layout: ufathom_codegen::SdkLayout::Single,
         ..GenOptions::default()
     }
 }

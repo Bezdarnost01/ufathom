@@ -108,6 +108,17 @@ pub struct SizePadding {
     pub rust_size: u32,
 }
 
+/// A member crate of a split SDK.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrateInfo {
+    /// Cargo package name.
+    pub name: String,
+    /// Dump paths of the packages it holds, in module-name order.
+    pub packages: Vec<String>,
+    /// Names of the member crates it depends on.
+    pub dependencies: Vec<String>,
+}
+
 /// Counts and diagnostics of one [`generate`](crate::generate) call.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GenReport {
@@ -139,6 +150,9 @@ pub struct GenReport {
     pub files_unchanged: Vec<String>,
     /// Files of an earlier run that are no longer generated and were removed.
     pub files_removed: Vec<String>,
+    /// The member crates of a split SDK, dependencies first. Empty for a
+    /// single-crate SDK.
+    pub crates: Vec<CrateInfo>,
 }
 
 impl GenReport {

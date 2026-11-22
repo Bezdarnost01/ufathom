@@ -81,6 +81,34 @@ cargo check --manifest-path my_sdk/Cargo.toml
 
 Use `--runtime-path PATH` or `--runtime-version VERSION` only when you want to override the bundled runtime with a local crate or a registry dependency.
 
+### SDK layout and build time
+
+A generated SDK is a Cargo workspace by default (`--layout split`): the packages are member crates under `crates/`, and the root crate (`ufathom-sdk`) re-exports them under the same module paths, so `ufathom_sdk::engine::AActor` reads the same as before. The root crate holds only the engine description, the DLL and executable entry points, and your `src/main.rs`, so changing your code rebuilds only that small crate. Packages that reference each other cyclically share one member crate, and small packages are packed together; a dump with thousands of Blueprint packages gives a few dozen crates.
+
+`--layout single` (also `ufathom dump --sdk-layout single`) writes the earlier layout: one crate, `src/<package>.rs` per package. Regenerating an SDK with the other layout keeps `src/main.rs` and removes only the files the previous generation wrote.
+
+Measured on a UE 4.21 shipping dump with 2,644 classes and 4,381 packages (about one million generated lines; the SDK of one game, 12-core Windows machine that other builds shared, clean target directory, seconds):
+
+| | single | split |
+|---|---|---|
+| `cargo check`, all packages | 94-117 | 70-78 |
+| `cargo check`, `engine` + the game package | 58-68 | 54-64 |
+| `cargo build --release --lib`, all packages | 82-97 | 57-80 |
+| rebuild after changing `src/main.rs`: `cargo build --release --lib` | 70-83 | 1.8 |
+| rebuild after changing `src/main.rs`: `cargo build --lib` (debug) | 40 | 1.3 |
+| rebuild after changing `src/main.rs`: `cargo check` | 29-44 | 0.9 |
+
+The first build of a big SDK is still a minute or more, because the engine packages reference each other and form one crate of about 386,000 lines, and the game package waits for it. Only enable what you need: every package is a Cargo feature, `default = ["all", "accessors"]`, and a feature enables the packages it depends on.
+
+```
+# a mod that uses the engine and one game package, without the chain accessors
+cargo build --release --lib --no-default-features --features "engine,my_game_package"
+# with the accessors and the in-game calls
+cargo build --release --lib --no-default-features --features "engine,my_game_package,accessors,inproc"
+```
+
+The accessors (`accessors`, on by default) are about a third of the type-checking time of the whole SDK: `cargo check` of all packages took 68 seconds in the single layout and 61 in the split one with `--no-default-features --features all`, against 94-117 and 70-78 with them. A build that does not use field chains is shorter with them off.
+
 ### Build the generated application
 
 Every SDK includes an editable `src/main.rs`. Put your logic in its `run` function and import generated types through the SDK crate, for example `ufathom_sdk::core_uobject::UObject`. Later SDK generation preserves this file; other generated files may be refreshed. The SDK also gets a `.cargo/config.toml` that links the C runtime statically on `x86_64-pc-windows-msvc`, so the built DLL and executable run on machines without the Visual C++ Redistributable.

@@ -199,7 +199,7 @@ fn degraded_of<'a>(
 }
 
 fn engine_source(dir: &std::path::Path) -> String {
-    std::fs::read_to_string(dir.join("src").join("engine.rs")).unwrap()
+    std::fs::read_to_string(common::module_file(dir, "engine")).unwrap()
 }
 
 #[test]
@@ -285,15 +285,7 @@ fn the_result_does_not_depend_on_the_input_order() {
 }
 
 fn all_sources(dir: &std::path::Path) -> String {
-    let mut files: Vec<_> = std::fs::read_dir(dir.join("src"))
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .collect();
-    files.sort();
-    files
-        .iter()
-        .map(|p| std::fs::read_to_string(p).unwrap())
-        .collect()
+    common::all_module_sources(dir)
 }
 
 #[test]

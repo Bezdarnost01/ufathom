@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use common::dumps::golden_dump;
-use common::{PeExport, pe_export_table, run_cargo, run_cargo_unchecked, workspace_root};
+use common::{PeExport, pe_export_table, run_cargo, run_cargo_unchecked};
 use ufathom_codegen::{GenOptions, generate};
 
 #[link(name = "kernel32")]
@@ -74,7 +74,7 @@ fn build_proxy(feature: &str, name: &str) -> Proxy {
         "warnings while building {feature}:\n{}",
         run.stderr
     );
-    let built = workspace_root().join("target/sdk-check/debug/ufathom_sdk.dll");
+    let built = common::target_dir(sdk.path()).join("debug/ufathom_sdk.dll");
     let folder = tempfile::Builder::new()
         .prefix("proxy folder ")
         .tempdir()

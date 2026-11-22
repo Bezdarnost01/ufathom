@@ -60,6 +60,7 @@ pub fn quick(args: &QuickArgs) -> Outcome {
             runtime_path: None,
             runtime_version: None,
         },
+        sdk_layout: None,
         threads: None,
         allow_degraded: false,
     };

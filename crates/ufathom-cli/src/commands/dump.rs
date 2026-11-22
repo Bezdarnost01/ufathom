@@ -118,10 +118,19 @@ fn sdk_options(args: &DumpArgs) -> Result<Option<GenOptions>, CliError> {
     let runtime_given =
         args.runtime.runtime_path.is_some() || args.runtime.runtime_version.is_some();
     match (&args.sdk, runtime_given) {
-        (Some(_), _) => runtime_options(&args.runtime).map(Some),
+        (Some(_), _) => {
+            let mut options = runtime_options(&args.runtime)?;
+            if let Some(layout) = args.sdk_layout {
+                options.layout = layout.into();
+            }
+            Ok(Some(options))
+        }
         (None, true) => Err(usage(
             "--runtime-path and --runtime-version only apply together with --sdk",
         )),
+        (None, false) if args.sdk_layout.is_some() => {
+            Err(usage("--sdk-layout only applies together with --sdk"))
+        }
         (None, false) => Ok(None),
     }
 }

@@ -15,7 +15,7 @@ mod common;
 
 use common::dumps::behaviour_dump;
 use common::{local_options, run_cargo};
-use ufathom_codegen::generate;
+use ufathom_codegen::{GenOptions, SdkLayout, generate};
 
 #[test]
 fn generated_sdk_reads_objects_and_calls_wrappers() {
@@ -23,7 +23,13 @@ fn generated_sdk_reads_objects_and_calls_wrappers() {
         .prefix("sdk-behaviour-")
         .tempdir()
         .unwrap();
-    let report = generate(&behaviour_dump(), &local_options(), dir.path()).unwrap();
+    // The single-crate layout; `split.rs` runs the same tests through the
+    // root crate of the split layout.
+    let options = GenOptions {
+        layout: SdkLayout::Single,
+        ..local_options()
+    };
+    let report = generate(&behaviour_dump(), &options, dir.path()).unwrap();
     assert_eq!(report.degraded_fields(), 0, "{:?}", report.degraded);
     std::fs::create_dir_all(dir.path().join("tests")).unwrap();
     std::fs::write(

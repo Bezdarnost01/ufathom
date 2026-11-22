@@ -1,5 +1,6 @@
 //! Prints planned types as Rust source.
 
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use crate::build::{
@@ -8,6 +9,7 @@ use crate::build::{
 };
 use crate::names::doc_text;
 use crate::planner::{BaseMode, Item, Plan};
+use crate::split::{self, CrateGroup};
 
 /// Writes formatted text into a `String`. Writing to a `String` cannot fail.
 macro_rules! w {
@@ -51,11 +53,15 @@ pub(crate) fn module_source(built: &Built, module: &ModuleInfo) -> String {
 }
 
 /// The text of `src/lib.rs`.
+///
+/// With `exports` (module name to the Rust name of the member crate that holds
+/// it) the packages are re-exports of member crates, not modules of this one.
 pub(crate) fn lib_source(
     built: &Built,
     engine: Option<&str>,
     sdk_crate: &str,
     engine_items: &str,
+    exports: Option<&BTreeMap<String, String>>,
 ) -> String {
     let mut out = String::new();
     wl!(
@@ -79,6 +85,16 @@ pub(crate) fn lib_source(
         out,
         "//! Cargo feature with the same name; a feature enables the packages it needs."
     );
+    if exports.is_some() {
+        wl!(
+            out,
+            "//! The packages are built as separate crates under `crates/`; the modules here"
+        );
+        wl!(
+            out,
+            "//! re-export them, so paths are the same as in a single-crate SDK."
+        );
+    }
     wl!(out);
     wl!(out, "#![allow(");
     wl!(out, "    non_camel_case_types,");
@@ -105,7 +121,10 @@ pub(crate) fn lib_source(
     for m in &built.modules {
         wl!(out);
         wl!(out, "#[cfg(feature = \"{}\")]", m.name);
-        wl!(out, "pub mod {};", m.name);
+        match exports.and_then(|e| e.get(&m.name)) {
+            Some(member) => wl!(out, "pub use ::{member}::{};", m.name),
+            None => wl!(out, "pub mod {};", m.name),
+        }
     }
     out
 }
@@ -125,13 +144,19 @@ rustflags = [\"-C\", \"target-feature=+crt-static\"]
 }
 
 /// The text of `Cargo.toml`.
+///
+/// With `members` (the split layout) every package feature also enables the
+/// member crate that holds the package, and `inproc` and `accessors` are
+/// passed on to the enabled member crates.
 pub(crate) fn cargo_source(
     built: &Built,
     crate_name: &str,
     crate_version: &str,
     runtime: &str,
     workspace: &str,
+    members: Option<(&[CrateGroup], &BTreeMap<String, String>)>,
 ) -> String {
+    let member_groups = members.map_or(&[][..], |(groups, _)| groups);
     let mut out = String::new();
     wl!(out, "[package]");
     wl!(out, "name = {}", toml_string(crate_name));
@@ -156,6 +181,9 @@ pub(crate) fn cargo_source(
     wl!(out);
     wl!(out, "[dependencies]");
     wl!(out, "ufathom-runtime = {runtime}");
+    for line in split::root_dependency_lines(member_groups) {
+        wl!(out, "{line}");
+    }
     wl!(out);
     wl!(out, "[target.'cfg(windows)'.dependencies]");
     wl!(
@@ -175,12 +203,18 @@ pub(crate) fn cargo_source(
         out,
         "# traits per class. Turn off to shorten the build; the `FIELD` constants stay."
     );
-    wl!(out, "{ACCESSORS_FEATURE} = []");
+    wl!(
+        out,
+        "{ACCESSORS_FEATURE} = [{}]",
+        split::forward_to_members(member_groups, ACCESSORS_FEATURE).join(", ")
+    );
     wl!(
         out,
         "# Calls game functions through ProcessEvent: `attach()`. Inside the game only."
     );
-    wl!(out, "inproc = [\"ufathom-runtime/inproc\"]");
+    let mut inproc = vec![toml_string("ufathom-runtime/inproc")];
+    inproc.extend(split::forward_to_members(member_groups, "inproc"));
+    wl!(out, "inproc = [{}]", inproc.join(", "));
     wl!(
         out,
         "# Inline detours of plain native functions (`ufathom_runtime::detour`), for mods."
@@ -199,7 +233,16 @@ pub(crate) fn cargo_source(
         wl!(out, "{line}");
     }
     for m in &built.modules {
-        let deps: Vec<String> = m.deps.iter().map(|d| toml_string(d)).collect();
+        let own_crate = members
+            .and_then(|(groups, exports)| {
+                let lib = exports.get(&m.name)?;
+                groups.iter().find(|g| &g.lib_name() == lib)
+            })
+            .map(|g| toml_string(&format!("dep:{}", g.name)));
+        let deps: Vec<String> = own_crate
+            .into_iter()
+            .chain(m.deps.iter().map(|d| toml_string(d)))
+            .collect();
         wl!(out, "{} = [{}]", m.name, deps.join(", "));
     }
     wl!(out);

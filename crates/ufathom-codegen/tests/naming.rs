@@ -14,11 +14,18 @@ use std::collections::BTreeMap;
 
 use common::dumps::golden_dump;
 use common::read_tree;
-use ufathom_codegen::{GenOptions, generate};
+use ufathom_codegen::{GenOptions, SdkLayout, generate};
 
+/// The generated tree of the single-crate layout, where module files and
+/// `lib.rs` are all under `src/`. The module files are the same in the split
+/// layout; `split.rs` covers what differs.
 fn files() -> BTreeMap<String, String> {
     let dir = tempfile::tempdir().unwrap();
-    generate(&golden_dump(), &GenOptions::default(), dir.path()).unwrap();
+    let options = GenOptions {
+        layout: SdkLayout::Single,
+        ..GenOptions::default()
+    };
+    generate(&golden_dump(), &options, dir.path()).unwrap();
     read_tree(dir.path()).into_iter().collect()
 }
 
